@@ -94,8 +94,13 @@ func loadCfg(path *string) (config.Config, error) {
 
 func clientFrom(cfg config.Config) *api.Client {
 	sock := cfg.Socket
+	token := os.Getenv("GRAIN_TOKEN")
+	if token == "" {
+		token = cfg.ResolvedAPIToken()
+	}
 	return &api.Client{
-		Base: "http://grain",
+		Base:  "http://grain",
+		Token: token,
 		HTTP: &http.Client{
 			// No global Timeout — create waits for SSH; use request context instead.
 			Transport: &http.Transport{

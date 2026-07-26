@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	grainapi "github.com/cxdy/grain/api"
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/manager"
 	"github.com/cxdy/grain/internal/observability"
@@ -25,6 +27,9 @@ type Server struct {
 	mgr *manager.Manager
 	met *observability.Metrics
 	log *slog.Logger
+	// APIToken, when non-empty, requires Authorization: Bearer <token>
+	// on all routes except GET /healthz.
+	APIToken string
 }
 
 func New(mgr *manager.Manager, met *observability.Metrics, log *slog.Logger) *Server {
@@ -42,6 +47,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.healthz)
 	mux.HandleFunc("GET /info", s.info)
 	mux.Handle("GET /metrics", s.met.Handler())
+	mux.HandleFunc("GET /openapi.yaml", s.serveOpenAPI)
+	mux.HandleFunc("GET /openapi.json", s.serveOpenAPI)
 	mux.HandleFunc("GET /vms", s.listVMs)
 	mux.HandleFunc("POST /vms", s.createVM)
 	mux.HandleFunc("GET /vms/{name}", s.getVM)
@@ -56,7 +63,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /vms/{name}/fs/stat", s.fsStat)
 	mux.HandleFunc("POST /vms/{name}/fs/mkdir", s.fsMkdir)
 	mux.HandleFunc("DELETE /vms/{name}/fs/remove", s.fsRemove)
-	return loggingMiddleware(s.log, mux)
+	return loggingMiddleware(s.log, authMiddleware(s.APIToken, mux))
+}
+
+func (s *Server) serveOpenAPI(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(grainapi.OpenAPIYAML)
 }
 
 func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
@@ -113,6 +126,21 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 	}
 	timeout := s.mgr.CreateTimeout()
+	if t := r.URL.Query().Get("timeout"); t != "" {
+		d, err := time.ParseDuration(t)
+		if err != nil || d <= 0 {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid timeout"))
+			return
+		}
+		timeout = d
+	}
+	// wait=false is reserved; only stream or blocking wait are supported today.
+	if wq := r.URL.Query().Get("wait"); wq != "" && wq != "1" && !strings.EqualFold(wq, "true") {
+		if strings.EqualFold(wq, "false") || wq == "0" {
+			writeErr(w, http.StatusBadRequest, errors.New("wait=false is not supported; use stream=1 for progress events"))
+			return
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
@@ -682,17 +710,75 @@ func loggingMiddleware(log *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
+// authMiddleware requires Authorization: Bearer <token> when token is non-empty.
+// GET /healthz is always public so local probes and process managers stay simple.
+func authMiddleware(token string, next http.Handler) http.Handler {
+	if token == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !bearerAuthorized(r.Header.Get("Authorization"), token) {
+			writeErr(w, http.StatusUnauthorized, errors.New("unauthorized"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// bearerAuthorized checks Authorization: Bearer <token> in constant time when lengths match.
+func bearerAuthorized(header, token string) bool {
+	const prefix = "Bearer "
+	if !strings.HasPrefix(header, prefix) {
+		return false
+	}
+	got := header[len(prefix):]
+	if len(got) != len(token) {
+		// Dummy compare to keep timing closer when lengths differ.
+		subtle.ConstantTimeCompare([]byte(token), []byte(token))
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+}
+
 // Client talks to a running daemon over HTTP (unix socket via custom Transport).
 type Client struct {
-	Base string // e.g. http://grain (with unix dialer)
-	HTTP *http.Client
+	Base  string // e.g. http://grain (with unix dialer)
+	HTTP  *http.Client
+	Token string // optional Bearer token (Authorization header)
 }
 
 func (c *Client) http() *http.Client {
-	if c.HTTP != nil {
-		return c.HTTP
+	base := c.HTTP
+	if base == nil {
+		base = http.DefaultClient
 	}
-	return http.DefaultClient
+	if c.Token == "" {
+		return base
+	}
+	// Clone so we do not mutate a shared *http.Client (e.g. httptest.Client()).
+	clone := *base
+	rt := base.Transport
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+	clone.Transport = &bearerRoundTripper{base: rt, token: c.Token}
+	return &clone
+}
+
+// bearerRoundTripper injects Authorization: Bearer on every request.
+type bearerRoundTripper struct {
+	base  http.RoundTripper
+	token string
+}
+
+func (b *bearerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req2 := req.Clone(req.Context())
+	req2.Header.Set("Authorization", "Bearer "+b.token)
+	return b.base.RoundTrip(req2)
 }
 
 func (c *Client) Health(ctx context.Context) error {
@@ -721,6 +807,9 @@ func (c *Client) List(ctx context.Context) ([]*vm.Instance, error) {
 		return nil, err
 	}
 	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
 	var list []*vm.Instance
 	if err := json.NewDecoder(res.Body).Decode(&list); err != nil {
 		return nil, err

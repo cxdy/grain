@@ -56,6 +56,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 
 	srv := api.New(mgr, met, log)
+	srv.APIToken = cfg.ResolvedAPIToken()
 	handler := srv.Handler()
 
 	// TCP API (simple for curl + metrics scrape)

@@ -19,6 +19,12 @@ type Config struct {
 	Socket string `yaml:"socket"`
 	// API is optional TCP bind for metrics/API (empty = unix only).
 	API string `yaml:"api"`
+	// APIToken, when non-empty, requires Authorization: Bearer on all daemon
+	// routes except GET /healthz. Empty (default) means no auth — suitable for
+	// localhost / unix socket. CLI also reads env GRAIN_TOKEN.
+	APIToken string `yaml:"api_token"`
+	// AuthToken is an alias for APIToken (either field may be set).
+	AuthToken string `yaml:"auth_token"`
 	// MetricsAddr is Prometheus scrape address (empty = disabled).
 	MetricsAddr string `yaml:"metrics_addr"`
 	// DefaultCPUs for new sandboxes.
@@ -210,6 +216,14 @@ func (c Config) ResolveCreate(profileName string, o CreateOverrides) (ResolvedCr
 	}
 
 	return r, nil
+}
+
+// ResolvedAPIToken returns api_token, or auth_token if api_token is empty.
+func (c Config) ResolvedAPIToken() string {
+	if c.APIToken != "" {
+		return c.APIToken
+	}
+	return c.AuthToken
 }
 
 // Defaults returns developer-friendly defaults for local Mac/Linux use.
