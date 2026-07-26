@@ -1,0 +1,10 @@
+[Unit]
+Description=grain guest agent
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/grain-agent -listen :7475
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

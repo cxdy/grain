@@ -7,13 +7,24 @@ export CGO_ENABLED ?= 0
 
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build test cover lint fmt clean run-help smoke-api doctor obs-up obs-down release-build
+.PHONY: all build agent agent-linux test cover lint fmt clean run-help smoke-api doctor obs-up obs-down release-build
 
 all: test build
 
 build:
 	@mkdir -p bin
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/grain
+
+# Guest agent (host arch)
+agent:
+	@mkdir -p bin
+	go build -ldflags "$(LDFLAGS)" -o bin/grain-agent ./cmd/grain-agent
+
+# Guest agent cross-builds for deploy into Linux VMs
+agent-linux:
+	@mkdir -p bin
+	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/grain-agent-linux-arm64 ./cmd/grain-agent
+	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/grain-agent-linux-amd64 ./cmd/grain-agent
 
 test:
 	go test ./... -count=1
