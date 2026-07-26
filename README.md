@@ -49,14 +49,28 @@ brew install qemu
 | Cmd | Meaning |
 |-----|---------|
 | `up` / `down` | start/stop daemon |
-| `new` | launch sandbox (`-p` persist, `-n` name, `-c` cpus, `-m` mem, `-d` disk) |
+| `new` | launch sandbox (`-p` persist, `-n` name, `-c` cpus, `-m` mem, `-d` disk, `-i` image) |
+| `new -P` / `--publish` | host→guest ports (`HOST:GUEST` or `GUEST`; repeatable) |
+| `new -v` / `--volume` | share host dir `HOST:GUEST` via virtio-9p (repeatable) |
+| `new --userdata-file` | cloud-init userdata or shell script |
+| `stop` / `start` | stop VM (ephemeral deleted; persistent kept) / start stopped persistent |
 | `ls` / `rm` | list / delete |
 | `sh` / `x` | shell / exec |
 | `logs` | guest serial (default) or `--qemu` hypervisor log; `-f` follow |
+| `fwd ls` | list SSH + published port forwards |
 | `cp` | `host path` or `NAME:path` |
 | `image ls` / `image pull` | base images |
 | `doctor` | dependency check |
 | `version` | print version |
+
+## Docs
+
+| Guide | Topics |
+|-------|--------|
+| [docs/networking.md](docs/networking.md) | SLIRP, SSH, `--publish`, `fwd ls`, privileged ports |
+| [docs/mounts.md](docs/mounts.md) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
+| [docs/images.md](docs/images.md) | `ubuntu-cloud`, pull once, SHA verify |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
 
 ## How it works
 
@@ -66,7 +80,7 @@ brew install qemu
 4. **Boot** — QEMU (HVF on Apple Silicon) + cloud-init seed (SSH key)
 5. **Access** — SSH via host-forwarded port; grain manages the key in `~/.grain/ssh/`
 
-Ephemeral VMs are removed on `rm`, `shutdown`, or daemon stop. Persistent (`-p`) keep their disk.
+Ephemeral VMs are removed on `rm`, `stop`, or daemon stop. Persistent (`-p`) keep their disk and can be brought back with `start`.
 
 ## Tests & TDD
 
@@ -101,6 +115,13 @@ disk_gb: 8
 ssh_user: ubuntu
 ready_timeout: 2m
 log_level: info
+
+# Resource caps (0 = unlimited). Stopped VMs do not count.
+max_vms: 8
+max_cpus_total: 16
+max_memory_mb_total: 32768
+max_cpus_per_vm: 8
+max_memory_mb_per_vm: 16384
 ```
 
 ## API
