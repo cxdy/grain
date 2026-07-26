@@ -171,7 +171,9 @@ api: 127.0.0.1:7474
 # Optional API auth (Bearer). Empty = no auth (default for local unix socket).
 # CLI also reads env GRAIN_TOKEN.
 api_token: ""
-hypervisor: qemu          # or mock
+hypervisor: qemu          # or mock | firecracker (experimental, Linux)
+# firecracker_binary: firecracker
+# kernel_path: ""         # optional vmlinux for firecracker
 image: ubuntu-cloud
 cpus: 2
 memory_mb: 2048

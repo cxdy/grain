@@ -104,3 +104,26 @@ func TestLoadYAMLZeroCapMeansUnlimited(t *testing.T) {
 		t.Fatalf("want zero (unlimited), got max_vms=%d max_cpus_total=%d", c.MaxVMs, c.MaxCPUsTotal)
 	}
 }
+
+func TestLoadFirecrackerFields(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	body := []byte("hypervisor: firecracker\nfirecracker_binary: /usr/bin/firecracker\nkernel_path: /opt/vmlinux\n")
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Hypervisor != "firecracker" {
+		t.Fatalf("hypervisor %s", c.Hypervisor)
+	}
+	if c.FirecrackerBinary != "/usr/bin/firecracker" {
+		t.Fatalf("firecracker_binary %s", c.FirecrackerBinary)
+	}
+	if c.KernelPath != "/opt/vmlinux" {
+		t.Fatalf("kernel_path %s", c.KernelPath)
+	}
+}

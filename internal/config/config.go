@@ -34,10 +34,16 @@ type Config struct {
 	DefaultMemoryMB int `yaml:"memory_mb"`
 	// DefaultDiskGB root disk size for new VMs.
 	DefaultDiskGB int `yaml:"disk_gb"`
-	// Hypervisor: qemu | mock
+	// Hypervisor: qemu | mock | firecracker
 	Hypervisor string `yaml:"hypervisor"`
 	// QEMUBinary override (default: qemu-system-aarch64 or qemu-system-x86_64).
 	QEMUBinary string `yaml:"qemu_binary"`
+	// FirecrackerBinary override (default: "firecracker" PATH lookup).
+	// Used when Hypervisor is "firecracker" (Linux only).
+	FirecrackerBinary string `yaml:"firecracker_binary"`
+	// KernelPath is an optional Firecracker guest kernel (vmlinux) override.
+	// When empty, Start looks under DataDir/kernels/vmlinux.
+	KernelPath string `yaml:"kernel_path"`
 	// Image is the base image id (kernel+disk set under DataDir/images).
 	Image string `yaml:"image"`
 	// SSHUser for guest access (cloud images).
@@ -77,11 +83,11 @@ type Config struct {
 
 // Profile is a named set of create-time defaults (see Profiles).
 type Profile struct {
-	CPUs       int              `yaml:"cpus"`
-	MemoryMB   int              `yaml:"memory_mb"`
-	DiskGB     int              `yaml:"disk_gb"`
-	Image      string           `yaml:"image"`
-	Persistent bool             `yaml:"persistent"`
+	CPUs       int    `yaml:"cpus"`
+	MemoryMB   int    `yaml:"memory_mb"`
+	DiskGB     int    `yaml:"disk_gb"`
+	Image      string `yaml:"image"`
+	Persistent bool   `yaml:"persistent"`
 	// Preset is an optional userdata preset name (e.g. docker, k3s).
 	Preset   string           `yaml:"preset"`
 	Mounts   []ProfileMount   `yaml:"mounts"`
@@ -246,14 +252,14 @@ func Defaults() Config {
 	}
 	dir := filepath.Join(home, ".grain")
 	return Config{
-		DataDir:          dir,
-		Socket:           filepath.Join(dir, "grain.sock"),
-		API:              "127.0.0.1:7474",
-		MetricsAddr:      "127.0.0.1:9091",
-		DefaultCPUs:      2,
-		DefaultMemoryMB:  2048,
-		DefaultDiskGB:    8,
-		Hypervisor:       "qemu",
+		DataDir:         dir,
+		Socket:          filepath.Join(dir, "grain.sock"),
+		API:             "127.0.0.1:7474",
+		MetricsAddr:     "127.0.0.1:9091",
+		DefaultCPUs:     2,
+		DefaultMemoryMB: 2048,
+		DefaultDiskGB:   8,
+		Hypervisor:      "qemu",
 		// "auto" prefers a local golden grain-ubuntu when present, else ubuntu-cloud.
 		Image:            "auto",
 		SSHUser:          "ubuntu",

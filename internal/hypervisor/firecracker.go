@@ -1,0 +1,522 @@
+package hypervisor
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/cxdy/grain/internal/vm"
+)
+
+// Firecracker file names under the VM directory.
+const (
+	FCConfigName    = "firecracker.json"
+	FCSocketName    = "firecracker.sock"
+	FCPidName       = "firecracker.pid"
+	FCVsockName     = "fc-vsock.sock"
+	FCRawDiskName   = "disk.raw"
+	FCDefaultBin    = "firecracker"
+	FCDefaultKernel = "vmlinux"
+)
+
+// Default FC kernel boot args for a virtio root disk without PCI.
+const fcDefaultBootArgs = "console=ttyS0 reboot=k panic=1 pci=off i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd root=/dev/vda rw"
+
+// FirecrackerRuntime launches guests with the Firecracker VMM (Linux only).
+// Jailer-less; agent connectivity is via Firecracker vsock (UDS on host).
+// Networking (TAP/CNI) is not configured in this experimental backend.
+type FirecrackerRuntime struct {
+	Binary     string // firecracker binary name or path (default: firecracker)
+	DataDir    string
+	KernelPath string // optional vmlinux override
+}
+
+// NewFirecrackerRuntime constructs a Firecracker Runtime.
+// binary empty → "firecracker" (PATH lookup at Start).
+// kernelPath empty → DataDir/kernels/vmlinux at Start.
+func NewFirecrackerRuntime(binary, dataDir, kernelPath string) *FirecrackerRuntime {
+	if binary == "" {
+		binary = FCDefaultBin
+	}
+	return &FirecrackerRuntime{
+		Binary:     binary,
+		DataDir:    dataDir,
+		KernelPath: kernelPath,
+	}
+}
+
+// fcBootSource is the Firecracker boot-source config object.
+type fcBootSource struct {
+	KernelImagePath string `json:"kernel_image_path"`
+	BootArgs        string `json:"boot_args,omitempty"`
+}
+
+// fcDrive is a Firecracker drive entry.
+type fcDrive struct {
+	DriveID      string `json:"drive_id"`
+	PathOnHost   string `json:"path_on_host"`
+	IsRootDevice bool   `json:"is_root_device"`
+	IsReadOnly   bool   `json:"is_read_only"`
+}
+
+// fcMachineConfig is the Firecracker machine-config object.
+type fcMachineConfig struct {
+	VCPUCount  int  `json:"vcpu_count"`
+	MemSizeMiB int  `json:"mem_size_mib"`
+	SMT        bool `json:"smt"`
+}
+
+// fcVsock is the Firecracker vsock device config.
+type fcVsock struct {
+	GuestCID int    `json:"guest_cid"`
+	UDSPath  string `json:"uds_path"`
+}
+
+// fcConfig is the full Firecracker --config-file document.
+type fcConfig struct {
+	BootSource    fcBootSource    `json:"boot-source"`
+	Drives        []fcDrive       `json:"drives"`
+	MachineConfig fcMachineConfig `json:"machine-config"`
+	Vsock         *fcVsock        `json:"vsock,omitempty"`
+}
+
+// BuildFCConfig builds a Firecracker config JSON document.
+// Exported for unit tests.
+func BuildFCConfig(kernelPath, rootfsPath string, cpus, memMiB, guestCID int, vsockUDS string) fcConfig {
+	if cpus < 1 {
+		cpus = 1
+	}
+	if memMiB < 128 {
+		memMiB = 128
+	}
+	cfg := fcConfig{
+		BootSource: fcBootSource{
+			KernelImagePath: kernelPath,
+			BootArgs:        fcDefaultBootArgs,
+		},
+		Drives: []fcDrive{
+			{
+				DriveID:      "rootfs",
+				PathOnHost:   rootfsPath,
+				IsRootDevice: true,
+				IsReadOnly:   false,
+			},
+		},
+		MachineConfig: fcMachineConfig{
+			VCPUCount:  cpus,
+			MemSizeMiB: memMiB,
+			SMT:        false,
+		},
+	}
+	if guestCID >= MinGuestCID && vsockUDS != "" {
+		cfg.Vsock = &fcVsock{
+			GuestCID: guestCID,
+			UDSPath:  vsockUDS,
+		}
+	}
+	return cfg
+}
+
+// MarshalFCConfig returns pretty-printed Firecracker config JSON.
+func MarshalFCConfig(cfg fcConfig) ([]byte, error) {
+	return json.MarshalIndent(cfg, "", "  ")
+}
+
+func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskPath string) error {
+	if runtime.GOOS != "linux" {
+		return fmt.Errorf("firecracker requires linux (current OS: %s)", runtime.GOOS)
+	}
+
+	bin, err := exec.LookPath(f.Binary)
+	if err != nil {
+		return fmt.Errorf("%s not found — install firecracker and ensure it is on PATH (or set firecracker_binary)", f.Binary)
+	}
+
+	kernel, err := f.resolveKernel()
+	if err != nil {
+		return err
+	}
+
+	diskPath = resolveDisk(diskPath)
+	rawDisk, err := ensureRawRootfs(ctx, diskPath)
+	if err != nil {
+		return err
+	}
+	inst.DiskPath = rawDisk
+
+	vmDir := filepath.Dir(rawDisk)
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		return err
+	}
+
+	logPath := filepath.Join(f.DataDir, "logs", inst.Name+".log")
+	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	// Keep open for the child process; closed after Start returns via defer on failure
+	// or left to OS on success after cmd inherits fd — we Close after Start succeeds.
+	defer logFile.Close()
+
+	// No SLIRP/TAP in experimental FC backend: SSH/port-forwards unavailable.
+	// Agent reaches the host via Firecracker vsock (UDS + CONNECT protocol).
+	inst.SSHPort = 0
+	inst.AgentPort = 0
+	inst.IP = ""
+	cid := AllocateGuestCID(inst.Name)
+	inst.AgentCID = cid
+
+	apiSock := filepath.Join(vmDir, FCSocketName)
+	vsockUDS := filepath.Join(vmDir, FCVsockName)
+	pidFile := filepath.Join(vmDir, FCPidName)
+	cfgPath := filepath.Join(vmDir, FCConfigName)
+	_ = os.Remove(apiSock)
+	_ = os.Remove(vsockUDS)
+	_ = os.Remove(pidFile)
+
+	// Attach cloud-init seed as a secondary read-only drive when present (best-effort;
+	// NoCloud typically expects an ISO/label; see docs/firecracker.md).
+	cfg := BuildFCConfig(kernel, rawDisk, inst.CPUs, inst.MemoryMB, cid, vsockUDS)
+	seed := filepath.Join(vmDir, "seed.iso")
+	if st, err := os.Stat(seed); err == nil && st.Size() > 0 {
+		cfg.Drives = append(cfg.Drives, fcDrive{
+			DriveID:      "cidata",
+			PathOnHost:   seed,
+			IsRootDevice: false,
+			IsReadOnly:   true,
+		})
+	}
+
+	cfgBytes, err := MarshalFCConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("firecracker config: %w", err)
+	}
+	if err := os.WriteFile(cfgPath, cfgBytes, 0o644); err != nil {
+		return err
+	}
+
+	// Store API socket path in QMPPath so stop/pause can locate it (reused field).
+	inst.QMPPath = apiSock
+
+	// Do not use CommandContext: create ctx ends after Start returns and would
+	// kill a non-daemonized Firecracker process. Lifecycle is owned by PID/Stop.
+	cmd := exec.Command(bin,
+		"--api-sock", apiSock,
+		"--config-file", cfgPath,
+	)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	// New process group so terminal signals to the daemon do not cascade oddly.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("firecracker: %w (see %s)", err, logPath)
+	}
+	inst.PID = cmd.Process.Pid
+	_ = os.WriteFile(pidFile, []byte(strconv.Itoa(inst.PID)+"\n"), 0o644)
+
+	// Wait briefly for the API socket so Stop/Pause can use it.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if st, err := os.Stat(apiSock); err == nil && st.Mode()&os.ModeSocket != 0 {
+			break
+		}
+		// Also accept plain file existence (some FS report sockets differently).
+		if _, err := os.Stat(apiSock); err == nil {
+			// try dial
+			if c, err := net.DialTimeout("unix", apiSock, 50*time.Millisecond); err == nil {
+				_ = c.Close()
+				break
+			}
+		}
+		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+			break
+		}
+		// Check if process already exited
+		if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			_ = cmd.Process.Kill()
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+
+	// Reap in background so we do not leave zombies; ignore exit here.
+	go func() { _ = cmd.Wait() }()
+
+	// If process died immediately, surface the log.
+	if !f.Running(inst) {
+		tail, _ := os.ReadFile(logPath)
+		extra := strings.TrimSpace(string(tail))
+		if len(extra) > 500 {
+			extra = extra[len(extra)-500:]
+		}
+		if extra != "" {
+			return fmt.Errorf("firecracker exited immediately (see %s)\n%s", logPath, extra)
+		}
+		return fmt.Errorf("firecracker exited immediately (see %s)", logPath)
+	}
+
+	inst.Status = vm.StatusRunning
+	return nil
+}
+
+func (f *FirecrackerRuntime) Stop(ctx context.Context, inst *vm.Instance) error {
+	apiSock := fcAPISock(inst)
+	pids := collectFCPIDs(inst)
+
+	// Prefer graceful CtrlAltDel via Firecracker API (x86; may no-op on arm).
+	if apiSock != "" {
+		_ = fcAPIAction(ctx, apiSock, "SendCtrlAltDel")
+		deadline := time.Now().Add(powerdownWait)
+		for time.Now().Before(deadline) {
+			if !anyPIDAlive(pids) {
+				cleanupFCFiles(inst)
+				inst.PID = 0
+				inst.QMPPath = ""
+				inst.Status = vm.StatusStopped
+				return nil
+			}
+			select {
+			case <-ctx.Done():
+				goto hardKill
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
+	}
+
+hardKill:
+	for _, pid := range pids {
+		if p, err := os.FindProcess(pid); err == nil {
+			_ = p.Signal(syscall.SIGTERM)
+			time.Sleep(200 * time.Millisecond)
+			_ = p.Signal(syscall.SIGKILL)
+		}
+	}
+	cleanupFCFiles(inst)
+	inst.PID = 0
+	inst.QMPPath = ""
+	inst.Status = vm.StatusStopped
+	return nil
+}
+
+func (f *FirecrackerRuntime) Pause(ctx context.Context, inst *vm.Instance) error {
+	if !f.Running(inst) {
+		return fmt.Errorf("vm %q is not running", inst.Name)
+	}
+	apiSock := fcAPISock(inst)
+	if apiSock == "" {
+		return fmt.Errorf("vm %q has no firecracker API socket", inst.Name)
+	}
+	return fcAPIPatchVM(ctx, apiSock, "Paused")
+}
+
+func (f *FirecrackerRuntime) Resume(ctx context.Context, inst *vm.Instance) error {
+	if !f.Running(inst) {
+		return fmt.Errorf("vm %q is not running", inst.Name)
+	}
+	apiSock := fcAPISock(inst)
+	if apiSock == "" {
+		return fmt.Errorf("vm %q has no firecracker API socket", inst.Name)
+	}
+	return fcAPIPatchVM(ctx, apiSock, "Resumed")
+}
+
+// SaveVM is not supported for Firecracker (use FC snapshot API separately).
+func (f *FirecrackerRuntime) SaveVM(_ context.Context, inst *vm.Instance, tag string) error {
+	_ = tag
+	_ = inst
+	return fmt.Errorf("savevm is not supported for firecracker hypervisor")
+}
+
+func (f *FirecrackerRuntime) Running(inst *vm.Instance) bool {
+	if inst.PID <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(inst.PID)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+func (f *FirecrackerRuntime) resolveKernel() (string, error) {
+	cands := []string{}
+	if k := strings.TrimSpace(f.KernelPath); k != "" {
+		cands = append(cands, k)
+	}
+	if f.DataDir != "" {
+		cands = append(cands,
+			filepath.Join(f.DataDir, "kernels", FCDefaultKernel),
+			filepath.Join(f.DataDir, "kernel", FCDefaultKernel),
+			filepath.Join(f.DataDir, FCDefaultKernel),
+		)
+	}
+	for _, p := range cands {
+		if st, err := os.Stat(p); err == nil && st.Size() > 0 && !st.IsDir() {
+			return p, nil
+		}
+	}
+	hint := "~/.grain/kernels/vmlinux"
+	if f.DataDir != "" {
+		hint = filepath.Join(f.DataDir, "kernels", FCDefaultKernel)
+	}
+	return "", fmt.Errorf("firecracker kernel not found — set kernel_path or place a vmlinux at %s (see docs/firecracker.md)", hint)
+}
+
+// ensureRawRootfs returns a raw disk path suitable for Firecracker.
+// qcow2 images are converted with qemu-img when available; otherwise refused.
+func ensureRawRootfs(ctx context.Context, diskPath string) (string, error) {
+	if diskPath == "" {
+		return "", fmt.Errorf("firecracker: empty disk path")
+	}
+	st, err := os.Stat(diskPath)
+	if err != nil {
+		return "", fmt.Errorf("firecracker disk: %w", err)
+	}
+	if st.IsDir() {
+		return "", fmt.Errorf("firecracker disk path is a directory: %s", diskPath)
+	}
+
+	// Already raw (or non-qcow2): use as-is. Firecracker accepts raw block files.
+	if !strings.HasSuffix(diskPath, ".qcow2") {
+		return diskPath, nil
+	}
+
+	vmDir := filepath.Dir(diskPath)
+	rawPath := filepath.Join(vmDir, FCRawDiskName)
+
+	// Reuse existing conversion if it looks current (size > 0 and mtime >= qcow2).
+	if rst, err := os.Stat(rawPath); err == nil && rst.Size() > 0 && !rst.ModTime().Before(st.ModTime()) {
+		return rawPath, nil
+	}
+
+	qemuImg, err := exec.LookPath("qemu-img")
+	if err != nil {
+		return "", fmt.Errorf("firecracker requires a raw rootfs (got qcow2 %s); install qemu-img to convert, or use a raw golden: qemu-img convert -O raw %s %s",
+			diskPath, diskPath, rawPath)
+	}
+
+	cmd := exec.CommandContext(ctx, qemuImg, "convert", "-O", "raw", diskPath, rawPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("qemu-img convert to raw: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return rawPath, nil
+}
+
+func fcAPISock(inst *vm.Instance) string {
+	if inst.QMPPath != "" {
+		return inst.QMPPath
+	}
+	if inst.DiskPath != "" {
+		p := filepath.Join(filepath.Dir(inst.DiskPath), FCSocketName)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+func collectFCPIDs(inst *vm.Instance) []int {
+	seen := map[int]struct{}{}
+	var pids []int
+	add := func(pid int) {
+		if pid <= 0 {
+			return
+		}
+		if _, ok := seen[pid]; ok {
+			return
+		}
+		seen[pid] = struct{}{}
+		pids = append(pids, pid)
+	}
+	add(inst.PID)
+	if inst.DiskPath != "" {
+		pidFile := filepath.Join(filepath.Dir(inst.DiskPath), FCPidName)
+		if b, err := os.ReadFile(pidFile); err == nil {
+			var pid int
+			if _, err := fmt.Sscanf(strings.TrimSpace(string(b)), "%d", &pid); err == nil {
+				add(pid)
+			}
+		}
+	}
+	return pids
+}
+
+func cleanupFCFiles(inst *vm.Instance) {
+	if inst.DiskPath == "" {
+		return
+	}
+	dir := filepath.Dir(inst.DiskPath)
+	for _, name := range []string{FCPidName, FCSocketName, FCVsockName} {
+		_ = os.Remove(filepath.Join(dir, name))
+	}
+	if inst.QMPPath != "" && filepath.Base(inst.QMPPath) == FCSocketName {
+		_ = os.Remove(inst.QMPPath)
+	}
+}
+
+// fcAPIAction sends PUT /actions with the given action_type.
+func fcAPIAction(ctx context.Context, apiSock, actionType string) error {
+	body := fmt.Sprintf(`{"action_type":%q}`, actionType)
+	return fcAPIRequest(ctx, apiSock, http.MethodPut, "/actions", []byte(body))
+}
+
+// fcAPIPatchVM sends PATCH /vm with state Paused|Resumed.
+func fcAPIPatchVM(ctx context.Context, apiSock, state string) error {
+	body := fmt.Sprintf(`{"state":%q}`, state)
+	return fcAPIRequest(ctx, apiSock, http.MethodPatch, "/vm", []byte(body))
+}
+
+func fcAPIRequest(ctx context.Context, apiSock, method, path string, body []byte) error {
+	if apiSock == "" {
+		return fmt.Errorf("empty firecracker API socket")
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+	}
+
+	tr := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", apiSock)
+		},
+	}
+	client := &http.Client{Transport: tr}
+
+	req, err := http.NewRequestWithContext(ctx, method, "http://localhost"+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("firecracker API %s %s: %w", method, path, err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("firecracker API %s %s: status %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	return nil
+}

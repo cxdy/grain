@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -133,6 +134,40 @@ func runDoctor(cfg config.Config) error {
 		return err
 	})
 
+	hv := strings.ToLower(strings.TrimSpace(cfg.Hypervisor))
+	if hv == "" {
+		hv = "qemu"
+	}
+
+	// Firecracker backend (experimental, Linux only).
+	if hv == "firecracker" {
+		fcBin := cfg.FirecrackerBinary
+		if fcBin == "" {
+			fcBin = "firecracker"
+		}
+		check(fcBin, func() error {
+			if runtime.GOOS != "linux" {
+				return fmt.Errorf("firecracker requires linux (current OS: %s)", runtime.GOOS)
+			}
+			_, err := exec.LookPath(fcBin)
+			if err != nil {
+				return fmt.Errorf("not found — install firecracker or set firecracker_binary")
+			}
+			return nil
+		})
+		// Kernel soft check (Start will hard-fail if missing).
+		kpath := strings.TrimSpace(cfg.KernelPath)
+		if kpath == "" {
+			kpath = filepath.Join(cfg.DataDir, "kernels", "vmlinux")
+		}
+		if st, err := os.Stat(kpath); err == nil && st.Size() > 0 {
+			fmt.Printf("  ✓ firecracker kernel %s\n", kpath)
+		} else {
+			fmt.Printf("  · firecracker kernel missing — set kernel_path or place vmlinux at %s\n", kpath)
+		}
+	}
+
+	// QEMU binary: required for default hypervisor; soft note when using firecracker/mock.
 	qemu := cfg.QEMUBinary
 	if qemu == "" {
 		if runtime.GOARCH == "arm64" {
@@ -141,16 +176,25 @@ func runDoctor(cfg config.Config) error {
 			qemu = "qemu-system-x86_64"
 		}
 	}
-	check(qemu, func() error {
-		_, err := exec.LookPath(qemu)
-		if err != nil {
-			return fmt.Errorf("not found (brew install qemu)")
-		}
-		return nil
-	})
+	if hv == "qemu" || hv == "" {
+		check(qemu, func() error {
+			_, err := exec.LookPath(qemu)
+			if err != nil {
+				return fmt.Errorf("not found (brew install qemu)")
+			}
+			return nil
+		})
+	} else if _, err := exec.LookPath(qemu); err == nil {
+		fmt.Printf("  ✓ %s (optional; hypervisor=%s)\n", qemu, hv)
+	} else {
+		fmt.Printf("  · %s not on PATH (ok for hypervisor=%s)\n", qemu, hv)
+	}
 	check("qemu-img", func() error {
 		_, err := exec.LookPath("qemu-img")
 		if err != nil {
+			if hv == "firecracker" {
+				return fmt.Errorf("not found — needed to convert qcow2 rootfs to raw for firecracker")
+			}
 			return fmt.Errorf("not found (brew install qemu)")
 		}
 		return nil
@@ -182,11 +226,13 @@ func runDoctor(cfg config.Config) error {
 	}
 
 	// QMP capability (optional soft check): pause/resume/graceful stop use QMP.
-	if _, err := exec.LookPath(qemu); err == nil {
-		if qemuSupportsQMP(qemu) {
-			fmt.Printf("  ✓ qmp (%s -qmp)\n", qemu)
-		} else {
-			fmt.Printf("  · qmp: could not confirm -qmp on %s (pause/resume may be unavailable)\n", qemu)
+	if hv == "qemu" || hv == "" {
+		if _, err := exec.LookPath(qemu); err == nil {
+			if qemuSupportsQMP(qemu) {
+				fmt.Printf("  ✓ qmp (%s -qmp)\n", qemu)
+			} else {
+				fmt.Printf("  · qmp: could not confirm -qmp on %s (pause/resume may be unavailable)\n", qemu)
+			}
 		}
 	}
 
