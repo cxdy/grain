@@ -23,10 +23,20 @@ grain rm                  # name optional if only one
 grain down
 ```
 
-## Install (dev)
+## Install
 
 ```bash
-# Go 1.23+
+# from source (Go 1.23+)
+go install github.com/cxdy/grain/cmd/grain@latest
+
+# or download a release binary from GitHub Releases:
+#   https://github.com/cxdy/grain/releases
+# pick grain_<os>_<arch> (darwin/linux × arm64/amd64), chmod +x, move to PATH
+```
+
+### Build from checkout
+
+```bash
 make test && make build
 # Real VMs need QEMU:
 brew install qemu

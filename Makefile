@@ -2,15 +2,18 @@
 
 VERSION ?= 0.1.0-dev
 BIN     ?= bin/grain
+DIST    ?= dist
 export CGO_ENABLED ?= 0
 
-.PHONY: all build test cover lint fmt clean run-help smoke-api doctor obs-up obs-down
+LDFLAGS := -s -w -X main.version=$(VERSION)
+
+.PHONY: all build test cover lint fmt clean run-help smoke-api doctor obs-up obs-down release-build
 
 all: test build
 
 build:
 	@mkdir -p bin
-	go build -ldflags "-X main.version=$(VERSION)" -o $(BIN) ./cmd/grain
+	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/grain
 
 test:
 	go test ./... -count=1
@@ -22,8 +25,17 @@ cover:
 fmt:
 	go fmt ./...
 
+# Cross-build release binaries (darwin/linux × arm64/amd64). VERSION from env or tag.
+release-build:
+	@mkdir -p $(DIST)
+	GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_darwin_arm64 ./cmd/grain
+	GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_darwin_amd64 ./cmd/grain
+	GOOS=linux  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_linux_arm64  ./cmd/grain
+	GOOS=linux  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_linux_amd64  ./cmd/grain
+	@ls -la $(DIST)/
+
 clean:
-	rm -rf bin coverage.out
+	rm -rf bin dist coverage.out
 
 run-help: build
 	$(BIN) --help
