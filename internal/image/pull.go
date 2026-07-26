@@ -131,6 +131,13 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 	if err != nil {
 		return err
 	}
+	return m.pullSpec(ctx, spec, progress)
+}
+
+// pullSpec downloads and installs spec under images/<spec.ID>/.
+// Used by Pull and by tests with httptest-backed Specs.
+func (m *Manager) pullSpec(ctx context.Context, spec Spec, progress func(written, total int64)) error {
+	id := spec.ID
 	if spec.LocalOnly || spec.URL == "" {
 		if m.Ready(id) {
 			return nil
@@ -156,11 +163,17 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 	dest := filepath.Join(dir, "disk"+ext)
 	partial := dest + ".partial"
 
+	// Resolve expected digest: pinned Spec.SHA256, else companion URL.sha256 sidecar.
+	wantSHA, err := resolveWantSHA256(ctx, m.client(), spec.URL, spec.SHA256)
+	if err != nil {
+		return err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, spec.URL, nil)
 	if err != nil {
 		return err
 	}
-	res, err := m.Client.Do(req)
+	res, err := m.client().Do(req)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
@@ -207,8 +220,8 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 		return err
 	}
 
-	// After download (before rename): verify digest when pinned.
-	if err := VerifySHA256(partial, spec.SHA256); err != nil {
+	// After download (before rename): verify digest when known.
+	if err := VerifySHA256(partial, wantSHA); err != nil {
 		return err
 	}
 
@@ -224,6 +237,74 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 	}
 	m.writeMeta(id, spec, spec.HasAgent)
 	return nil
+}
+
+func (m *Manager) client() *http.Client {
+	if m.Client != nil {
+		return m.Client
+	}
+	return http.DefaultClient
+}
+
+// resolveWantSHA256 returns the digest to verify after download.
+// If pinned is non-empty it is used as-is. Otherwise, when imageURL is set,
+// fetch imageURL+".sha256" and parse the first 64-hex token (sha256sum format).
+// Missing sidecar or empty pin → empty string (verification skipped).
+func resolveWantSHA256(ctx context.Context, client *http.Client, imageURL, pinned string) (string, error) {
+	if pinned != "" {
+		return strings.TrimSpace(pinned), nil
+	}
+	if imageURL == "" {
+		return "", nil
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	sidecarURL := imageURL + ".sha256"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
+	if err != nil {
+		return "", err
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		// Network failure for optional sidecar: skip verify rather than fail pull.
+		return "", nil
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		// No sidecar published yet — skip verification.
+		return "", nil
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, 4096))
+	if err != nil {
+		return "", nil
+	}
+	return ParseSHA256Sidecar(string(body)), nil
+}
+
+// ParseSHA256Sidecar extracts a 64-char hex digest from sha256sum-style output:
+//
+//	"<hex>  filename" or bare "<hex>".
+func ParseSHA256Sidecar(body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return ""
+	}
+	// First field is the digest (sha256sum / shasum -a 256).
+	field := body
+	if i := strings.IndexAny(body, " \t"); i >= 0 {
+		field = body[:i]
+	}
+	field = strings.TrimSpace(field)
+	if len(field) != 64 {
+		return ""
+	}
+	for _, c := range field {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return ""
+		}
+	}
+	return strings.ToLower(field)
 }
 
 // Import registers a local disk image as catalog id under images/<id>/disk.qcow2.

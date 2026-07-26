@@ -85,7 +85,7 @@ grain up
 | `fwd add` / `fwd rm` | live-add / remove host→guest forwards on a running VM |
 | `cp` | `host path` or `NAME:path` (prefers agent Put/Get; scp fallback; `--agent` / `--ssh`) |
 | `fs ls` / `stat` / `mkdir` / `rm` | guest filesystem via agent (no SSH) |
-| `image ls` / `image pull` / `image import` | base images (pull ubuntu-cloud; import grain-ubuntu golden) |
+| `image ls` / `image pull` / `image import` | base images (pull ubuntu-cloud or grain-ubuntu golden; import offline) |
 | `doctor` | dependency check (QEMU, image, optional agent binary + QMP) |
 | `version` | print version |
 
@@ -113,7 +113,7 @@ grain fwd add sbox-1 8080:80
 | [docs/networking.md](docs/networking.md) | SLIRP, SSH, `--publish`, `fwd ls/add/rm`, privileged ports |
 | [docs/mounts.md](docs/mounts.md) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
 | [docs/profiles.md](docs/profiles.md) | named profiles, docker/k3s presets |
-| [docs/images.md](docs/images.md) | `ubuntu-cloud`, `grain-ubuntu` golden import/bake, SHA verify |
+| [docs/images.md](docs/images.md) | `ubuntu-cloud`, `grain-ubuntu` golden pull/import/bake, SHA verify |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
 
 ### Recipes
@@ -128,16 +128,17 @@ grain fwd add sbox-1 8080:80
 ## How it works
 
 1. **Daemon** (`grain up`) — unix socket API + optional TCP `/metrics`
-2. **Image** — download once (`ubuntu-cloud` default), or import a baked golden (`grain-ubuntu`)
+2. **Image** — download once (`ubuntu-cloud` default, or `grain-ubuntu` golden with agent baked in)
 3. **Disk** — qcow2 overlay or APFS CoW clone per VM
 4. **Boot** — QEMU (HVF on Apple Silicon) + cloud-init seed (SSH key)
 5. **Access** — SSH via host-forwarded port; grain manages the key in `~/.grain/ssh/`
 
-**Golden image (optional):** bake once so creates skip SSH agent deploy:
+**Golden image (optional):** pull the published golden so creates skip SSH agent deploy:
 
 ```bash
-make agent-linux && ./scripts/bake-golden.sh
+grain image pull grain-ubuntu   # from GitHub Releases tag golden-latest
 grain new -i grain-ubuntu
+# offline: make agent-linux && ./scripts/bake-golden.sh
 # or: grain image import ./my-golden.qcow2 --id grain-ubuntu
 ```
 

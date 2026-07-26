@@ -1,7 +1,14 @@
-# Bake grain-ubuntu golden qcow2 and upload as a workflow artifact.
+# Bake grain-ubuntu golden qcow2, upload as a workflow artifact, and publish
+# to the dedicated GitHub Release tag `golden-latest` so:
+#
+#   grain image pull grain-ubuntu
+#
+# resolves to:
+#   https://github.com/cxdy/grain/releases/download/golden-latest/grain-ubuntu-<arch>.qcow2
 #
 # Triggers:
-#   - workflow_dispatch (manual): optional release_tag to attach assets to a release
+#   - workflow_dispatch (manual): always updates golden-latest; optional release_tag
+#     also attaches assets to an existing code release (e.g. v0.1.0)
 #   - schedule: weekly (Monday 06:00 UTC)
 #
 # Arch notes:
@@ -11,14 +18,13 @@
 # KVM: GitHub-hosted runners often lack /dev/kvm. grain QEMU uses -cpu host, so
 # the job may fail without nested virt. Prefer self-hosted + KVM, or bake locally
 # (./scripts/ci-bake-golden.sh / bake-golden.sh --ci) and import the artifact.
-# Catalog stays LocalOnly until a real public URL is published (do not invent URLs).
 name: Bake golden image
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Optional existing git tag to attach qcow2 + checksum to (e.g. v0.1.0). Empty = artifact only."
+        description: "Optional existing git tag to also attach qcow2 + checksum to (e.g. v0.1.0). Empty = golden-latest only."
         required: false
         type: string
         default: ""
@@ -27,7 +33,7 @@ on:
     - cron: "0 6 * * 1"
 
 permissions:
-  contents: write # needed only when attaching to a release via workflow_dispatch
+  contents: write # create/update golden-latest release assets
 
 jobs:
   bake:
@@ -89,8 +95,41 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Optional: attach to an existing GitHub Release when dispatch provides release_tag.
-      - name: Attach to release
+      # Always publish/update the movable golden-latest release so catalog pull works.
+      # make_latest: false keeps code tags (v*) as the repo "latest" release.
+      - name: Publish golden-latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: golden-latest
+          name: Golden images (latest)
+          body: |
+            Pre-baked **grain-ubuntu** golden disk images (Ubuntu + grain-agent).
+
+            ```bash
+            grain image pull grain-ubuntu
+            grain new -i grain-ubuntu
+            ```
+
+            | Asset | Arch |
+            |-------|------|
+            | `grain-ubuntu-amd64.qcow2` | x86_64 (this workflow) |
+            | `grain-ubuntu-arm64.qcow2` | aarch64 (self-hosted bake; not yet matrixed) |
+
+            Companion `.sha256` sidecars are verified by `grain image pull` when present.
+
+            This tag is rewritten on every successful bake (schedule / workflow_dispatch).
+            It is **not** a code release — use `v*` tags for binaries.
+          files: |
+            dist/golden/grain-ubuntu-amd64.qcow2
+            dist/golden/grain-ubuntu-amd64.qcow2.sha256
+          fail_on_unmatched_files: true
+          make_latest: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional: also attach to an existing code GitHub Release when dispatch provides release_tag.
+      - name: Attach to code release
         if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:

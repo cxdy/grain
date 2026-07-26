@@ -9,9 +9,10 @@ Config default is `image: auto`:
 
 ```bash
 grain image ls
-grain image pull ubuntu-cloud   # pull catalog cloud image
-grain new                       # auto → grain-ubuntu if imported, else ubuntu-cloud
-grain new -i ubuntu-cloud       # force cloud image
+grain image pull ubuntu-cloud     # Ubuntu 24.04 minimal cloud
+grain image pull grain-ubuntu     # golden (agent baked in) from GitHub Releases
+grain new                         # auto → grain-ubuntu if local, else ubuntu-cloud
+grain new -i ubuntu-cloud         # force cloud image
 ```
 
 Config:
@@ -34,16 +35,35 @@ ssh_user: ubuntu
 
 ## Golden image: `grain-ubuntu`
 
-`grain-ubuntu` is currently **local-only**: Ubuntu + **grain-agent baked in**. Register a disk you baked; public pull URL may land in a later release.
+Ubuntu + **grain-agent baked in**. Prefer pull when online; import still works fully offline.
 
 | Field | Value |
 |-------|--------|
 | ID | `grain-ubuntu` |
-| LocalOnly | yes (`grain image pull` refuses; use import) |
+| LocalOnly | no (pullable on amd64/arm64) |
 | HasAgent | true (create prefers agent wait before SSH deploy) |
 | SSH user | `ubuntu` |
+| URL | `https://github.com/cxdy/grain/releases/download/golden-latest/grain-ubuntu-{arch}.qcow2` |
 
-### Import a baked disk
+### Pull from GitHub Releases (`golden-latest`)
+
+The bake workflow publishes a movable release tag **`golden-latest`** (not a code `v*` release) and rewrites its assets on every successful bake:
+
+| Asset | Notes |
+|-------|--------|
+| `grain-ubuntu-amd64.qcow2` | x86_64 golden (CI on `ubuntu-latest`) |
+| `grain-ubuntu-amd64.qcow2.sha256` | companion checksum (sha256sum format) |
+| `grain-ubuntu-arm64.qcow2` | aarch64 — needs self-hosted KVM runner (not matrixed yet) |
+
+```bash
+grain image pull grain-ubuntu
+grain image ls                  # LOCAL=yes for grain-ubuntu
+grain new -i grain-ubuntu
+```
+
+Pull downloads the large qcow2 with progress, then verifies against the companion `.sha256` sidecar when present (catalog SHA256 is empty so the sidecar is authoritative). If the sidecar is missing, verification is skipped.
+
+Import remains the offline / custom path:
 
 ```bash
 grain image import ./golden.qcow2
@@ -105,7 +125,14 @@ GitHub Actions workflow [`.github/workflows/bake-golden.yml`](../.github/workflo
 
 **KVM:** grain QEMU uses `-cpu host`, which needs KVM on Linux (or HVF on macOS). Many GitHub-hosted runners lack `/dev/kvm`; the job may fail or time out under pure TCG. Prefer a self-hosted runner with KVM, or bake on a laptop and use the artifact/import path below.
 
-#### Download from Actions
+#### Prefer pull (after a successful bake published `golden-latest`)
+
+```bash
+grain image pull grain-ubuntu
+grain new -i grain-ubuntu
+```
+
+#### Download from Actions (fallback / pre-release)
 
 1. Open the repo on GitHub → **Actions** → workflow **Bake golden image**.
 2. Open a successful run → **Artifacts** → download `grain-ubuntu-amd64`.
@@ -130,9 +157,7 @@ make build agent-linux
 # ARTIFACT_DIR=./out CI_READY_TIMEOUT=15m ./scripts/bake-golden.sh --ci
 ```
 
-Optional **workflow_dispatch** input `release_tag` (e.g. `v0.1.0`) attaches the qcow2 + checksum to an **existing** GitHub Release when `GITHUB_TOKEN` can write contents.
-
-The catalog entry for `grain-ubuntu` stays **`LocalOnly: true`** until a real public download URL is published (no placeholder URLs). See the comment in `internal/image/catalog.go`.
+Every successful bake **always** updates the `golden-latest` release (create tag if missing, replace assets). Optional **workflow_dispatch** input `release_tag` (e.g. `v0.1.0`) *also* attaches the qcow2 + checksum to that existing code release. Code releases (`release.yml` on `v*`) stay binary-only — no golden coupling.
 
 ### Bake manually
 
@@ -157,7 +182,7 @@ grain new -i grain-ubuntu
 | Path | First create | Agent on boot |
 |------|--------------|---------------|
 | `ubuntu-cloud` | pull once + SSH deploy agent each new guest (or reuse if already on disk) | after deploy |
-| `grain-ubuntu` | local base only; agent already in image | systemd enable from bake |
+| `grain-ubuntu` | pull once (or import) + agent already in image | systemd enable from bake |
 
 Config can stay `image: ubuntu-cloud`. Prefer the golden id when local:
 
@@ -186,7 +211,7 @@ Catalog entries pin a **SHA-256** digest for the current noble minimal release f
 2. on **mismatch**, the partial is deleted and pull fails with `sha256 mismatch: got … want …`
 3. on success, the file is renamed to `disk.qcow2` (or `.img`) and `source.url` / `ssh_user` hints are written
 
-If a digest is empty in the catalog (dev-only), verification is skipped.
+If a digest is empty in the catalog, pull tries a companion **`URL.sha256`** sidecar (sha256sum format). When neither pin nor sidecar is available, verification is skipped.
 
 When Ubuntu rolls the release pointer, digests in the catalog must be refreshed to match [SHA256SUMS](https://cloud-images.ubuntu.com/minimal/releases/noble/release/SHA256SUMS).
 
@@ -201,7 +226,7 @@ grain targets **real cloud-init Linux** sandboxes: SSH, packages, agents, k3s la
 | familiar `apt` / `ubuntu` user | yes | custom users and paths |
 | security updates from upstream | yes | you own the rebuild |
 
-A smaller rootfs can be added later as another catalog id; the default stays a known-good Ubuntu cloud image so `grain new` + `grain sh` works without hand-rolled kernels or init. Golden images (`grain-ubuntu`) layer agent readiness on that same base via local import.
+A smaller rootfs can be added later as another catalog id; the default stays a known-good Ubuntu cloud image so `grain new` + `grain sh` works without hand-rolled kernels or init. Golden images (`grain-ubuntu`) layer agent readiness on that same base via `grain image pull` or local import.
 
 ## Firecracker rootfs (experimental)
 

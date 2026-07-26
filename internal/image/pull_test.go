@@ -62,17 +62,36 @@ func TestCatalogGrainUbuntu(t *testing.T) {
 	if !s.HasAgent {
 		t.Fatal("grain-ubuntu should HaveAgent")
 	}
-	if !s.LocalOnly {
-		t.Fatal("grain-ubuntu should be LocalOnly")
-	}
 	if s.SSHUser != "ubuntu" {
 		t.Fatalf("ssh user %q", s.SSHUser)
 	}
-	if s.URL != "" {
-		t.Fatalf("grain-ubuntu URL should be empty, got %q", s.URL)
-	}
 	if !strings.Contains(s.Description, "grain-agent") {
 		t.Fatalf("description should mention grain-agent: %q", s.Description)
+	}
+	// amd64/arm64: pullable via golden-latest release assets
+	switch runtime.GOARCH {
+	case "amd64", "arm64":
+		if s.LocalOnly {
+			t.Fatal("grain-ubuntu should not be LocalOnly when URL is set")
+		}
+		if s.URL == "" {
+			t.Fatal("grain-ubuntu URL should be non-empty on amd64/arm64")
+		}
+		wantSuffix := "grain-ubuntu-" + runtime.GOARCH + ".qcow2"
+		if !strings.HasSuffix(s.URL, wantSuffix) {
+			t.Fatalf("URL %q should end with %q", s.URL, wantSuffix)
+		}
+		if !strings.Contains(s.URL, "golden-latest") {
+			t.Fatalf("URL %q should use golden-latest release tag", s.URL)
+		}
+	default:
+		// other arches remain unavailable
+		if s.URL != "" {
+			t.Fatalf("unexpected URL on %s: %q", runtime.GOARCH, s.URL)
+		}
+		if !s.LocalOnly {
+			t.Fatal("grain-ubuntu without URL should be LocalOnly")
+		}
 	}
 }
 
@@ -270,13 +289,39 @@ func TestImportTooSmall(t *testing.T) {
 
 func TestPullLocalOnlyMissing(t *testing.T) {
 	t.Parallel()
+	// Local-only path: empty-URL Spec via pullSpec is exercised through
+	// Pull when catalog has LocalOnly (ubuntu-cloud is never LocalOnly).
+	// Grain-ubuntu is pullable on amd64/arm64; unknown id still errors.
 	m := image.NewManager(t.TempDir())
-	err := m.Pull(context.Background(), image.IDGrainUbuntu, nil)
+	err := m.Pull(context.Background(), "nope", nil)
 	if err == nil {
-		t.Fatal("expected local-only error")
+		t.Fatal("expected unknown image error")
 	}
-	if !strings.Contains(err.Error(), "local-only") {
+	if !strings.Contains(err.Error(), "unknown image") {
 		t.Fatalf("err %v", err)
+	}
+}
+
+func TestParseSHA256Sidecar(t *testing.T) {
+	t.Parallel()
+	sum := strings.Repeat("ab", 32) // 64 hex chars
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{sum + "  grain-ubuntu-amd64.qcow2\n", sum},
+		{sum + " *grain-ubuntu-amd64.qcow2", sum},
+		{sum + "\n", sum},
+		{"  " + sum + "  \n", sum},
+		{"not-a-hash", ""},
+		{"", ""},
+		{strings.Repeat("g", 64), ""},
+	}
+	for _, tc := range cases {
+		got := image.ParseSHA256Sidecar(tc.in)
+		if got != tc.want {
+			t.Fatalf("parse %q: got %q want %q", tc.in, got, tc.want)
+		}
 	}
 }
 

@@ -11,7 +11,7 @@ type Spec struct {
 	Description string
 	// URL for current GOARCH (empty if unsupported or local-only).
 	URL    string
-	SHA256 string // optional; empty skips verify (dev only)
+	SHA256 string // optional; empty skips verify unless a .sha256 sidecar is available
 	// Format: qcow2 | raw
 	Format string
 	// Default SSH user after cloud-init.
@@ -37,6 +37,15 @@ const (
 	IDUbuntuCloud = "ubuntu-cloud"
 	IDGrainUbuntu = "grain-ubuntu"
 )
+
+// grainUbuntuReleaseBase is the dedicated GitHub Release tag that the bake
+// workflow rewrites with the latest golden qcow2 assets. Asset names:
+//
+//	grain-ubuntu-amd64.qcow2 / grain-ubuntu-arm64.qcow2
+//	(+ companion .sha256 sidecars)
+//
+// Tag is not a code release (softprops make_latest: false).
+const grainUbuntuReleaseBase = "https://github.com/cxdy/grain/releases/download/golden-latest/"
 
 // Catalog of built-in images. Prefer cloud images with cloud-init.
 func Catalog() map[string]Spec {
@@ -70,23 +79,25 @@ func Catalog() map[string]Spec {
 		}
 	}
 
-	// Golden image with grain-agent baked in. Register via `grain image import`
-	// or scripts/bake-golden.sh — no public download URL yet.
-	//
-	// Future public URL slot (keep LocalOnly true until a real published URL exists):
-	//   After .github/workflows/bake-golden.yml (or a release) publishes
-	//   grain-ubuntu-<arch>.qcow2 + sha256, set URL and SHA256 per GOARCH and
-	//   flip LocalOnly to false so `grain image pull grain-ubuntu` works.
-	//   Do not invent placeholder URLs; empty URL + LocalOnly is intentional.
-	//   See docs/images.md "CI bake artifacts".
+	// Golden image with grain-agent baked in. Published by bake-golden.yml to the
+	// golden-latest release tag. Import/bake still work offline without pull.
+	// arm64 assets require a self-hosted runner (see docs/images.md); URL is set
+	// so pull works once the asset exists.
+	grainURL := ""
+	switch arch {
+	case "amd64", "arm64":
+		grainURL = grainUbuntuReleaseBase + "grain-ubuntu-" + arch + ".qcow2"
+	}
 	c[IDGrainUbuntu] = Spec{
 		ID:          IDGrainUbuntu,
-		Description: "Ubuntu golden image with grain-agent (import or bake locally)",
-		URL:         "", // local-only; bootstrap from ubuntu-cloud then import
+		Description: "Ubuntu golden image with grain-agent (pull or import)",
+		URL:         grainURL,
+		SHA256:      "", // resolved from companion .sha256 sidecar at pull time
 		Format:      "qcow2",
 		SSHUser:     "ubuntu",
+		SizeHint:    400 * 1024 * 1024,
 		HasAgent:    true,
-		LocalOnly:   true, // remains true until a real catalog URL is published
+		LocalOnly:   grainURL == "", // pullable when arch URL is known
 	}
 
 	return c
