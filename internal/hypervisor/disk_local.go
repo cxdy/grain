@@ -25,9 +25,15 @@ func NewLocalDisk(dataDir string) *LocalDisk {
 	}
 }
 
-func (d *LocalDisk) EnsureBase(_ context.Context, imageID string) (string, error) {
+func (d *LocalDisk) EnsureBase(ctx context.Context, imageID string) (string, error) {
 	if d.Images == nil {
 		d.Images = image.NewManager(d.DataDir)
+	}
+	if !d.Images.Ready(imageID) {
+		// Auto-pull when base is missing (progress nil: silent; CLI pull still prints).
+		if err := d.Images.Pull(ctx, imageID, nil); err != nil {
+			return "", fmt.Errorf("image %q not ready: %w (try: grain image pull %s)", imageID, err, imageID)
+		}
 	}
 	p, err := d.Images.DiskPath(imageID)
 	if err != nil {

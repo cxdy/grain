@@ -1,19 +1,17 @@
 package image_test
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/cxdy/grain/internal/image"
 )
 
-func TestCatalogDefault(t *testing.T) {
+func TestCatalogGet(t *testing.T) {
 	t.Parallel()
 	id := image.DefaultID()
 	if id == "" {
@@ -26,67 +24,113 @@ func TestCatalogDefault(t *testing.T) {
 	if s.SSHUser == "" {
 		t.Fatal("ssh user")
 	}
+	if s.ID != id {
+		t.Fatalf("id %q want %q", s.ID, id)
+	}
+	// ubuntu-cloud on arm64/amd64 must pin a digest
+	switch runtime.GOARCH {
+	case "arm64", "amd64":
+		if s.URL == "" {
+			t.Fatal("expected URL for ubuntu-cloud on this arch")
+		}
+		if s.SHA256 == "" {
+			t.Fatal("expected SHA256 pin for ubuntu-cloud")
+		}
+		if len(s.SHA256) != 64 {
+			t.Fatalf("SHA256 length %d want 64", len(s.SHA256))
+		}
+	}
 }
 
-func TestPullAndReady(t *testing.T) {
+func TestCatalogUnknown(t *testing.T) {
 	t.Parallel()
-	payload := make([]byte, 2*1024*1024) // >1MiB so Ready accepts
-	for i := range payload {
-		payload[i] = byte(i)
+	_, err := image.Get("nope")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestCatalogNoAlpinePlaceholder(t *testing.T) {
+	t.Parallel()
+	cat := image.Catalog()
+	if _, ok := cat["alpine-cloud"]; ok {
+		t.Fatal("alpine-cloud placeholder should be removed from catalog")
+	}
+}
+
+func TestVerifySHA256Success(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "disk.partial")
+	payload := []byte("grain-image-verify-ok")
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
+		t.Fatal(err)
 	}
 	sum := sha256.Sum256(payload)
-	sumHex := hex.EncodeToString(sum[:])
+	want := hex.EncodeToString(sum[:])
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(payload)
-	}))
-	t.Cleanup(srv.Close)
+	if err := image.VerifySHA256(path, want); err != nil {
+		t.Fatalf("verify success: %v", err)
+	}
+	// file must still exist
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("file removed on success: %v", err)
+	}
+}
 
-	// inject a test-only catalog entry via direct pull helper path:
-	// use Manager.Pull against a fake by temporarily writing URL into a custom pull
+func TestVerifySHA256MismatchDeletes(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "disk.partial")
+	if err := os.WriteFile(path, []byte("wrong-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	err := image.VerifySHA256(path, want)
+	if err == nil {
+		t.Fatal("expected mismatch error")
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("expected partial deleted on mismatch, stat=%v err=%v", statErr, err)
+	}
+}
+
+func TestVerifySHA256EmptySkips(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "disk.partial")
+	if err := os.WriteFile(path, []byte("dev"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := image.VerifySHA256(path, ""); err != nil {
+		t.Fatalf("empty want should skip: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiskPathReady(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	m := image.NewManager(dir)
-	m.Client = srv.Client()
-
-	// Pull via raw download into expected layout (unit test without mutating global catalog)
+	if m.Ready("testimg") {
+		t.Fatal("expected not ready")
+	}
 	imgDir := filepath.Join(dir, "images", "testimg")
 	if err := os.MkdirAll(imgDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Simulate Get by calling HTTP ourselves then verifying DiskPath pattern
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
-	res, err := m.Client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
+	payload := make([]byte, 2*1024*1024)
 	dest := filepath.Join(imgDir, "disk.qcow2")
-	f, err := os.Create(dest)
-	if err != nil {
+	if err := os.WriteFile(dest, payload, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// copy
-	buf := make([]byte, len(payload))
-	n, _ := res.Body.Read(buf)
-	if _, err := f.Write(buf[:n]); err != nil {
-		t.Fatal(err)
-	}
-	_ = f.Close()
-
 	if !m.Ready("testimg") {
 		t.Fatal("expected ready")
 	}
 	p, err := m.DiskPath("testimg")
 	if err != nil || p != dest {
 		t.Fatalf("path %s err %v", p, err)
-	}
-	_ = sumHex
-}
-
-func TestUnknownImage(t *testing.T) {
-	t.Parallel()
-	_, err := image.Get("nope")
-	if err == nil {
-		t.Fatal("expected error")
 	}
 }

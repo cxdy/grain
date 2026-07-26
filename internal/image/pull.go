@@ -47,6 +47,38 @@ func (m *Manager) Ready(id string) bool {
 	return err == nil
 }
 
+// fileSHA256 returns the hex-encoded SHA256 of the file at path.
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// VerifySHA256 hashes path and compares to want.
+// If want is empty, verification is skipped (dev).
+// On mismatch the file at path is removed.
+func VerifySHA256(path, want string) error {
+	if want == "" {
+		return nil
+	}
+	got, err := fileSHA256(path)
+	if err != nil {
+		return fmt.Errorf("sha256: %w", err)
+	}
+	if got != want {
+		_ = os.Remove(path)
+		return fmt.Errorf("sha256 mismatch: got %s want %s", got, want)
+	}
+	return nil
+}
+
 // Pull downloads the image if missing. progress is optional (bytes written, total hint).
 func (m *Manager) Pull(ctx context.Context, id string, progress func(written, total int64)) error {
 	spec, err := Get(id)
@@ -89,7 +121,6 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
 	total := res.ContentLength
 	if total <= 0 {
@@ -97,14 +128,14 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 	}
 	var written int64
 	buf := make([]byte, 256*1024)
-	h := sha256.New()
 	for {
 		n, rerr := res.Body.Read(buf)
 		if n > 0 {
 			if _, err := f.Write(buf[:n]); err != nil {
+				_ = f.Close()
+				_ = os.Remove(partial)
 				return err
 			}
-			_, _ = h.Write(buf[:n])
 			written += int64(n)
 			if progress != nil {
 				progress(written, total)
@@ -114,19 +145,19 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 			break
 		}
 		if rerr != nil {
+			_ = f.Close()
+			_ = os.Remove(partial)
 			return rerr
 		}
 	}
 	if err := f.Close(); err != nil {
+		_ = os.Remove(partial)
 		return err
 	}
 
-	if spec.SHA256 != "" {
-		sum := hex.EncodeToString(h.Sum(nil))
-		if sum != spec.SHA256 {
-			_ = os.Remove(partial)
-			return fmt.Errorf("sha256 mismatch: got %s want %s", sum, spec.SHA256)
-		}
+	// After download (before rename): verify digest when pinned.
+	if err := VerifySHA256(partial, spec.SHA256); err != nil {
+		return err
 	}
 
 	// remove tiny placeholders
