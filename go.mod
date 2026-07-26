@@ -3,8 +3,11 @@ module github.com/cxdy/grain
 go 1.25.0
 
 require (
+	github.com/coder/websocket v1.8.15
+	github.com/creack/pty v1.1.24
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/crypto v0.54.0
+	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

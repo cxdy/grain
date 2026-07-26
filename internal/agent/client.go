@@ -8,8 +8,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/coder/websocket"
+	"golang.org/x/term"
 )
 
 // Client is a host-side client for the guest grain-agent HTTP API.
@@ -364,6 +370,195 @@ func (c *Client) GetTar(ctx context.Context, guestPath string, w io.Writer) erro
 	}
 	_, err = io.Copy(w, res.Body)
 	return err
+}
+
+// --- /shell ----------------------------------------------------------------
+
+// Shell opens an interactive PTY session over WebSocket (GET /shell).
+// When Stdin is a local terminal and Raw is not explicitly false, the terminal
+// is put into raw mode for the duration of the session. Window resize events
+// (SIGWINCH) are forwarded as JSON control frames.
+func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
+	stdin := opts.Stdin
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	stdout := opts.Stdout
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	// Stderr is reserved for future local diagnostics (raw-mode / dial hints).
+	_ = opts.Stderr
+
+	cols := opts.Cols
+	rows := opts.Rows
+	if cols <= 0 || rows <= 0 {
+		if f, ok := stdin.(*os.File); ok {
+			if w, h, err := term.GetSize(int(f.Fd())); err == nil && w > 0 && h > 0 {
+				if cols <= 0 {
+					cols = w
+				}
+				if rows <= 0 {
+					rows = h
+				}
+			}
+		}
+	}
+	if cols <= 0 {
+		cols = 80
+	}
+	if rows <= 0 {
+		rows = 24
+	}
+
+	// http → ws scheme
+	base := c.base()
+	u, err := url.Parse(base + "/shell")
+	if err != nil {
+		return err
+	}
+	switch u.Scheme {
+	case "https":
+		u.Scheme = "wss"
+	default:
+		u.Scheme = "ws"
+	}
+	q := u.Query()
+	q.Set("cols", fmt.Sprintf("%d", cols))
+	q.Set("rows", fmt.Sprintf("%d", rows))
+	if opts.Shell != "" {
+		q.Set("shell", opts.Shell)
+	}
+	u.RawQuery = q.Encode()
+
+	conn, _, err := websocket.Dial(ctx, u.String(), nil)
+	if err != nil {
+		return fmt.Errorf("shell dial: %w", err)
+	}
+	defer conn.CloseNow()
+	// Interactive shells can produce large bursts (e.g. cat of big files).
+	conn.SetReadLimit(8 << 20)
+
+	// Raw mode for local TTY.
+	wantRaw := true
+	if opts.Raw != nil {
+		wantRaw = *opts.Raw
+	}
+	var restore func()
+	if wantRaw {
+		if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+			old, err := term.MakeRaw(int(f.Fd()))
+			if err != nil {
+				return fmt.Errorf("terminal raw mode: %w", err)
+			}
+			restore = func() { _ = term.Restore(int(f.Fd()), old) }
+			defer restore()
+		}
+	}
+
+	// SIGWINCH → resize control frames.
+	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		winch := make(chan os.Signal, 1)
+		signal.Notify(winch, syscall.SIGWINCH)
+		defer signal.Stop(winch)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-winch:
+					w, h, err := term.GetSize(int(f.Fd()))
+					if err != nil || w <= 0 || h <= 0 {
+						continue
+					}
+					payload, _ := json.Marshal(ShellControl{Type: "resize", Cols: w, Rows: h})
+					// Best-effort; session may already be closing.
+					_ = conn.Write(ctx, websocket.MessageText, payload)
+				}
+			}
+		}()
+	}
+
+	errCh := make(chan error, 2)
+
+	// Local stdin → WS binary
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, readErr := stdin.Read(buf)
+			if n > 0 {
+				if werr := conn.Write(ctx, websocket.MessageBinary, buf[:n]); werr != nil {
+					errCh <- werr
+					return
+				}
+			}
+			if readErr != nil {
+				// EOF on stdin: stop sending; keep reading PTY until server closes.
+				if readErr == io.EOF {
+					return
+				}
+				errCh <- readErr
+				return
+			}
+		}
+	}()
+
+	// WS → local stdout (server close ends the session)
+	go func() {
+		for {
+			typ, data, rerr := conn.Read(ctx)
+			if rerr != nil {
+				errCh <- rerr
+				return
+			}
+			switch typ {
+			case websocket.MessageBinary, websocket.MessageText:
+				// Binary is PTY data; write text too if the server ever sends it.
+				if _, werr := stdout.Write(data); werr != nil {
+					errCh <- werr
+					return
+				}
+			}
+		}
+	}()
+
+	// Wait for first fatal error or context cancel.
+	select {
+	case <-ctx.Done():
+		_ = conn.Close(websocket.StatusGoingAway, "canceled")
+		return ctx.Err()
+	case err := <-errCh:
+		// Normal WebSocket close after shell exit is success.
+		if isWSNormalClose(err) || err == io.EOF {
+			_ = conn.Close(websocket.StatusNormalClosure, "")
+			return nil
+		}
+		if err != nil {
+			_ = conn.Close(websocket.StatusNormalClosure, "")
+			return err
+		}
+		return nil
+	}
+}
+
+func isWSNormalClose(err error) bool {
+	if err == nil {
+		return true
+	}
+	// coder/websocket returns Status* errors via websocket.CloseError / CloseStatus.
+	cs := websocket.CloseStatus(err)
+	switch cs {
+	case websocket.StatusNormalClosure, websocket.StatusGoingAway:
+		return true
+	}
+	// Also treat generic closed / EOF as normal session end.
+	msg := err.Error()
+	if strings.Contains(msg, "status = StatusNormalClosure") ||
+		strings.Contains(msg, "status = StatusGoingAway") ||
+		strings.Contains(msg, "failed to get reader: received close frame") {
+		return true
+	}
+	return false
 }
 
 // --- /stats ----------------------------------------------------------------

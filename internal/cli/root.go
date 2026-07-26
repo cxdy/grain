@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/api"
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/daemon"
@@ -634,11 +635,15 @@ func resolveVMName(c *api.Client, args []string, createIfEmpty bool) (string, er
 }
 
 func cmdSh(cfgPath *string) *cobra.Command {
-	return &cobra.Command{
+	var forceSSH, forceAgent bool
+	cmd := &cobra.Command{
 		Use:   "sh [name]",
-		Short: "Shell into a VM (auto-creates one if none exist)",
+		Short: "Shell into a VM (prefers guest agent PTY; SSH fallback; auto-creates if none)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if forceSSH && forceAgent {
+				return fmt.Errorf("cannot use --ssh and --agent together")
+			}
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
 				return err
@@ -650,11 +655,27 @@ func cmdSh(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			// Prefer guest agent PTY when available (unless --ssh).
+			if !forceSSH {
+				err := shellViaAgent(c, name, forceAgent)
+				if err == nil {
+					return nil
+				}
+				if forceAgent {
+					return err
+				}
+				// Only fall back to SSH when agent is missing/unhealthy.
+				if !isAgentUnavailable(err) {
+					return err
+				}
+			}
+
 			host, port, err := getVMSSH(c, name)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "connecting to %s …\n", name)
+			fmt.Fprintf(os.Stderr, "connecting via ssh to %s …\n", name)
 			ssh := exec.Command("ssh", sshBaseArgs(cfg, host, port)...)
 			ssh.Stdin = os.Stdin
 			ssh.Stdout = os.Stdout
@@ -662,6 +683,21 @@ func cmdSh(cfgPath *string) *cobra.Command {
 			return ssh.Run()
 		},
 	}
+	cmd.Flags().BoolVar(&forceSSH, "ssh", false, "force SSH shell (skip guest agent)")
+	cmd.Flags().BoolVar(&forceAgent, "agent", false, "force guest agent PTY only (error if unavailable)")
+	return cmd
+}
+
+// shellViaAgent dials the guest agent and opens an interactive WebSocket PTY shell.
+// force requires agent; otherwise returns errAgentSkip when unavailable.
+func shellViaAgent(c *api.Client, name string, force bool) error {
+	ac, err := dialGuestAgent(c, name, force)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "connecting via agent to %s …\n", name)
+	// No overall timeout — interactive session lasts until the user exits.
+	return ac.Shell(context.Background(), agent.ShellOpts{})
 }
 
 func cmdX(cfgPath *string) *cobra.Command {

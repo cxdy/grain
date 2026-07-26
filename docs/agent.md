@@ -8,6 +8,7 @@ The guest agent is a small HTTP server that runs **inside** each Linux VM. The h
 |------------|------------|----------------|
 | **Health** | `GET /health` | `grain agent health [name]` · `GET /vms/{name}/agent/health` |
 | **Exec** | `POST /exec` | `grain x [name] -- cmd…` · `POST /vms/{name}/exec` |
+| **Shell** | `GET /shell` (WebSocket PTY) | `grain sh [name]` · prefers agent; `--ssh` / `--agent` |
 | **Copy** | `PUT/GET /cp` | `grain cp` · `PUT/GET /vms/{name}/cp` |
 | **Filesystem** | `/fs/*` | `grain fs ls\|stat\|mkdir\|rm` · daemon FS routes |
 | **Stats** | `GET /stats` | uptime, mem, load (and disk when available); host Prometheus `/metrics` for VM counts |
@@ -87,6 +88,19 @@ grain x --agent -- true          # require agent
 grain x --ssh -- true            # force SSH
 ```
 
+### Interactive shell
+
+`grain sh` prefers an interactive PTY over the guest agent WebSocket (`GET /shell`) so a shell works even when `sshd` is down, as long as the agent is healthy. The CLI dials the host-forwarded agent port directly (same pattern as `cp` / `fs`). Falls back to SSH when the agent is missing or unhealthy.
+
+```bash
+grain sh                         # auto-create if no VMs; agent PTY if up, else SSH
+grain sh sbox-1
+grain sh --agent sbox-1          # require agent PTY (error if unavailable)
+grain sh --ssh sbox-1            # force classic SSH
+```
+
+Protocol: WebSocket binary frames carry PTY bytes both ways; optional text JSON control frames resize the PTY (`{"type":"resize","cols":N,"rows":M}`). The agent spawns a login shell as uid 1000 when present, otherwise root. Local stdin is put in raw mode when attached to a TTY; `SIGWINCH` is forwarded as resize frames.
+
 ### Copy
 
 ```bash
@@ -116,7 +130,7 @@ grain fwd ls
 ## Soft-fail and fallbacks
 
 - Missing agent binary → no deploy; SSH still works.  
-- Unhealthy agent → `grain x` / `grain cp` fall back to SSH/scp unless `--agent`.  
+- Unhealthy agent → `grain sh` / `grain x` / `grain cp` fall back to SSH/scp unless `--agent`.  
 - `grain fs` requires a healthy agent (no SSH fallback).
 
 ## Go SDK and OpenAPI

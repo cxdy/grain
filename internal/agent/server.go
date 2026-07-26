@@ -62,6 +62,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /fs/mkdir", s.handleFSMkdir)
 	mux.HandleFunc("DELETE /fs/remove", s.handleFSRemove)
 	mux.HandleFunc("POST /secrets/materialize", s.handleMaterializeSecret)
+	mux.HandleFunc("GET /shell", s.handleShell)
 	return mux
 }
 

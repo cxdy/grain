@@ -1,6 +1,9 @@
 package agent
 
-import "time"
+import (
+	"io"
+	"time"
+)
 
 // Version is the grain-agent version string reported by /health.
 const Version = "0.2.0"
@@ -112,4 +115,27 @@ type MaterializeSecretRequest struct {
 type MaterializeSecretResponse struct {
 	Path string `json:"path"`
 	Mode string `json:"mode"`
+}
+
+// ShellOpts configures an interactive PTY shell over WebSocket (GET /shell).
+type ShellOpts struct {
+	// Cols and Rows are the initial terminal size (defaults: 80×24).
+	Cols int
+	Rows int
+	// Shell is the guest shell path (default: login shell of the target user, or /bin/bash).
+	Shell string
+	// Stdin, Stdout, Stderr are local streams (default: os.Stdin/Stdout/Stderr).
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+	// Raw puts the local terminal into raw mode when Stdin is a TTY (default true).
+	// Set to false to disable. When Stdin is not a terminal, raw mode is skipped.
+	Raw *bool
+}
+
+// ShellControl is a JSON text WebSocket frame for PTY control messages.
+type ShellControl struct {
+	Type string `json:"type"` // "resize"
+	Cols int    `json:"cols,omitempty"`
+	Rows int    `json:"rows,omitempty"`
 }
