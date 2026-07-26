@@ -56,9 +56,9 @@ func Defaults() Config {
 		DefaultMemoryMB: 2048,
 		DefaultDiskGB:   8,
 		Hypervisor:      "qemu",
-		Image:           "alpine-cloud",
-		SSHUser:         "alpine",
-		ReadyTimeout:    60 * time.Second,
+		Image:           "ubuntu-cloud",
+		SSHUser:         "ubuntu",
+		ReadyTimeout:    120 * time.Second,
 		LogLevel:        "info",
 	}
 }

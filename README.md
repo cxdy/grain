@@ -2,125 +2,101 @@
 
 **Fast Linux microVM sandboxes on your own hardware.** Free and open source (Apache-2.0).
 
-Spin up an ephemeral sandbox, run tests (including k3s/Helm labs), copy results out, tear it down. Keep a VM long-term only when you ask for it.
+Ephemeral by default. Persistent when you want. Short commands. Local-first.
 
 ```text
-grain up              # start local daemon
-grain new             # ephemeral sandbox (default)
-grain new -p -n lab   # persistent, named
+grain up
+grain image pull          # once
+grain new                 # ephemeral sandbox
+grain new -p -n lab       # keep it
 grain ls
-grain sh sbox-1       # shell
+grain sh sbox-1
 grain x sbox-1 -- uname -a
 grain rm sbox-1
 grain down
 ```
 
-## Why
-
-Containers share a host kernel. Sometimes you need a **real Linux guest** (systemd, custom modules, k3s, isolation) without paying a cloud tax to use **your** laptop or lab machines. grain is that control plane: short commands, local-first, no metering.
-
-## Status
-
-**v0.1 scaffold** — control plane, CLI, tests, mock hypervisor, and QEMU backend wiring. Bootable base images + guest agent hardening are next.
-
-| Piece | State |
-|-------|--------|
-| CLI (`up` / `new` / `ls` / `rm` / `sh` / `x` / `cp`) | done |
-| Daemon + HTTP API on unix socket | done |
-| Ephemeral by default, `-p` to persist | done |
-| Unit tests (TDD) | done |
-| Mock hypervisor (CI without QEMU) | done |
-| QEMU/HVF backend | wired (needs `brew install qemu` + image) |
-| Optional Prometheus/Grafana/Loki | `make obs-up` |
-
-## Quick start (dev / tests)
+## Install (dev)
 
 ```bash
-# requires Go 1.23+
-make test
-make build
-make smoke-api          # mock hypervisor end-to-end, no QEMU
-./bin/grain version
-```
-
-### Mock daemon (no QEMU)
-
-```bash
-make smoke-api
-# or interactive:
-printf 'hypervisor: mock\ndata_dir: /tmp/grain-dev\nsocket: /tmp/grain-dev/grain.sock\napi: 127.0.0.1:7474\n' > /tmp/grain-dev.yaml
-./bin/grain --config /tmp/grain-dev.yaml up --fg   # terminal 1
-./bin/grain --config /tmp/grain-dev.yaml new       # terminal 2
-./bin/grain --config /tmp/grain-dev.yaml ls
-```
-
-### Real VMs (QEMU)
-
-```bash
+# Go 1.23+
+make test && make build
+# Real VMs need QEMU:
 brew install qemu
-# place bootable disk under ~/.grain/images/<image>/disk.img (image pull coming soon)
-# config: hypervisor: qemu
-grain up
-grain new
+./bin/grain doctor
+./bin/grain image pull    # Ubuntu cloud (~300MB)
+```
+
+## Commands
+
+| Cmd | Meaning |
+|-----|---------|
+| `up` / `down` | start/stop daemon |
+| `new` | launch sandbox (`-p` persist, `-n` name, `-c` cpus, `-m` mem, `-d` disk) |
+| `ls` / `rm` | list / delete |
+| `sh` / `x` | shell / exec |
+| `cp` | `host path` or `NAME:path` |
+| `image ls` / `image pull` | base images |
+| `doctor` | dependency check |
+| `version` | print version |
+
+## How it works
+
+1. **Daemon** (`grain up`) — unix socket API + optional TCP `/metrics`
+2. **Image** — download once (`ubuntu-cloud` default)
+3. **Disk** — qcow2 overlay or APFS CoW clone per VM
+4. **Boot** — QEMU (HVF on Apple Silicon) + cloud-init seed (SSH key)
+5. **Access** — SSH via host-forwarded port; grain manages the key in `~/.grain/ssh/`
+
+Ephemeral VMs are removed on `rm`, `shutdown`, or daemon stop. Persistent (`-p`) keep their disk.
+
+## Tests & TDD
+
+```bash
+make test          # unit tests (mock hypervisor)
+make smoke-api     # CLI + daemon e2e without QEMU
+make cover
 ```
 
 ## Observability (optional)
 
-JSON logs to stderr. Prometheus metrics at `GET /metrics`.
-
 ```bash
-make obs-up     # Prometheus :9090, Grafana :3000 (admin/admin), Loki :3100
-# with daemon on default API:
-#   curl -s http://127.0.0.1:7474/metrics
-make obs-down
+make obs-up   # Prometheus :9090, Grafana :3000, Loki :3100
+curl -s http://127.0.0.1:7474/metrics
 ```
 
-Metrics: `grain_vms_created_total`, `grain_vms_deleted_total`, `grain_vms_running`, `grain_create_errors_total`.
+JSON logs on stderr. Metrics: `grain_vms_*`.
 
 ## Config
 
-Default file: `~/.grain/config.yaml` (all optional).
+`~/.grain/config.yaml` (all optional):
 
 ```yaml
 data_dir: ~/.grain
 socket: ~/.grain/grain.sock
-api: 127.0.0.1:7474          # HTTP + /metrics
-hypervisor: qemu             # or mock
+api: 127.0.0.1:7474
+hypervisor: qemu          # or mock
+image: ubuntu-cloud
 cpus: 2
 memory_mb: 2048
 disk_gb: 8
+ssh_user: ubuntu
+ready_timeout: 2m
 log_level: info
 ```
 
-## API (local)
+## API
 
-Unix socket (preferred) or TCP `api`:
-
-| Method | Path | |
-|--------|------|--|
-| GET | `/healthz` | liveness |
-| GET | `/info` | version |
-| GET | `/metrics` | Prometheus |
-| GET | `/vms` | list |
-| POST | `/vms` | create (`{"persistent":false}`) |
-| GET | `/vms/{name}` | get |
-| DELETE | `/vms/{name}` | delete |
-| POST | `/vms/{name}/shutdown` | stop (ephemeral deleted) |
+| Method | Path |
+|--------|------|
+| GET | `/healthz`, `/info`, `/metrics` |
+| GET/POST | `/vms` |
+| GET/DELETE | `/vms/{name}` |
+| POST | `/vms/{name}/shutdown` |
 
 ```bash
 curl --unix-socket ~/.grain/grain.sock http://grain/vms
 ```
-
-## Development
-
-```bash
-make test          # unit tests
-make cover         # coverage summary
-make build         # bin/grain
-make fmt
-```
-
-Practice: **write tests with behavior**, keep packages small (`names`, `store`, `manager`, `api`, `hypervisor`). Prefer the **mock** hypervisor in tests.
 
 ## License
 

@@ -31,14 +31,13 @@ func Root(version string) *cobra.Command {
 		Short: "Fast Linux microVM sandboxes on your own hardware",
 		Long: `grain runs disposable Linux VMs for tests, agents, and k3s labs.
 
-  grain up          start daemon
-  grain new         launch ephemeral sandbox
-  grain new -p      persistent sandbox
-  grain ls          list VMs
-  grain sh NAME     shell
-  grain x NAME -- CMD
-  grain rm NAME     delete
-  grain down        stop daemon`,
+  grain up              start daemon
+  grain image pull      download base OS image
+  grain new             ephemeral sandbox
+  grain new -p          persistent sandbox
+  grain ls / rm / sh / x / cp
+  grain doctor          check dependencies
+  grain down            stop daemon`,
 		SilenceUsage: true,
 	}
 	root.PersistentFlags().StringVar(&cfgPath, "config", "", "config file (default ~/.grain/config.yaml)")
@@ -52,6 +51,8 @@ func Root(version string) *cobra.Command {
 		cmdSh(&cfgPath),
 		cmdX(&cfgPath),
 		cmdCp(&cfgPath),
+		cmdImage(&cfgPath),
+		cmdDoctor(&cfgPath),
 		cmdVersion(version),
 	)
 	return root
@@ -285,6 +286,29 @@ func getVMSSH(c *api.Client, name string) (host string, port int, err error) {
 	return host, inst.SSHPort, nil
 }
 
+func grainSSHIdentity(cfg config.Config) string {
+	return filepath.Join(cfg.DataDir, "ssh", "id_grain")
+}
+
+func sshBaseArgs(cfg config.Config, host string, port int) []string {
+	args := []string{
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "IdentitiesOnly=yes",
+		"-p", fmt.Sprintf("%d", port),
+	}
+	if id := grainSSHIdentity(cfg); fileExists(id) {
+		args = append(args, "-i", id)
+	}
+	args = append(args, cfg.SSHUser+"@"+host)
+	return args
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
 func cmdSh(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "sh [name]",
@@ -300,12 +324,7 @@ func cmdSh(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ssh := exec.Command("ssh",
-				"-o", "StrictHostKeyChecking=no",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-p", fmt.Sprintf("%d", port),
-				cfg.SSHUser+"@"+host,
-			)
+			ssh := exec.Command("ssh", sshBaseArgs(cfg, host, port)...)
 			ssh.Stdin = os.Stdin
 			ssh.Stdout = os.Stdout
 			ssh.Stderr = os.Stderr
@@ -334,13 +353,7 @@ func cmdX(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			sshArgs := []string{
-				"-o", "StrictHostKeyChecking=no",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-p", fmt.Sprintf("%d", port),
-				cfg.SSHUser + "@" + host,
-				"--",
-			}
+			sshArgs := append(sshBaseArgs(cfg, host, port), "--")
 			sshArgs = append(sshArgs, remote...)
 			ssh := exec.Command("ssh", sshArgs...)
 			ssh.Stdout = os.Stdout
@@ -406,6 +419,57 @@ func cmdVersion(v string) *cobra.Command {
 		Short: "Print version",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println(v)
+		},
+	}
+}
+
+func cmdImage(cfgPath *string) *cobra.Command {
+	c := &cobra.Command{
+		Use:   "image",
+		Short: "Manage base images",
+	}
+	c.AddCommand(
+		&cobra.Command{
+			Use:   "ls",
+			Short: "List catalog and local images",
+			RunE: func(cmd *cobra.Command, args []string) error {
+				cfg, err := loadCfg(cfgPath)
+				if err != nil {
+					return err
+				}
+				return runImageLS(cfg)
+			},
+		},
+		&cobra.Command{
+			Use:   "pull [id]",
+			Short: "Download a base image",
+			Args:  cobra.MaximumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				cfg, err := loadCfg(cfgPath)
+				if err != nil {
+					return err
+				}
+				id := cfg.Image
+				if len(args) == 1 {
+					id = args[0]
+				}
+				return runImagePull(cfg, id)
+			},
+		},
+	)
+	return c
+}
+
+func cmdDoctor(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "doctor",
+		Short: "Check local dependencies",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			return runDoctor(cfg)
 		},
 	}
 }

@@ -67,9 +67,9 @@ type MockDisk struct {
 
 func NewMockDisk() *MockDisk { return &MockDisk{} }
 
-func (d *MockDisk) EnsureBase(_ context.Context, image string) (string, error) {
-	// caller places under temp; we just return a synthetic path marker
-	return "base:" + image, nil
+func (d *MockDisk) EnsureBase(_ context.Context, imageID string) (string, error) {
+	// synthetic base for tests (no download)
+	return "base:" + imageID, nil
 }
 
 func (d *MockDisk) Clone(_ context.Context, baseDisk, destPath string, sizeGB int) error {

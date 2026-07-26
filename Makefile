@@ -4,7 +4,7 @@ VERSION ?= 0.1.0-dev
 BIN     ?= bin/grain
 export CGO_ENABLED ?= 0
 
-.PHONY: all build test cover lint fmt clean run-help up-mock down smoke-api obs-up obs-down
+.PHONY: all build test cover lint fmt clean run-help smoke-api doctor obs-up obs-down
 
 all: test build
 
@@ -65,6 +65,9 @@ smoke-api: build
 	@curl -sf --unix-socket /tmp/grain-smoke/grain.sock http://grain/metrics | head -5
 	@kill $$(cat /tmp/grain-smoke/test.pid) 2>/dev/null || true
 	@echo "smoke-api OK"
+
+doctor: build
+	$(BIN) doctor || true
 
 # Optional observability stack (Prometheus + Grafana + Loki)
 obs-up:

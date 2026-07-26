@@ -8,56 +8,31 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	"github.com/cxdy/grain/internal/image"
 )
 
-// LocalDisk clones base images using APFS clonefile on macOS when possible,
-// otherwise falls back to copy / qemu-img.
+// LocalDisk clones base images using APFS clonefile on macOS when possible.
 type LocalDisk struct {
 	DataDir string
+	Images  *image.Manager
 }
 
 func NewLocalDisk(dataDir string) *LocalDisk {
-	return &LocalDisk{DataDir: dataDir}
+	return &LocalDisk{
+		DataDir: dataDir,
+		Images:  image.NewManager(dataDir),
+	}
 }
 
-func (d *LocalDisk) imagesDir() string {
-	return filepath.Join(d.DataDir, "images")
-}
-
-// EnsureBase expects a base disk at images/<image>/disk.qcow2 or disk.img.
-// For alpine-cloud we create a tiny placeholder until `grain image pull` fills it.
-func (d *LocalDisk) EnsureBase(_ context.Context, image string) (string, error) {
-	dir := filepath.Join(d.imagesDir(), image)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
+func (d *LocalDisk) EnsureBase(_ context.Context, imageID string) (string, error) {
+	if d.Images == nil {
+		d.Images = image.NewManager(d.DataDir)
 	}
-	// prefer qcow2 then raw
-	for _, name := range []string{"disk.qcow2", "disk.img", "disk.raw"} {
-		p := filepath.Join(dir, name)
-		if st, err := os.Stat(p); err == nil && st.Size() > 0 {
-			return p, nil
-		}
-	}
-	// bootstrap empty raw disk marker — real images via grain image pull
-	p := filepath.Join(dir, "disk.img")
-	if _, err := os.Stat(p); err == nil {
-		return p, nil
-	}
-	f, err := os.Create(p)
+	p, err := d.Images.DiskPath(imageID)
 	if err != nil {
 		return "", err
 	}
-	// 1 MiB placeholder so CoW/clone paths work in tests without full images
-	if err := f.Truncate(1 << 20); err != nil {
-		_ = f.Close()
-		return "", err
-	}
-	_ = f.Close()
-	// write README for developers
-	_ = os.WriteFile(filepath.Join(dir, "README.txt"), []byte(
-		"Placeholder base disk. Run: grain image pull\n"+
-			"Or place a bootable disk.img / disk.qcow2 here with kernel.\n",
-	), 0o644)
 	return p, nil
 }
 
@@ -65,32 +40,38 @@ func (d *LocalDisk) Clone(ctx context.Context, baseDisk, destPath string, sizeGB
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return err
 	}
-	// Try APFS clonefile (instant CoW on macOS)
+	// Prefer qcow2 overlay (fast, small) when qemu-img exists and base is qcow2/raw
+	if _, err := exec.LookPath("qemu-img"); err == nil {
+		format := "raw"
+		if filepath.Ext(baseDisk) == ".qcow2" {
+			format = "qcow2"
+		}
+		// write overlay as qcow2
+		if filepath.Ext(destPath) != ".qcow2" {
+			destPath = destPath + ".qcow2"
+		}
+		cmd := exec.CommandContext(ctx, "qemu-img", "create", "-f", "qcow2", "-b", baseDisk, "-F", format, destPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("qemu-img create: %w (%s)", err, string(out))
+		}
+		return maybeResize(ctx, destPath, sizeGB)
+	}
+
+	// APFS clonefile (instant CoW on macOS for raw copies)
 	if runtime.GOOS == "darwin" {
 		if err := clonefile(baseDisk, destPath); err == nil {
 			return maybeResize(ctx, destPath, sizeGB)
 		}
 	}
-	// qemu-img convert/create if available
-	if _, err := exec.LookPath("qemu-img"); err == nil {
-		cmd := exec.CommandContext(ctx, "qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", baseDisk, destPath)
-		// if base is qcow2, adjust
-		if filepath.Ext(baseDisk) == ".qcow2" {
-			cmd = exec.CommandContext(ctx, "qemu-img", "create", "-f", "qcow2", "-b", baseDisk, "-F", "qcow2", destPath)
-		}
-		if out, err := cmd.CombinedOutput(); err == nil {
-			return maybeResize(ctx, destPath, sizeGB)
-		} else {
-			// fall through to copy; keep message for debug
-			_ = out
-		}
-	}
-	// plain copy
 	if err := copyFile(baseDisk, destPath); err != nil {
 		return err
 	}
 	return maybeResize(ctx, destPath, sizeGB)
 }
+
+// ClonePath is destPath that Clone may rewrite (qcow2 suffix).
+// Callers should use the path returned... for now Manager uses fixed name;
+// we keep dest as given and if qcow2 overlay, write to destPath as-is with .qcow2 content name disk.qcow2
 
 func maybeResize(ctx context.Context, path string, sizeGB int) error {
 	if sizeGB <= 0 {
@@ -121,7 +102,6 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-// clonefile uses cp -c on macOS (APFS copy-on-write when supported).
 func clonefile(src, dst string) error {
 	cmd := exec.Command("cp", "-c", src, dst)
 	if out, err := cmd.CombinedOutput(); err != nil {

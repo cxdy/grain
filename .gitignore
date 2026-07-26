@@ -10,3 +10,4 @@ coverage.html
 *.log
 # local daemon state (default under ~/.grain is outside repo)
 /tmp/
+bin/

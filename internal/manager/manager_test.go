@@ -3,6 +3,7 @@ package manager_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/hypervisor"
@@ -17,6 +18,7 @@ func testManager(t *testing.T) (*manager.Manager, *hypervisor.MockRuntime, *hype
 	cfg := config.Defaults()
 	cfg.DataDir = dir
 	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second // never used for mock, but keep tests fast
 	st, err := store.New(dir)
 	if err != nil {
 		t.Fatal(err)

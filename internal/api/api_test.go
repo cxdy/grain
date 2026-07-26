@@ -2,11 +2,11 @@ package api_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/cxdy/grain/internal/api"
 	"github.com/cxdy/grain/internal/config"
@@ -21,6 +21,8 @@ func testServer(t *testing.T) *api.Server {
 	dir := t.TempDir()
 	cfg := config.Defaults()
 	cfg.DataDir = dir
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
 	st, err := store.New(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -68,5 +70,4 @@ func TestHealthAndCreateListDelete(t *testing.T) {
 	if rr.Code != 200 {
 		t.Fatalf("delete %d %s", rr.Code, rr.Body.String())
 	}
-	_ = context.Background()
 }

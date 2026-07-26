@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/cxdy/grain/internal/netutil"
 	"github.com/cxdy/grain/internal/vm"
 )
 
@@ -18,7 +20,6 @@ import (
 type QEMURuntime struct {
 	Binary  string
 	DataDir string
-	// Soft mode: if qemu missing, Start returns a clear error (not panic).
 }
 
 func NewQEMURuntime(binary, dataDir string) *QEMURuntime {
@@ -35,19 +36,37 @@ func NewQEMURuntime(binary, dataDir string) *QEMURuntime {
 func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath string) error {
 	bin, err := exec.LookPath(q.Binary)
 	if err != nil {
-		return fmt.Errorf("%s not found — install qemu (brew install qemu) or use grain with mock hypervisor for tests", q.Binary)
+		return fmt.Errorf("%s not found — install qemu (brew install qemu)", q.Binary)
 	}
+
+	// Prefer existing disk.qcow2 overlay if present
+	if _, err := os.Stat(diskPath + ".qcow2"); err == nil {
+		diskPath = diskPath + ".qcow2"
+		inst.DiskPath = diskPath
+	}
+
 	logPath := filepath.Join(q.DataDir, "logs", inst.Name+".log")
 	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
-	logFile, err := os.Create(logPath)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}
+	defer logFile.Close()
 
-	// Host-forwarded SSH for simple access without full guest agent yet.
-	sshPort := 2200 + (time.Now().Nanosecond() % 40000)
+	sshPort, err := netutil.FreeTCPPort()
+	if err != nil {
+		return err
+	}
 	inst.SSHPort = sshPort
 	inst.IP = "127.0.0.1"
+
+	pidFile := filepath.Join(filepath.Dir(diskPath), "qemu.pid")
+	_ = os.Remove(pidFile)
+
+	driveFmt := "raw"
+	if strings.HasSuffix(diskPath, ".qcow2") {
+		driveFmt = "qcow2"
+	}
 
 	args := []string{
 		"-name", inst.Name,
@@ -55,25 +74,25 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		"-cpu", cpuType(),
 		"-smp", strconv.Itoa(inst.CPUs),
 		"-m", strconv.Itoa(inst.MemoryMB),
-		"-drive", fmt.Sprintf("file=%s,if=virtio,cache=writeback", diskPath),
+		"-drive", fmt.Sprintf("file=%s,if=virtio,format=%s,cache=writeback", diskPath, driveFmt),
 		"-netdev", fmt.Sprintf("user,id=net0,hostfwd=tcp:127.0.0.1:%d-:22", sshPort),
 		"-device", "virtio-net-device,netdev=net0",
 		"-nographic",
 		"-serial", "file:" + logPath + ".serial",
-		"-pidfile", filepath.Join(filepath.Dir(diskPath), "qemu.pid"),
+		"-pidfile", pidFile,
 		"-daemonize",
 	}
-	// UEFI for aarch64 when available
+
+	// cloud-init seed
+	seed := filepath.Join(filepath.Dir(diskPath), "seed.iso")
+	if _, err := os.Stat(seed); err == nil {
+		args = append(args, "-drive", fmt.Sprintf("file=%s,if=virtio,format=raw,readonly=on", seed))
+	}
+
+	// UEFI for aarch64
 	if runtime.GOARCH == "arm64" {
-		for _, edk := range []string{
-			"/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
-			"/usr/local/share/qemu/edk2-aarch64-code.fd",
-			"/usr/share/AAVMF/AAVMF_CODE.fd",
-		} {
-			if _, err := os.Stat(edk); err == nil {
-				args = append(args, "-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", edk))
-				break
-			}
+		if edk := findEDK(); edk != "" {
+			args = append(args, "-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", edk))
 		}
 	}
 
@@ -81,17 +100,20 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Run(); err != nil {
-		_ = logFile.Close()
 		return fmt.Errorf("qemu: %w (see %s)", err, logPath)
 	}
-	_ = logFile.Close()
 
-	// read pidfile
-	pidb, err := os.ReadFile(filepath.Join(filepath.Dir(diskPath), "qemu.pid"))
-	if err == nil {
-		var pid int
-		_, _ = fmt.Sscanf(string(pidb), "%d", &pid)
-		inst.PID = pid
+	// pidfile may take a moment
+	for i := 0; i < 20; i++ {
+		pidb, err := os.ReadFile(pidFile)
+		if err == nil {
+			var pid int
+			if _, err := fmt.Sscanf(strings.TrimSpace(string(pidb)), "%d", &pid); err == nil && pid > 0 {
+				inst.PID = pid
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	inst.Status = vm.StatusRunning
 	return nil
@@ -102,8 +124,21 @@ func (q *QEMURuntime) Stop(_ context.Context, inst *vm.Instance) error {
 		proc, err := os.FindProcess(inst.PID)
 		if err == nil {
 			_ = proc.Signal(syscall.SIGTERM)
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 			_ = proc.Signal(syscall.SIGKILL)
+		}
+	}
+	// also try pidfile
+	if inst.DiskPath != "" {
+		pidFile := filepath.Join(filepath.Dir(inst.DiskPath), "qemu.pid")
+		if b, err := os.ReadFile(pidFile); err == nil {
+			var pid int
+			if _, err := fmt.Sscanf(strings.TrimSpace(string(b)), "%d", &pid); err == nil && pid > 0 {
+				if p, err := os.FindProcess(pid); err == nil {
+					_ = p.Signal(syscall.SIGKILL)
+				}
+			}
+			_ = os.Remove(pidFile)
 		}
 	}
 	inst.PID = 0
@@ -119,15 +154,13 @@ func (q *QEMURuntime) Running(inst *vm.Instance) bool {
 	if err != nil {
 		return false
 	}
-	// On Unix, Signal(0) checks aliveness
-	err = proc.Signal(syscall.Signal(0))
-	return err == nil
+	return proc.Signal(syscall.Signal(0)) == nil
 }
 
 func machineType() string {
 	if runtime.GOARCH == "arm64" {
 		if runtime.GOOS == "darwin" {
-			return "virt,accel=hvf"
+			return "virt,accel=hvf,highmem=on"
 		}
 		return "virt,accel=kvm:tcg"
 	}
@@ -138,11 +171,23 @@ func machineType() string {
 }
 
 func cpuType() string {
-	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
-		return "host"
-	}
-	if runtime.GOARCH == "arm64" {
+	if runtime.GOOS == "darwin" {
 		return "host"
 	}
 	return "host"
+}
+
+func findEDK() string {
+	cands := []string{
+		"/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+		"/usr/local/share/qemu/edk2-aarch64-code.fd",
+		"/usr/share/AAVMF/AAVMF_CODE.fd",
+		"/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+	}
+	for _, p := range cands {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
