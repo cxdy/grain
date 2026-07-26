@@ -168,6 +168,8 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var persistent bool
 	var name string
 	var cpus, mem, disk int
+	var image string
+	var userdataFile string
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Launch a sandbox (ephemeral by default)",
@@ -183,6 +185,14 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			if err := c.Health(ctx); err != nil {
 				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
 			}
+			var userdata string
+			if userdataFile != "" {
+				b, err := os.ReadFile(userdataFile)
+				if err != nil {
+					return fmt.Errorf("userdata-file: %w", err)
+				}
+				userdata = string(b)
+			}
 			stop := createProgress("creating")
 			start := time.Now()
 			inst, err := c.Create(ctx, api.CreateRequest{
@@ -191,6 +201,8 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				CPUs:       cpus,
 				MemoryMB:   mem,
 				DiskGB:     disk,
+				Image:      image,
+				Userdata:   userdata,
 			})
 			stop()
 			if err != nil {
@@ -211,6 +223,8 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().IntVarP(&cpus, "cpus", "c", 0, "vCPUs")
 	cmd.Flags().IntVarP(&mem, "mem", "m", 0, "memory MiB")
 	cmd.Flags().IntVarP(&disk, "disk", "d", 0, "disk GiB")
+	cmd.Flags().StringVarP(&image, "image", "i", "", "base image id (default from config)")
+	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
 	return cmd
 }
 

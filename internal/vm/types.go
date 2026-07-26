@@ -43,6 +43,7 @@ type CreateOpts struct {
 	DiskGB     int
 	Image      string
 	Tags       map[string]string
-	// Userdata is a shell script run on first boot (via cloud-init or agent).
+	// Userdata is optional first-boot cloud-init: a shell snippet (appended as
+	// runcmd) or a full #cloud-config document (structure-merged into the base).
 	Userdata string
 }

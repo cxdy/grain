@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cxdy/grain/internal/cloudinit"
@@ -117,11 +116,8 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		return m.fail(inst, fmt.Errorf("ssh key: %w", err))
 	}
 	_ = priv
-	extra := opts.Userdata
-	if extra != "" && !strings.HasPrefix(strings.TrimSpace(extra), "#") {
-		extra = "runcmd:\n  - " + extra
-	}
-	if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, extra); err != nil {
+	// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
+	if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, opts.Userdata); err != nil {
 		// mock / missing iso tools: log and continue (SSH inject won't work)
 		m.log.Warn("cloud-init seed skipped", "err", err)
 	}

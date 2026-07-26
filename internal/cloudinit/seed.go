@@ -6,45 +6,20 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 // WriteNoCloud builds a cloud-init NoCloud seed ISO (volume label cidata).
+// userdataExtra is optional shell or #cloud-config merged into the base document.
 func WriteNoCloud(dir, hostname, sshPubLine, userdataExtra string) (seedPath string, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	meta := fmt.Sprintf("instance-id: grain-%s\nlocal-hostname: %s\n", hostname, hostname)
-	// Keep user-data minimal and valid YAML. Inject key for default distro user + grain.
-	user := fmt.Sprintf(`#cloud-config
-hostname: %s
-fqdn: %s.local
-manage_etc_hosts: true
-ssh_pwauth: false
-disable_root: false
-users:
-  - default
-  - name: grain
-    groups: [sudo, adm]
-    shell: /bin/bash
-    lock_passwd: true
-    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
-    ssh_authorized_keys:
-      - %s
-# Also authorize the default cloud user (ubuntu/debian/etc.)
-ssh_authorized_keys:
-  - %s
-runcmd:
-  - [ sh, -c, "mkdir -p /home/ubuntu/.ssh /root/.ssh; echo '%s' >> /home/ubuntu/.ssh/authorized_keys; echo '%s' >> /root/.ssh/authorized_keys; chown -R ubuntu:ubuntu /home/ubuntu/.ssh 2>/dev/null || true; chmod 600 /home/ubuntu/.ssh/authorized_keys /root/.ssh/authorized_keys 2>/dev/null || true" ]
-  - [ sh, -c, "echo grain-ready > /var/lib/grain-ready" ]
-%s
-`, hostname, hostname,
-		strings.TrimSpace(sshPubLine),
-		strings.TrimSpace(sshPubLine),
-		strings.TrimSpace(sshPubLine),
-		strings.TrimSpace(sshPubLine),
-		userdataExtra,
-	)
+
+	user, err := RenderUserData(hostname, sshPubLine, userdataExtra)
+	if err != nil {
+		return "", fmt.Errorf("cloud-init user-data: %w", err)
+	}
 
 	seedDir := filepath.Join(dir, "cidata")
 	_ = os.RemoveAll(seedDir)
