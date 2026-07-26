@@ -780,6 +780,129 @@ func TestPauseResumeMock(t *testing.T) {
 	}
 }
 
+func TestSuspendRestoreMock(t *testing.T) {
+	t.Parallel()
+	m, rt, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Suspend(context.Background(), inst.Name); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Get("lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != vm.StatusSuspended {
+		t.Fatalf("status %s want suspended", got.Status)
+	}
+	if got.SuspendedAt.IsZero() {
+		t.Fatal("expected SuspendedAt")
+	}
+	if rt.Running(got) {
+		t.Fatal("process should be stopped after suspend")
+	}
+	if got.PID != 0 {
+		t.Fatalf("pid should be cleared, got %d", got.PID)
+	}
+	// Disk retained
+	if !manager.DiskExists(got.DiskPath) {
+		t.Fatal("disk should remain after suspend")
+	}
+	// Marker written (mock SaveVM succeeds)
+	marker := filepath.Join(filepath.Dir(got.DiskPath), hypervisor.SuspendMarkerName)
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("expected suspend marker: %v", err)
+	}
+	// Start rejected while suspended
+	if _, err := m.Start(context.Background(), "lab"); err == nil {
+		t.Fatal("expected start fail while suspended")
+	}
+	// Double suspend fails
+	if err := m.Suspend(context.Background(), "lab"); err == nil {
+		t.Fatal("expected already suspended")
+	}
+	// Restore
+	got, err = m.Restore(context.Background(), "lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != vm.StatusRunning {
+		t.Fatalf("status %s want running", got.Status)
+	}
+	if !rt.Running(got) {
+		t.Fatal("runtime should be running after restore")
+	}
+	if !got.SuspendedAt.IsZero() {
+		t.Fatal("SuspendedAt should be cleared")
+	}
+	// Marker consumed
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("suspend marker should be cleared after restore")
+	}
+	// Restore only from suspended
+	if _, err := m.Restore(context.Background(), "lab"); err == nil {
+		t.Fatal("expected restore fail when not suspended")
+	}
+}
+
+func TestSuspendRequiresPersistent(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{Name: "ephem"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = m.Suspend(context.Background(), inst.Name)
+	if err == nil || !strings.Contains(err.Error(), "ephemeral") {
+		t.Fatalf("want ephemeral error, got %v", err)
+	}
+}
+
+func TestSuspendFromPaused(t *testing.T) {
+	t.Parallel()
+	m, rt, _ := testManager(t)
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Pause(context.Background(), "lab"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Suspend(context.Background(), "lab"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Get("lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != vm.StatusSuspended {
+		t.Fatalf("status %s", got.Status)
+	}
+	if rt.Running(got) {
+		t.Fatal("should not be running")
+	}
+}
+
+func TestResourceCapSuspendedDoesNotCount(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.MaxVMs = 1
+	cfg.MaxCPUsTotal = 0
+	cfg.MaxMemoryMBTotal = 0
+	m, _, _ := testManagerCfg(t, cfg)
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Suspend(context.Background(), "lab"); err != nil {
+		t.Fatal(err)
+	}
+	// Suspended frees the slot — another create should succeed.
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "other"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAddRemoveLiveForwardMock(t *testing.T) {
 	t.Parallel()
 	m, _, _ := testManager(t)

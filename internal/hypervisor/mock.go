@@ -79,6 +79,19 @@ func (m *MockRuntime) Resume(_ context.Context, inst *vm.Instance) error {
 	return nil
 }
 
+// SaveVM is a no-op success for tests (simulates qcow2 internal snapshot).
+func (m *MockRuntime) SaveVM(_ context.Context, inst *vm.Instance, tag string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.alive[inst.Name] {
+		return fmt.Errorf("vm %q is not running", inst.Name)
+	}
+	if tag == "" {
+		return fmt.Errorf("snapshot tag is required")
+	}
+	return nil
+}
+
 func (m *MockRuntime) Paused(name string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -60,6 +60,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /vms/{name}/start", s.startVM)
 	mux.HandleFunc("POST /vms/{name}/pause", s.pauseVM)
 	mux.HandleFunc("POST /vms/{name}/resume", s.resumeVM)
+	mux.HandleFunc("POST /vms/{name}/suspend", s.suspendVM)
+	mux.HandleFunc("POST /vms/{name}/restore", s.restoreVM)
 	mux.HandleFunc("POST /vms/{name}/forwards", s.addForward)
 	mux.HandleFunc("DELETE /vms/{name}/forwards/{hostPort}", s.removeForward)
 	mux.HandleFunc("POST /vms/{name}/exec", s.execVM)
@@ -339,6 +341,30 @@ func (s *Server) resumeVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"message": "resumed", "name": name})
+}
+
+func (s *Server) suspendVM(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	// savevm can be slow for large guests
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	if err := s.mgr.Suspend(ctx, name); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "suspended", "name": name})
+}
+
+func (s *Server) restoreVM(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ctx, cancel := context.WithTimeout(r.Context(), s.mgr.CreateTimeout())
+	defer cancel()
+	inst, err := s.mgr.Restore(ctx, name)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, inst)
 }
 
 type forwardBody struct {

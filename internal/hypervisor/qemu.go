@@ -114,8 +114,12 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		"-serial", "file:" + filepath.Join(vmDir, "serial.log"),
 		"-pidfile", pidFile,
 		"-qmp", "unix:"+qmpPath+",server,nowait",
-		"-daemonize",
 	}
+	// Restore qcow2 internal snapshot taken at suspend (best-effort full memory state).
+	if tag := strings.TrimSpace(inst.LoadVM); tag != "" {
+		args = append(args, "-loadvm", tag)
+	}
+	args = append(args, "-daemonize")
 
 	// cloud-init NoCloud seed — attach as virtio CD so datasource is found
 	seed := filepath.Join(vmDir, "seed.iso")
@@ -284,6 +288,33 @@ func (q *QEMURuntime) Resume(ctx context.Context, inst *vm.Instance) error {
 		return fmt.Errorf("vm %q has no QMP socket", inst.Name)
 	}
 	return qmpCommand(ctx, qmpPath, "cont")
+}
+
+// SaveVM creates a named qcow2 internal snapshot via HMP savevm.
+// Requires a running QEMU process, QMP socket, and qcow2 root disk.
+func (q *QEMURuntime) SaveVM(ctx context.Context, inst *vm.Instance, tag string) error {
+	if tag == "" {
+		return fmt.Errorf("snapshot tag is required")
+	}
+	if !q.Running(inst) {
+		return fmt.Errorf("vm %q is not running", inst.Name)
+	}
+	disk := inst.DiskPath
+	if disk == "" || !strings.HasSuffix(disk, ".qcow2") {
+		return fmt.Errorf("savevm requires qcow2 disk (got %q)", disk)
+	}
+	qmpPath := QMPPathFor(inst)
+	if qmpPath == "" {
+		return fmt.Errorf("vm %q has no QMP socket", inst.Name)
+	}
+	// savevm can take a while for large guests.
+	saveCtx := ctx
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		saveCtx, cancel = context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+	}
+	return qmpHumanMonitor(saveCtx, qmpPath, "savevm "+tag)
 }
 
 func (q *QEMURuntime) Running(inst *vm.Instance) bool {

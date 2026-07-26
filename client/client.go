@@ -367,6 +367,45 @@ func (c *Client) Resume(ctx context.Context, name string) error {
 	return nil
 }
 
+// Suspend stops a persistent VM and frees host RAM (optional qcow2 savevm).
+// Differs from Pause, which freezes vCPUs while keeping QEMU running.
+func (c *Client) Suspend(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms/"+url.PathEscape(name)+"/suspend", nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// Restore boots a suspended VM (may load a savevm snapshot when available).
+func (c *Client) Restore(ctx context.Context, name string) (*Instance, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms/"+url.PathEscape(name)+"/restore", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var inst Instance
+	if err := json.NewDecoder(res.Body).Decode(&inst); err != nil {
+		return nil, err
+	}
+	return &inst, nil
+}
+
 // AddForward starts a live host→guest TCP forward on a running VM.
 func (c *Client) AddForward(ctx context.Context, name string, hostPort, guestPort int) error {
 	body, err := json.Marshal(map[string]int{

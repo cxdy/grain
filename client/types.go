@@ -6,10 +6,12 @@ import "time"
 type Status string
 
 const (
-	StatusCreating Status = "creating"
-	StatusRunning  Status = "running"
-	StatusStopped  Status = "stopped"
-	StatusError    Status = "error"
+	StatusCreating  Status = "creating"
+	StatusRunning   Status = "running"
+	StatusPaused    Status = "paused"
+	StatusSuspended Status = "suspended"
+	StatusStopped   Status = "stopped"
+	StatusError     Status = "error"
 )
 
 // PortForward maps a host port to a guest port (SLIRP hostfwd).
@@ -53,6 +55,7 @@ type Instance struct {
 	SocketForwards []SocketForward   `json:"socket_forwards,omitempty"`
 	Tags           map[string]string `json:"tags,omitempty"`
 	CreatedAt      time.Time         `json:"created_at"`
+	SuspendedAt    time.Time         `json:"suspended_at,omitempty"`
 	Error          string            `json:"error,omitempty"`
 	DiskPath       string            `json:"disk_path,omitempty"`
 	PID            int               `json:"pid,omitempty"`

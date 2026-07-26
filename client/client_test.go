@@ -80,6 +80,18 @@ func mockDaemon(t *testing.T, token string) *httptest.Server {
 		}
 		writeJSON(w, 200, &client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})
 	})
+	mux.HandleFunc("POST /vms/{name}/suspend", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(w, r, token) {
+			return
+		}
+		writeJSON(w, 200, map[string]string{"message": "suspended", "name": r.PathValue("name")})
+	})
+	mux.HandleFunc("POST /vms/{name}/restore", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(w, r, token) {
+			return
+		}
+		writeJSON(w, 200, &client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})
+	})
 	mux.HandleFunc("POST /vms/{name}/exec", func(w http.ResponseWriter, r *http.Request) {
 		if !checkAuth(w, r, token) {
 			return
@@ -227,6 +239,12 @@ func TestDialHTTPBasicLifecycle(t *testing.T) {
 	}
 	if _, err := c.Start(ctx, "box"); err != nil {
 		t.Fatalf("Start: %v", err)
+	}
+	if err := c.Suspend(ctx, "box"); err != nil {
+		t.Fatalf("Suspend: %v", err)
+	}
+	if _, err := c.Restore(ctx, "box"); err != nil {
+		t.Fatalf("Restore: %v", err)
 	}
 	if err := c.Delete(ctx, "box"); err != nil {
 		t.Fatalf("Delete: %v", err)

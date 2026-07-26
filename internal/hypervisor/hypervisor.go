@@ -12,8 +12,17 @@ type Runtime interface {
 	Stop(ctx context.Context, inst *vm.Instance) error
 	Pause(ctx context.Context, inst *vm.Instance) error
 	Resume(ctx context.Context, inst *vm.Instance) error
+	// SaveVM creates a named internal disk snapshot (qcow2 via HMP savevm).
+	// Mock no-ops successfully; non-qcow2 or missing QMP returns an error.
+	SaveVM(ctx context.Context, inst *vm.Instance, tag string) error
 	Running(inst *vm.Instance) bool
 }
+
+// SuspendSnapshotTag is the qcow2 internal snapshot name used by suspend/restore.
+const SuspendSnapshotTag = "grain-suspend"
+
+// SuspendMarkerName is a small file under the VM dir written after a successful savevm.
+const SuspendMarkerName = "suspend.tag"
 
 // Disk does base image setup and CoW clones for ephemeral disks.
 type Disk interface {

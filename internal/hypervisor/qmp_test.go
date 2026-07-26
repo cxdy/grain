@@ -105,10 +105,13 @@ func TestQMPNegotiateAndCommands(t *testing.T) {
 	if err := c.Quit(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if err := c.HumanMonitorCommand(ctx, "savevm grain-suspend"); err != nil {
+		t.Fatal(err)
+	}
 	mu.Lock()
 	defer mu.Unlock()
-	// first is qmp_capabilities from Dial, then powerdown/stop/cont/quit
-	want := []string{"qmp_capabilities", "system_powerdown", "stop", "cont", "quit"}
+	// first is qmp_capabilities from Dial, then powerdown/stop/cont/quit/hmp
+	want := []string{"qmp_capabilities", "system_powerdown", "stop", "cont", "quit", "human-monitor-command"}
 	if len(cmds) != len(want) {
 		t.Fatalf("cmds %v want %v", cmds, want)
 	}

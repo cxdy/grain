@@ -79,10 +79,18 @@ func (c *QMPClient) Close() error {
 }
 
 func (c *QMPClient) execute(ctx context.Context, cmd string) error {
+	return c.executeArgs(ctx, cmd, nil)
+}
+
+func (c *QMPClient) executeArgs(ctx context.Context, cmd string, args map[string]any) error {
 	if dl, ok := ctx.Deadline(); ok {
 		_ = c.conn.SetDeadline(dl)
 	}
-	if err := c.enc.Encode(map[string]any{"execute": cmd}); err != nil {
+	msg := map[string]any{"execute": cmd}
+	if args != nil {
+		msg["arguments"] = args
+	}
+	if err := c.enc.Encode(msg); err != nil {
 		return fmt.Errorf("qmp %s write: %w", cmd, err)
 	}
 	var resp map[string]any
@@ -121,6 +129,13 @@ func (c *QMPClient) Quit(ctx context.Context) error {
 	return c.execute(ctx, "quit")
 }
 
+// HumanMonitorCommand runs an HMP command via QMP (e.g. "savevm grain-suspend").
+func (c *QMPClient) HumanMonitorCommand(ctx context.Context, cmdline string) error {
+	return c.executeArgs(ctx, "human-monitor-command", map[string]any{
+		"command-line": cmdline,
+	})
+}
+
 // qmpCommand dials, runs a single execute command, and closes.
 func qmpCommand(ctx context.Context, sockPath, execute string) error {
 	c, err := DialQMP(ctx, sockPath)
@@ -129,4 +144,14 @@ func qmpCommand(ctx context.Context, sockPath, execute string) error {
 	}
 	defer c.Close()
 	return c.execute(ctx, execute)
+}
+
+// qmpHumanMonitor dials, runs an HMP command via QMP, and closes.
+func qmpHumanMonitor(ctx context.Context, sockPath, cmdline string) error {
+	c, err := DialQMP(ctx, sockPath)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	return c.HumanMonitorCommand(ctx, cmdline)
 }

@@ -48,6 +48,7 @@ func Root(version string) *cobra.Command {
   grain new --wait agent      wait for agent (ssh|agent|userdata)
   grain stop / start    stop or restart a persistent VM
   grain pause / resume  QMP freeze/unfreeze guest vCPUs
+  grain suspend / restore  stop process (free RAM); restore from disk/snapshot
   grain ls / rm / sh / x / cp
   grain fs              guest readdir/stat/mkdir/rm via agent
   grain profile ls      list named profiles
@@ -70,6 +71,8 @@ func Root(version string) *cobra.Command {
 		cmdStart(&cfgPath),
 		cmdPause(&cfgPath),
 		cmdResume(&cfgPath),
+		cmdSuspend(&cfgPath),
+		cmdRestore(&cfgPath),
 		cmdLs(&cfgPath),
 		cmdRm(&cfgPath),
 		cmdSh(&cfgPath),
@@ -537,6 +540,77 @@ func cmdResume(cfgPath *string) *cobra.Command {
 				return err
 			}
 			fmt.Println("resumed", name)
+			return nil
+		},
+	}
+}
+
+func cmdSuspend(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "suspend [name]",
+		Short: "Suspend a persistent VM (stop QEMU, free RAM; optional qcow2 savevm)",
+		Long: `Suspend stops the QEMU process and frees host RAM while keeping the disk.
+
+Unlike pause (which freezes vCPUs with QEMU still running), suspend requires a
+persistent VM. When the disk is qcow2, grain best-effort savevm's a snapshot
+(grain-suspend) for fuller restore; otherwise restore cold-boots from disk.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c := clientFrom(cfg)
+			name, err := resolveVMName(c, args, false)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			if err := c.Health(ctx); err != nil {
+				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+			}
+			if err := c.Suspend(ctx, name); err != nil {
+				return err
+			}
+			fmt.Println("suspended", name)
+			return nil
+		},
+	}
+}
+
+func cmdRestore(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "restore [name]",
+		Short: "Restore a suspended VM (loadvm snapshot when available)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c := clientFrom(cfg)
+			name, err := resolveVMName(c, args, false)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			if err := c.Health(ctx); err != nil {
+				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+			}
+			stop := createProgress("restoring")
+			start := time.Now()
+			inst, err := c.Restore(ctx, name)
+			stop()
+			if err != nil {
+				return err
+			}
+			fmt.Printf("restored %s  status=%s", inst.Name, inst.Status)
+			if inst.SSHPort > 0 {
+				fmt.Printf("  ssh=:%d", inst.SSHPort)
+			}
+			fmt.Printf("  (%s)\n", time.Since(start).Round(time.Second))
 			return nil
 		},
 	}

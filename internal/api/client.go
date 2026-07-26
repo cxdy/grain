@@ -254,6 +254,44 @@ func (c *Client) Resume(ctx context.Context, name string) error {
 	return nil
 }
 
+// Suspend stops a persistent VM (frees host RAM; optional qcow2 savevm snapshot).
+func (c *Client) Suspend(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+url.PathEscape(name)+"/suspend", nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// Restore boots a suspended VM (loadvm when a suspend snapshot exists).
+func (c *Client) Restore(ctx context.Context, name string) (*vm.Instance, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+url.PathEscape(name)+"/restore", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var inst vm.Instance
+	if err := json.NewDecoder(res.Body).Decode(&inst); err != nil {
+		return nil, err
+	}
+	return &inst, nil
+}
+
 // AddForwardRequest is the JSON body for POST /vms/{name}/forwards.
 type AddForwardRequest struct {
 	HostPort  int `json:"host_port"`

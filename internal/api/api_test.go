@@ -919,6 +919,59 @@ func TestPauseResumeAPI(t *testing.T) {
 	}
 }
 
+func TestSuspendRestoreAPI(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	// Persistent VM required for suspend
+	body := []byte(`{"name":"lab","persistent":true}`)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/lab/suspend", nil))
+	if rr.Code != 200 {
+		t.Fatalf("suspend %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/lab", nil))
+	var inst map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &inst); err != nil {
+		t.Fatal(err)
+	}
+	if inst["status"] != "suspended" {
+		t.Fatalf("status %v", inst["status"])
+	}
+	if inst["suspended_at"] == nil || inst["suspended_at"] == "" {
+		t.Fatal("expected suspended_at")
+	}
+
+	// start while suspended should fail
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/lab/start", nil))
+	if rr.Code == 200 {
+		t.Fatal("expected start reject while suspended")
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/lab/restore", nil))
+	if rr.Code != 200 {
+		t.Fatalf("restore %d %s", rr.Code, rr.Body.String())
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &inst); err != nil {
+		t.Fatal(err)
+	}
+	if inst["status"] != "running" {
+		t.Fatalf("status %v", inst["status"])
+	}
+}
+
 func TestLiveForwardAPI(t *testing.T) {
 	t.Parallel()
 	s := testServer(t)

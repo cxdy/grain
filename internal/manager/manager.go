@@ -620,6 +620,132 @@ func (m *Manager) Resume(ctx context.Context, name string) error {
 	return nil
 }
 
+// Suspend stops a persistent VM and frees host RAM. Differs from Pause (which
+// freezes vCPUs while keeping the QEMU process alive).
+//
+// When the root disk is qcow2, best-effort HMP savevm stores a memory+device
+// snapshot under tag grain-suspend; restore then passes -loadvm. On savevm
+// failure, suspend still succeeds as a disk-persist stop (cold boot on restore).
+func (m *Manager) Suspend(ctx context.Context, name string) error {
+	inst, err := m.st.Get(name)
+	if err != nil {
+		return err
+	}
+	if !inst.Persistent {
+		return fmt.Errorf("vm %q is ephemeral; suspend requires a persistent VM (use stop/rm)", name)
+	}
+	if inst.Status == vm.StatusSuspended {
+		return fmt.Errorf("vm %q is already suspended", name)
+	}
+	if inst.Status != vm.StatusRunning && inst.Status != vm.StatusPaused {
+		return fmt.Errorf("vm %q is not running (status=%s)", name, inst.Status)
+	}
+	if !m.rt.Running(inst) {
+		return fmt.Errorf("vm %q process is not running", name)
+	}
+
+	vmDir := m.st.Dir(name)
+	savedSnap := false
+	if strings.HasSuffix(inst.DiskPath, ".qcow2") || diskLooksQcow2(inst.DiskPath) {
+		if err := m.rt.SaveVM(ctx, inst, hypervisor.SuspendSnapshotTag); err != nil {
+			m.log.Warn("savevm failed; suspending with disk state only",
+				"name", name, "err", err)
+			clearSuspendMarker(vmDir)
+		} else {
+			if err := writeSuspendMarker(vmDir, hypervisor.SuspendSnapshotTag); err != nil {
+				m.log.Warn("suspend marker write failed", "name", name, "err", err)
+			} else {
+				savedSnap = true
+			}
+		}
+	} else {
+		// Mock and raw disks: still mark for restore path consistency when SaveVM works.
+		if err := m.rt.SaveVM(ctx, inst, hypervisor.SuspendSnapshotTag); err == nil {
+			if err := writeSuspendMarker(vmDir, hypervisor.SuspendSnapshotTag); err == nil {
+				savedSnap = true
+			}
+		} else {
+			clearSuspendMarker(vmDir)
+		}
+	}
+
+	m.killLiveForwards(inst)
+	m.killSocketForwards(inst)
+	if err := m.rt.Stop(ctx, inst); err != nil {
+		return err
+	}
+	inst.Status = vm.StatusSuspended
+	inst.SuspendedAt = time.Now().UTC()
+	inst.PID = 0
+	inst.QMPPath = ""
+	inst.LiveForwards = nil
+	inst.LoadVM = ""
+	if err := m.st.Put(inst); err != nil {
+		return err
+	}
+	m.log.Info("vm suspended", "name", name, "snapshot", savedSnap)
+	return nil
+}
+
+// Restore boots a suspended VM. If a savevm snapshot marker exists, QEMU is
+// started with -loadvm; otherwise this is a cold start from the preserved disk
+// (same as Start, but only allowed from status=suspended).
+func (m *Manager) Restore(ctx context.Context, name string) (*vm.Instance, error) {
+	inst, err := m.st.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if inst.Status != vm.StatusSuspended {
+		return nil, fmt.Errorf("vm %q is not suspended (status=%s); use start for stopped VMs", name, inst.Status)
+	}
+	if m.rt.Running(inst) {
+		return nil, fmt.Errorf("vm %q process is unexpectedly still running", name)
+	}
+	if tag, ok := readSuspendMarker(m.st.Dir(name)); ok {
+		inst.LoadVM = tag
+	}
+	return m.startFromDisk(ctx, inst)
+}
+
+func writeSuspendMarker(vmDir, tag string) error {
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(vmDir, hypervisor.SuspendMarkerName), []byte(tag+"\n"), 0o644)
+}
+
+func readSuspendMarker(vmDir string) (string, bool) {
+	b, err := os.ReadFile(filepath.Join(vmDir, hypervisor.SuspendMarkerName))
+	if err != nil {
+		return "", false
+	}
+	tag := strings.TrimSpace(string(b))
+	if tag == "" {
+		return "", false
+	}
+	return tag, true
+}
+
+func clearSuspendMarker(vmDir string) {
+	_ = os.Remove(filepath.Join(vmDir, hypervisor.SuspendMarkerName))
+}
+
+func diskLooksQcow2(path string) bool {
+	if path == "" {
+		return false
+	}
+	// resolveDisk may have already rewritten to .qcow2; also check common siblings.
+	if strings.HasSuffix(path, ".qcow2") {
+		return true
+	}
+	for _, p := range []string{path + ".qcow2", filepath.Join(filepath.Dir(path), "disk.qcow2")} {
+		if st, err := os.Stat(p); err == nil && st.Size() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // AddForward starts an SSH local port forward (ssh -N -L) for a running VM
 // and records it in inst.LiveForwards. hostPort 0 allocates a free port.
 func (m *Manager) AddForward(ctx context.Context, name string, hostPort, guestPort int) (*vm.LiveForward, error) {
@@ -882,10 +1008,14 @@ func killPID(pid int) error {
 }
 
 // Start boots a stopped persistent (or any stored) VM using its existing disk.
+// Suspended VMs must use Restore (may load a savevm snapshot).
 func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) {
 	inst, err := m.st.Get(name)
 	if err != nil {
 		return nil, err
+	}
+	if inst.Status == vm.StatusSuspended {
+		return nil, fmt.Errorf("vm %q is suspended; use restore", name)
 	}
 	if inst.Status == vm.StatusPaused && m.rt.Running(inst) {
 		return nil, fmt.Errorf("vm %q is paused; use resume", name)
@@ -893,6 +1023,14 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 	if inst.Status == vm.StatusRunning && m.rt.Running(inst) {
 		return nil, fmt.Errorf("vm %q already running", name)
 	}
+	// Cold start: never load a suspend snapshot.
+	inst.LoadVM = ""
+	return m.startFromDisk(ctx, inst)
+}
+
+// startFromDisk boots a VM from its existing disk (and optional inst.LoadVM tag).
+func (m *Manager) startFromDisk(ctx context.Context, inst *vm.Instance) (*vm.Instance, error) {
+	name := inst.Name
 	if inst.DiskPath == "" || !DiskExists(inst.DiskPath) {
 		return nil, fmt.Errorf("vm %q has no disk (disk_path missing or gone)", name)
 	}
@@ -933,12 +1071,21 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 		}
 	}
 
+	loadTag := inst.LoadVM
 	// Start uses inst.Mounts for shared-fs device args (9p or virtiofs).
 	if err := m.rt.Start(ctx, inst, inst.DiskPath); err != nil {
+		inst.LoadVM = ""
 		return m.fail(inst, fmt.Errorf("start: %w", err))
 	}
+	inst.LoadVM = ""
 	inst.Status = vm.StatusRunning
 	inst.Error = ""
+	inst.SuspendedAt = time.Time{}
+	// Snapshot was consumed (or not present); clear marker so a later cold start
+	// does not accidentally -loadvm.
+	if loadTag != "" {
+		clearSuspendMarker(vmDir)
+	}
 	if err := m.st.Put(inst); err != nil {
 		return nil, err
 	}
@@ -965,6 +1112,7 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 		"ssh_port", inst.SSHPort,
 		"agent_port", inst.AgentPort,
 		"agent_cid", inst.AgentCID,
+		"loadvm", loadTag != "",
 	)
 	return inst, nil
 }

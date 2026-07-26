@@ -300,6 +300,56 @@ paths:
         "400":
           $ref: "#/components/responses/Error"
 
+  /vms/{name}/suspend:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [vms]
+      summary: Suspend persistent VM (stop process, free host RAM)
+      description: |
+        Unlike pause (QMP stop, process stays alive), suspend stops QEMU and frees host RAM.
+        Persistent VMs only. When the root disk is qcow2, best-effort HMP savevm stores a
+        snapshot tag grain-suspend for restore via -loadvm; otherwise restore cold-boots from disk.
+      operationId: suspendVM
+      responses:
+        "200":
+          description: Suspended
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  name:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /vms/{name}/restore:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [vms]
+      summary: Restore a suspended VM
+      description: |
+        Only allowed from status=suspended. Loads qcow2 internal snapshot when a suspend
+        marker exists; otherwise starts from preserved disk like a cold boot.
+      operationId: restoreVM
+      responses:
+        "200":
+          description: Running instance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /vms/{name}/forwards:
     parameters:
       - $ref: "#/components/parameters/VMName"
@@ -811,7 +861,11 @@ components:
           type: string
         status:
           type: string
-          enum: [creating, running, stopped, error]
+          enum: [creating, running, paused, suspended, stopped, error]
+        suspended_at:
+          type: string
+          format: date-time
+          description: Set when status is suspended
         persistent:
           type: boolean
         cpus:

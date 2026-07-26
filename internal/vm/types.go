@@ -8,11 +8,12 @@ import (
 type Status string
 
 const (
-	StatusCreating Status = "creating"
-	StatusRunning  Status = "running"
-	StatusPaused   Status = "paused"
-	StatusStopped  Status = "stopped"
-	StatusError    Status = "error"
+	StatusCreating   Status = "creating"
+	StatusRunning    Status = "running"
+	StatusPaused     Status = "paused"
+	StatusSuspended  Status = "suspended"
+	StatusStopped    Status = "stopped"
+	StatusError      Status = "error"
 )
 
 // PortForward maps a host port to a guest port (SLIRP hostfwd).
@@ -77,13 +78,18 @@ type Instance struct {
 	Mounts    []Mount           `json:"mounts,omitempty"`
 	Tags      map[string]string `json:"tags,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
-	Error     string            `json:"error,omitempty"`
+	// SuspendedAt is set when the VM is suspended (process stopped; disk retained).
+	SuspendedAt time.Time `json:"suspended_at,omitempty"`
+	Error       string    `json:"error,omitempty"`
 	// DiskPath is host path to the root disk image.
 	DiskPath string `json:"disk_path,omitempty"`
 	// PID of hypervisor process when running.
 	PID int `json:"pid,omitempty"`
 	// QMPPath is the QEMU monitor unix socket (vmDir/qmp.sock when using QEMU).
 	QMPPath string `json:"qmp_path,omitempty"`
+	// LoadVM is a transient QEMU -loadvm snapshot tag applied on the next Start
+	// (not persisted to meta.json).
+	LoadVM string `json:"-"`
 }
 
 // Wait mode constants for CreateOpts.WaitMode.
