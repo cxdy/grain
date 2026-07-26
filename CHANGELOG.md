@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Virtio-9p mounts** — `-v HOST:GUEST` (and virtiofs on Linux when virtiofsd is available).
 - **Profiles & presets** — named create profiles in config; embedded `docker` and `k3s` userdata presets.
 - **OpenAPI + Go client SDK** — `api/openapi.yaml`, optional Bearer `api_token` / `GRAIN_TOKEN`, public `github.com/cxdy/grain/client`.
+- **TypeScript client SDK** — `sdk/ts` (`@cxdy/grain`) thin fetch client for Node automation.
 - **Experimental Firecracker** backend on Linux (raw rootfs, vsock agent, known limits documented).
 - **Boot benchmark** — `scripts/bench-create.sh` times N creates and prints p50/p95/avg.
 - Install script, recipes (coding-agent, k3s, docker-socket, ci-ephemeral), and feature docs (agent, images, proxy, firecracker, mounts, networking, profiles).
@@ -32,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create readiness auto-selects **agent wait** for golden / HasAgent images.
 - Release binaries can ship the guest agent for multi-arch deploys.
 
+### Explicitly deferred (out of scope for v0.1)
+
+- macOS menu-bar tray app, Rosetta x86_64 guests, GPU/PCI passthrough
+- Full HA multi-node cluster networking (single-node k3s preset only)
+- Production-hardened Firecracker (still experimental)
+- Measured sub-second marketing claims without hardware bench (use `scripts/bench-create.sh`)
+
 ### Notes
 
-- v0.1.0-dev journey: control plane → cloud images & SSH → guest agent → golden bake/publish → proxy/secrets → Firecracker spike → multi-distro catalog polish.
+- v0.1.0-dev journey: control plane → cloud images & SSH → guest agent → golden bake/publish → proxy/secrets → Firecracker spike → multi-distro + TS SDK polish.
