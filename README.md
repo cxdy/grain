@@ -64,7 +64,7 @@ brew install qemu
 | `fwd ls` | list SSH + published port forwards |
 | `cp` | `host path` or `NAME:path` (prefers agent Put/Get; scp fallback; `--agent` / `--ssh`) |
 | `fs ls` / `stat` / `mkdir` / `rm` | guest filesystem via agent (no SSH) |
-| `image ls` / `image pull` | base images |
+| `image ls` / `image pull` / `image import` | base images (pull ubuntu-cloud; import grain-ubuntu golden) |
 | `doctor` | dependency check |
 | `version` | print version |
 
@@ -86,16 +86,24 @@ grain profile ls
 | [docs/networking.md](docs/networking.md) | SLIRP, SSH, `--publish`, `fwd ls`, privileged ports |
 | [docs/mounts.md](docs/mounts.md) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
 | [docs/profiles.md](docs/profiles.md) | named profiles, docker/k3s presets |
-| [docs/images.md](docs/images.md) | `ubuntu-cloud`, pull once, SHA verify |
+| [docs/images.md](docs/images.md) | `ubuntu-cloud`, `grain-ubuntu` golden import/bake, SHA verify |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
 
 ## How it works
 
 1. **Daemon** (`grain up`) — unix socket API + optional TCP `/metrics`
-2. **Image** — download once (`ubuntu-cloud` default)
+2. **Image** — download once (`ubuntu-cloud` default), or import a baked golden (`grain-ubuntu`)
 3. **Disk** — qcow2 overlay or APFS CoW clone per VM
 4. **Boot** — QEMU (HVF on Apple Silicon) + cloud-init seed (SSH key)
 5. **Access** — SSH via host-forwarded port; grain manages the key in `~/.grain/ssh/`
+
+**Golden image (optional):** bake once so creates skip SSH agent deploy:
+
+```bash
+make agent-linux && ./scripts/bake-golden.sh
+grain new -i grain-ubuntu
+# or: grain image import ./my-golden.qcow2 --id grain-ubuntu
+```
 
 Ephemeral VMs are removed on `rm`, `stop`, or daemon stop. Persistent (`-p`) keep their disk and can be brought back with `start`.
 

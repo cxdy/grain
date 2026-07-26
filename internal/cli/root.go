@@ -19,6 +19,7 @@ import (
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/daemon"
 	"github.com/cxdy/grain/internal/guest"
+	"github.com/cxdy/grain/internal/image"
 	"github.com/cxdy/grain/internal/observability"
 	"github.com/spf13/cobra"
 )
@@ -35,6 +36,7 @@ func Root(version string) *cobra.Command {
 
   grain up              start daemon
   grain image pull      download base OS image
+  grain image import    register local golden qcow2
   grain new             ephemeral sandbox
   grain new -p          persistent sandbox
   grain new -P 8080:80  publish host:guest ports
@@ -743,6 +745,31 @@ func cmdImage(cfgPath *string) *cobra.Command {
 			},
 		},
 	)
+
+	var importID string
+	imp := &cobra.Command{
+		Use:   "import <path>",
+		Short: "Register a local qcow2/raw disk as a catalog image",
+		Long: `Copy or convert a local disk into ~/.grain/images/<id>/disk.qcow2.
+
+Default id is grain-ubuntu (agent-ready golden image). Example:
+
+  grain image import ./golden.qcow2
+  grain image import ~/.grain/vms/bake-vm/disk.img.qcow2 --id grain-ubuntu
+  grain new -i grain-ubuntu
+
+See scripts/bake-golden.sh and docs/images.md for baking from ubuntu-cloud.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			return runImageImport(cfg, args[0], importID)
+		},
+	}
+	imp.Flags().StringVar(&importID, "id", image.IDGrainUbuntu, "catalog image id")
+	c.AddCommand(imp)
 	return c
 }
 

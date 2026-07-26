@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -45,6 +47,50 @@ func (m *Manager) DiskPath(id string) (string, error) {
 func (m *Manager) Ready(id string) bool {
 	_, err := m.DiskPath(id)
 	return err == nil
+}
+
+// ImageHasAgent reports whether the base image is expected to ship grain-agent.
+// Order: local metadata has_agent, then catalog Spec.HasAgent.
+func (m *Manager) ImageHasAgent(id string) bool {
+	if b, ok := m.readHasAgentMeta(id); ok {
+		return b
+	}
+	if spec, err := Get(id); err == nil {
+		return spec.HasAgent
+	}
+	return false
+}
+
+func (m *Manager) readHasAgentMeta(id string) (bool, bool) {
+	p := filepath.Join(m.Dir(id), "has_agent")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return false, false
+	}
+	s := strings.TrimSpace(string(b))
+	switch s {
+	case "1", "true", "yes":
+		return true, true
+	case "0", "false", "no":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func (m *Manager) writeMeta(id string, spec Spec, hasAgent bool) {
+	dir := m.Dir(id)
+	if spec.URL != "" {
+		_ = os.WriteFile(filepath.Join(dir, "source.url"), []byte(spec.URL+"\n"), 0o644)
+	}
+	if spec.SSHUser != "" {
+		_ = os.WriteFile(filepath.Join(dir, "ssh_user"), []byte(spec.SSHUser+"\n"), 0o644)
+	}
+	val := "false"
+	if hasAgent {
+		val = "true"
+	}
+	_ = os.WriteFile(filepath.Join(dir, "has_agent"), []byte(val+"\n"), 0o644)
 }
 
 // fileSHA256 returns the hex-encoded SHA256 of the file at path.
@@ -85,7 +131,13 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 	if err != nil {
 		return err
 	}
-	if spec.URL == "" {
+	if spec.LocalOnly || spec.URL == "" {
+		if m.Ready(id) {
+			return nil
+		}
+		if spec.LocalOnly {
+			return fmt.Errorf("image %q is local-only (run: grain image import <path> --id %s)", id, id)
+		}
 		return fmt.Errorf("image %q has no download URL for this architecture", id)
 	}
 	if m.Ready(id) {
@@ -170,9 +222,134 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 	if err := os.Rename(partial, dest); err != nil {
 		return err
 	}
-	_ = os.WriteFile(filepath.Join(dir, "source.url"), []byte(spec.URL+"\n"), 0o644)
-	_ = os.WriteFile(filepath.Join(dir, "ssh_user"), []byte(spec.SSHUser+"\n"), 0o644)
+	m.writeMeta(id, spec, spec.HasAgent)
 	return nil
+}
+
+// Import registers a local disk image as catalog id under images/<id>/disk.qcow2.
+// srcPath may be qcow2, raw, or img; when qemu-img is available non-qcow2 sources
+// are converted. Overwrites an existing local base for id.
+//
+// For grain-ubuntu (or any Spec.HasAgent), metadata has_agent=true is written.
+// Unknown ids are rejected; use a catalog entry.
+func (m *Manager) Import(ctx context.Context, id, srcPath string) error {
+	if id == "" {
+		return fmt.Errorf("import: empty image id")
+	}
+	if srcPath == "" {
+		return fmt.Errorf("import: empty source path")
+	}
+	spec, err := Get(id)
+	if err != nil {
+		return err
+	}
+	abs, err := filepath.Abs(srcPath)
+	if err != nil {
+		return fmt.Errorf("import: %w", err)
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		return fmt.Errorf("import: source: %w", err)
+	}
+	if st.IsDir() {
+		return fmt.Errorf("import: source is a directory: %s", abs)
+	}
+	if st.Size() < 1024*1024 {
+		return fmt.Errorf("import: source too small (%d bytes): %s", st.Size(), abs)
+	}
+
+	dir := m.Dir(id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+
+	dest := filepath.Join(dir, "disk.qcow2")
+	// Avoid copying onto itself when re-importing from the same path.
+	if sameFile(abs, dest) {
+		m.writeMeta(id, spec, hasAgentForImport(spec, id))
+		return nil
+	}
+
+	// Remove previous base disks so Ready/DiskPath see the new one.
+	for _, name := range []string{"disk.qcow2", "disk.img", "disk.raw"} {
+		_ = os.Remove(filepath.Join(dir, name))
+	}
+
+	partial := dest + ".partial"
+	_ = os.Remove(partial)
+
+	if err := materializeQcow2(ctx, abs, partial); err != nil {
+		_ = os.Remove(partial)
+		return err
+	}
+	if err := os.Rename(partial, dest); err != nil {
+		_ = os.Remove(partial)
+		return err
+	}
+
+	// Record provenance
+	_ = os.WriteFile(filepath.Join(dir, "source.import"), []byte(abs+"\n"), 0o644)
+	m.writeMeta(id, spec, hasAgentForImport(spec, id))
+	return nil
+}
+
+func hasAgentForImport(spec Spec, id string) bool {
+	if spec.HasAgent {
+		return true
+	}
+	// Explicit golden id always marks agent baked even if catalog drifts.
+	return id == IDGrainUbuntu
+}
+
+// materializeQcow2 copies or converts src into dest as qcow2.
+func materializeQcow2(ctx context.Context, src, dest string) error {
+	ext := strings.ToLower(filepath.Ext(src))
+	// Prefer qemu-img convert to flatten overlay chains into a standalone base.
+	if _, err := exec.LookPath("qemu-img"); err == nil {
+		cmd := exec.CommandContext(ctx, "qemu-img", "convert", "-O", "qcow2", src, dest)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			// Fall back to plain copy for already-standalone qcow2 if convert fails.
+			if ext == ".qcow2" {
+				if cerr := copyFile(src, dest); cerr == nil {
+					return nil
+				}
+			}
+			return fmt.Errorf("qemu-img convert: %w (%s)", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+
+	// No qemu-img: only allow direct copy of qcow2-looking sources.
+	if ext != ".qcow2" && ext != ".img" {
+		return fmt.Errorf("import: qemu-img not found; need it to convert %s (brew install qemu)", ext)
+	}
+	return copyFile(src, dest)
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Close()
+}
+
+func sameFile(a, b string) bool {
+	ai, err1 := os.Stat(a)
+	bi, err2 := os.Stat(b)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return os.SameFile(ai, bi)
 }
 
 // ListLocal returns ids that appear pulled.

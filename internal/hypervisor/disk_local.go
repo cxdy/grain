@@ -31,8 +31,13 @@ func (d *LocalDisk) EnsureBase(ctx context.Context, imageID string) (string, err
 	}
 	if !d.Images.Ready(imageID) {
 		// Auto-pull when base is missing (progress nil: silent; CLI pull still prints).
+		// Local-only catalog ids (e.g. grain-ubuntu) must be imported, not pulled.
 		if err := d.Images.Pull(ctx, imageID, nil); err != nil {
-			return "", fmt.Errorf("image %q not ready: %w (try: grain image pull %s)", imageID, err, imageID)
+			hint := fmt.Sprintf("try: grain image pull %s", imageID)
+			if spec, gerr := image.Get(imageID); gerr == nil && spec.LocalOnly {
+				hint = fmt.Sprintf("try: grain image import <path> --id %s", imageID)
+			}
+			return "", fmt.Errorf("image %q not ready: %w (%s)", imageID, err, hint)
 		}
 	}
 	p, err := d.Images.DiskPath(imageID)

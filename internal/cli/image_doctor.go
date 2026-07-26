@@ -16,17 +16,23 @@ import (
 func runImageLS(cfg config.Config) error {
 	cat := image.Catalog()
 	imgs := image.NewManager(cfg.DataDir)
-	fmt.Printf("%-16s %-8s %s\n", "ID", "LOCAL", "DESCRIPTION")
+	fmt.Printf("%-16s %-8s %-8s %s\n", "ID", "LOCAL", "AGENT", "DESCRIPTION")
 	for id, spec := range cat {
 		local := "no"
 		if imgs.Ready(id) {
 			local = "yes"
 		}
+		agent := "no"
+		if imgs.ImageHasAgent(id) || spec.HasAgent {
+			agent = "yes"
+		}
 		desc := spec.Description
-		if spec.URL == "" {
+		if spec.LocalOnly {
+			desc += " (import)"
+		} else if spec.URL == "" {
 			desc += " (unavailable on " + runtime.GOARCH + ")"
 		}
-		fmt.Printf("%-16s %-8s %s\n", id, local, desc)
+		fmt.Printf("%-16s %-8s %-8s %s\n", id, local, agent, desc)
 	}
 	return nil
 }
@@ -39,6 +45,9 @@ func runImagePull(cfg config.Config, id string) error {
 	spec, err := image.Get(id)
 	if err != nil {
 		return err
+	}
+	if spec.LocalOnly {
+		return fmt.Errorf("image %q is local-only — run: grain image import <path> --id %s", id, id)
 	}
 	if spec.URL == "" {
 		return fmt.Errorf("image %q cannot be pulled on %s", id, runtime.GOARCH)
@@ -66,6 +75,39 @@ func runImagePull(cfg config.Config, id string) error {
 	if spec.SSHUser != "" {
 		fmt.Printf("ssh user: %s\n", spec.SSHUser)
 	}
+	return nil
+}
+
+func runImageImport(cfg config.Config, srcPath, id string) error {
+	if err := cfg.EnsureDirs(); err != nil {
+		return err
+	}
+	if id == "" {
+		id = image.IDGrainUbuntu
+	}
+	if _, err := image.Get(id); err != nil {
+		return err
+	}
+	m := image.NewManager(cfg.DataDir)
+	fmt.Printf("importing %s → %s …\n", srcPath, id)
+	start := time.Now()
+	if err := m.Import(context.Background(), id, srcPath); err != nil {
+		return err
+	}
+	p, err := m.DiskPath(id)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("ok %s in %s\n", id, time.Since(start).Round(time.Second))
+	fmt.Printf("disk: %s\n", p)
+	if m.ImageHasAgent(id) {
+		fmt.Println("has_agent: true (create will prefer guest agent wait)")
+	}
+	spec, _ := image.Get(id)
+	if spec.SSHUser != "" {
+		fmt.Printf("ssh user: %s\n", spec.SSHUser)
+	}
+	fmt.Printf("use: grain new -i %s\n", id)
 	return nil
 }
 

@@ -24,6 +24,10 @@ import (
 // ship grain-agent (golden images). On failure we attempt SSH deploy.
 const agentProbeTimeout = 3 * time.Second
 
+// agentBakedWait is the initial wait when Spec.HasAgent / has_agent metadata
+// says the agent is baked into the image (prefer wait over SSH deploy).
+const agentBakedWait = 45 * time.Second
+
 // agentWaitFallback is used when the ReadyTimeout budget is exhausted after SSH.
 const agentWaitFallback = 60 * time.Second
 
@@ -401,6 +405,8 @@ func (m *Manager) resolveSSHUser(img string) string {
 
 // waitOrDeployAgent probes the guest agent, deploys it over SSH when missing,
 // then waits for /health. Failures are logged as warnings only (M1 soft dependency).
+// When the image has a baked-in agent (catalog HasAgent or has_agent metadata),
+// prefer a longer WaitAgent before SSH deploy (still soft-fail).
 // emit may be nil (e.g. Start); when set, PhaseWaitAgent events are sent.
 func (m *Manager) waitOrDeployAgent(
 	ctx context.Context,
@@ -411,26 +417,38 @@ func (m *Manager) waitOrDeployAgent(
 ) {
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort)
 	client := &agent.Client{BaseURL: baseURL}
+	baked := m.imageHasAgent(inst.Image)
 
 	if emit != nil {
+		msg := "waiting for guest agent"
+		if baked {
+			msg = "waiting for baked-in guest agent"
+		}
 		emit(vm.CreateEvent{
 			Phase:   vm.PhaseWaitAgent,
 			Name:    inst.Name,
-			Message: "waiting for guest agent",
+			Message: msg,
 			SSHPort: inst.SSHPort,
 		})
 	}
 
-	// Short probe: golden images may already have the agent.
-	probeCtx, probeCancel := context.WithTimeout(ctx, agentProbeTimeout)
+	// Short probe, or longer wait for golden images that already ship the agent.
+	probeFor := agentProbeTimeout
+	if baked {
+		probeFor = agentBakedWait
+		if rem := time.Until(readyDeadline); rem > 0 && rem < probeFor {
+			probeFor = rem
+		}
+	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, probeFor)
 	probeErr := agent.Wait(probeCtx, client)
 	probeCancel()
 	if probeErr == nil {
-		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort)
+		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "baked", baked)
 		return
 	}
 
-	// Deploy if we have a linux binary.
+	// Deploy if we have a linux binary (golden images usually skip this path).
 	binPath, err := agent.LinuxBinaryPath(m.cfg.DataDir)
 	if err != nil {
 		m.log.Warn("guest agent not ready (no deploy binary)",
@@ -466,6 +484,14 @@ func (m *Manager) waitOrDeployAgent(
 		return
 	}
 	m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort)
+}
+
+// imageHasAgent reports whether the base image ships grain-agent (catalog or local meta).
+func (m *Manager) imageHasAgent(img string) bool {
+	if img == "" {
+		return false
+	}
+	return image.NewManager(m.cfg.DataDir).ImageHasAgent(img)
 }
 
 func (m *Manager) CleanupEphemeral(ctx context.Context) error {
