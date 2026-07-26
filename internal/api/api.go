@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/cxdy/grain/internal/manager"
@@ -83,15 +85,25 @@ type createBody struct {
 	Userdata   string            `json:"userdata"`
 }
 
+func wantsCreateStream(r *http.Request) bool {
+	if r.URL.Query().Get("stream") == "1" {
+		return true
+	}
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "application/x-ndjson")
+}
+
 func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	var body createBody
 	if r.Body != nil {
 		defer r.Body.Close()
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	timeout := s.mgr.CreateTimeout()
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
-	inst, err := s.mgr.Create(ctx, vm.CreateOpts{
+
+	opts := vm.CreateOpts{
 		Name:       body.Name,
 		Persistent: body.Persistent,
 		CPUs:       body.CPUs,
@@ -100,7 +112,14 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		Image:      body.Image,
 		Tags:       body.Tags,
 		Userdata:   body.Userdata,
-	})
+	}
+
+	if wantsCreateStream(r) {
+		s.createVMStream(w, ctx, opts)
+		return
+	}
+
+	inst, err := s.mgr.Create(ctx, opts)
 	if err != nil {
 		s.met.CreateErrors.Add(1)
 		writeErr(w, http.StatusBadRequest, err)
@@ -109,6 +128,75 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	s.met.VMsCreated.Add(1)
 	s.met.VMsRunning.Add(1)
 	writeJSON(w, http.StatusCreated, inst)
+}
+
+// createVMStream writes NDJSON CreateEvent lines as create proceeds.
+func (s *Server) createVMStream(w http.ResponseWriter, ctx context.Context, opts vm.CreateOpts) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// fallback: buffer all events then write
+		var events []vm.CreateEvent
+		opts.OnEvent = func(ev vm.CreateEvent) {
+			events = append(events, ev)
+		}
+		inst, err := s.mgr.Create(ctx, opts)
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		enc := json.NewEncoder(w)
+		for _, ev := range events {
+			_ = enc.Encode(ev)
+		}
+		if err != nil && (len(events) == 0 || events[len(events)-1].Phase != vm.PhaseError) {
+			_ = enc.Encode(vm.CreateEvent{Phase: vm.PhaseError, Error: err.Error(), Message: err.Error()})
+		}
+		if err != nil {
+			s.met.CreateErrors.Add(1)
+			return
+		}
+		_ = inst
+		s.met.VMsCreated.Add(1)
+		s.met.VMsRunning.Add(1)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	enc := json.NewEncoder(w)
+	var writeMu sync.Mutex
+	writeEv := func(ev vm.CreateEvent) {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		_ = enc.Encode(ev)
+		flusher.Flush()
+	}
+	opts.OnEvent = writeEv
+
+	var sawError bool
+	prev := opts.OnEvent
+	opts.OnEvent = func(ev vm.CreateEvent) {
+		if ev.Phase == vm.PhaseError {
+			sawError = true
+		}
+		if prev != nil {
+			prev(ev)
+		}
+	}
+
+	inst, err := s.mgr.Create(ctx, opts)
+	if err != nil {
+		s.met.CreateErrors.Add(1)
+		if !sawError {
+			writeEv(vm.CreateEvent{Phase: vm.PhaseError, Error: err.Error(), Message: err.Error()})
+		}
+		return
+	}
+	_ = inst
+	s.met.VMsCreated.Add(1)
+	s.met.VMsRunning.Add(1)
 }
 
 func (s *Server) getVM(w http.ResponseWriter, r *http.Request) {
@@ -143,7 +231,7 @@ func (s *Server) shutdownVM(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) startVM(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), s.mgr.CreateTimeout())
 	defer cancel()
 	inst, err := s.mgr.Start(ctx, name)
 	if err != nil {

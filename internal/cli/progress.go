@@ -5,10 +5,12 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/cxdy/grain/internal/vm"
 )
 
-// createProgress prints a live status line while Create blocks on disk/boot/SSH.
-// Call the returned stop func when done; it clears the line on a TTY.
+// createProgress prints a live status line with time-based stage heuristics.
+// Prefer createProgressEvents when streaming phases from the daemon.
 func createProgress(label string) (stop func()) {
 	if label == "" {
 		label = "creating"
@@ -25,14 +27,12 @@ func createProgress(label string) (stop func()) {
 		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		i := 0
 		lastStage := ""
-		// faster tick on TTY for smooth spinner; slower off-TTY for stage lines
 		interval := 80 * time.Millisecond
 		if !tty {
 			interval = 400 * time.Millisecond
 		}
 		t := time.NewTicker(interval)
 		defer t.Stop()
-		// first paint immediately
 		lastStage = createStage(0)
 		printCreateProgress(tty, frames[0], label, lastStage, 0)
 		for {
@@ -60,11 +60,79 @@ func createProgress(label string) (stop func()) {
 			close(done)
 			<-finished
 			if tty {
-				// clear spinner line so the next printf starts clean
 				fmt.Fprint(os.Stderr, "\r\033[K")
 			}
 		})
 	}
+}
+
+// createProgressEvents starts a TTY spinner driven by CreateEvent phases.
+// Call onEvent for each event; call stop when finished (clears the line).
+func createProgressEvents(label string) (onEvent func(vm.CreateEvent), stop func()) {
+	if label == "" {
+		label = "creating"
+	}
+
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	var once sync.Once
+	start := time.Now()
+	tty := isTerminal(os.Stderr)
+
+	var mu sync.Mutex
+	stage := "starting"
+
+	go func() {
+		defer close(finished)
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		i := 0
+		lastPrinted := ""
+		interval := 80 * time.Millisecond
+		if !tty {
+			interval = 400 * time.Millisecond
+		}
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		printCreateProgress(tty, frames[0], label, stage, 0)
+		lastPrinted = stage
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				mu.Lock()
+				cur := stage
+				mu.Unlock()
+				elapsed := time.Since(start)
+				if tty {
+					printCreateProgress(true, frames[i%len(frames)], label, cur, elapsed)
+					i++
+					continue
+				}
+				if cur != lastPrinted {
+					printCreateProgress(false, "", label, cur, elapsed)
+					lastPrinted = cur
+				}
+			}
+		}
+	}()
+
+	onEvent = func(ev vm.CreateEvent) {
+		mu.Lock()
+		stage = phaseLabel(ev.Phase)
+		mu.Unlock()
+	}
+
+	stop = func() {
+		once.Do(func() {
+			close(done)
+			<-finished
+			if tty {
+				fmt.Fprint(os.Stderr, "\r\033[K")
+			}
+		})
+	}
+	return onEvent, stop
 }
 
 func printCreateProgress(tty bool, frame, label, stage string, elapsed time.Duration) {
@@ -76,7 +144,32 @@ func printCreateProgress(tty bool, frame, label, stage string, elapsed time.Dura
 	fmt.Fprintf(os.Stderr, "%s: %s (%s)\n", label, stage, e)
 }
 
-// createStage is heuristic (API is one blocking call) but tracks the real wait phases.
+// phaseLabel maps CreateEvent phases to short spinner labels.
+func phaseLabel(phase string) string {
+	switch phase {
+	case vm.PhaseImage:
+		return "image"
+	case vm.PhaseDisk:
+		return "disk"
+	case vm.PhaseSeed:
+		return "seed"
+	case vm.PhaseQEMU:
+		return "boot"
+	case vm.PhaseWaitSSH:
+		return "waiting ssh"
+	case vm.PhaseReady:
+		return "ready"
+	case vm.PhaseError:
+		return "error"
+	default:
+		if phase == "" {
+			return "starting"
+		}
+		return phase
+	}
+}
+
+// createStage is a time-heuristic fallback when events are unavailable.
 func createStage(d time.Duration) string {
 	switch {
 	case d < 2*time.Second:

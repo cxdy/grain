@@ -1,12 +1,15 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/cxdy/grain/internal/vm"
 )
@@ -23,7 +26,7 @@ type CreateRequest struct {
 	Userdata   string            `json:"userdata,omitempty"`
 }
 
-// Create launches a VM via the daemon API.
+// Create launches a VM via the daemon API (blocking JSON response).
 func (c *Client) Create(ctx context.Context, req CreateRequest) (*vm.Instance, error) {
 	b, err := json.Marshal(req)
 	if err != nil {
@@ -47,6 +50,75 @@ func (c *Client) Create(ctx context.Context, req CreateRequest) (*vm.Instance, e
 		return nil, err
 	}
 	return &inst, nil
+}
+
+// CreateStream POSTs /vms?stream=1 and reads NDJSON CreateEvent lines.
+// onEvent is called for each event (may be nil). Returns the instance from the ready event.
+func (c *Client) CreateStream(ctx context.Context, req CreateRequest, onEvent func(vm.CreateEvent)) (*vm.Instance, error) {
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms?stream=1", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/x-ndjson")
+	res, err := c.http().Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+
+	var inst *vm.Instance
+	var streamErr error
+	sc := bufio.NewScanner(res.Body)
+	// allow large instance JSON lines
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var ev vm.CreateEvent
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			return nil, fmt.Errorf("decode create event: %w", err)
+		}
+		if onEvent != nil {
+			onEvent(ev)
+		}
+		switch ev.Phase {
+		case vm.PhaseReady:
+			if ev.Instance != nil {
+				inst = ev.Instance
+			} else if ev.Name != "" {
+				inst = &vm.Instance{Name: ev.Name, Status: vm.StatusRunning, SSHPort: ev.SSHPort}
+			}
+		case vm.PhaseError:
+			msg := ev.Error
+			if msg == "" {
+				msg = ev.Message
+			}
+			if msg == "" {
+				msg = "create failed"
+			}
+			streamErr = errors.New(msg)
+		}
+	}
+	if err := sc.Err(); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if streamErr != nil {
+		return nil, streamErr
+	}
+	if inst == nil {
+		return nil, errors.New("create stream ended without ready event")
+	}
+	return inst, nil
 }
 
 // Get returns a single VM by name.

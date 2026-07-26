@@ -46,4 +46,6 @@ type CreateOpts struct {
 	// Userdata is optional first-boot cloud-init: a shell snippet (appended as
 	// runcmd) or a full #cloud-config document (structure-merged into the base).
 	Userdata string
+	// OnEvent receives progress phases during Create (optional; not serialized).
+	OnEvent func(CreateEvent)
 }

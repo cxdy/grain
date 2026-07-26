@@ -208,3 +208,38 @@ func TestListRefreshesStopped(t *testing.T) {
 		t.Fatalf("want stopped, got %+v", list)
 	}
 }
+
+
+func TestCreateEmitsEvents(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	var phases []string
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name: "ev1",
+		OnEvent: func(ev vm.CreateEvent) {
+			phases = append(phases, ev.Phase)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Name != "ev1" {
+		t.Fatalf("name %s", inst.Name)
+	}
+	want := []string{
+		vm.PhaseImage,
+		vm.PhaseDisk,
+		vm.PhaseSeed,
+		vm.PhaseQEMU,
+		vm.PhaseWaitSSH,
+		vm.PhaseReady,
+	}
+	if len(phases) != len(want) {
+		t.Fatalf("phases %v want %v", phases, want)
+	}
+	for i := range want {
+		if phases[i] != want[i] {
+			t.Fatalf("phase[%d]=%s want %s (all %v)", i, phases[i], want[i], phases)
+		}
+	}
+}

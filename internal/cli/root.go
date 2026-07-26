@@ -193,9 +193,9 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				}
 				userdata = string(b)
 			}
-			stop := createProgress("creating")
+			onEvent, stop := createProgressEvents("creating")
 			start := time.Now()
-			inst, err := c.Create(ctx, api.CreateRequest{
+			inst, err := c.CreateStream(ctx, api.CreateRequest{
 				Name:       name,
 				Persistent: persistent,
 				CPUs:       cpus,
@@ -203,7 +203,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				DiskGB:     disk,
 				Image:      image,
 				Userdata:   userdata,
-			})
+			}, onEvent)
 			stop()
 			if err != nil {
 				return err
@@ -424,9 +424,9 @@ func resolveVMName(c *api.Client, args []string, createIfEmpty bool) (string, er
 		}
 		createCtx, createCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer createCancel()
-		stop := createProgress("no vms — creating")
+		onEvent, stop := createProgressEvents("no vms — creating")
 		start := time.Now()
-		inst, err := c.Create(createCtx, api.CreateRequest{})
+		inst, err := c.CreateStream(createCtx, api.CreateRequest{}, onEvent)
 		stop()
 		if err != nil {
 			return "", fmt.Errorf("auto-create failed: %w\n  try: grain image pull && grain new", err)

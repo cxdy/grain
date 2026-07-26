@@ -1,10 +1,12 @@
 package api_test
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/cxdy/grain/internal/manager"
 	"github.com/cxdy/grain/internal/observability"
 	"github.com/cxdy/grain/internal/store"
+	"github.com/cxdy/grain/internal/vm"
 )
 
 func testServer(t *testing.T) *api.Server {
@@ -116,5 +119,66 @@ func TestShutdownAndStartPersistent(t *testing.T) {
 	}
 	if started["status"] != "running" {
 		t.Fatalf("want running, got %v", started["status"])
+	}
+}
+
+
+func TestCreateStreamNDJSON(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+
+	body := []byte(`{"name":"stream1","persistent":false}`)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms?stream=1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stream create %d %s", rr.Code, rr.Body.String())
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.Contains(ct, "ndjson") && !strings.Contains(ct, "json") {
+		t.Fatalf("content-type %q", ct)
+	}
+
+	var phases []string
+	var readyName string
+	sc := bufio.NewScanner(bytes.NewReader(rr.Body.Bytes()))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var ev vm.CreateEvent
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("line %q: %v", line, err)
+		}
+		phases = append(phases, ev.Phase)
+		if ev.Phase == vm.PhaseReady {
+			readyName = ev.Name
+			if ev.Instance == nil && ev.Name == "" {
+				t.Fatal("ready event missing name/instance")
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(phases) < 6 {
+		t.Fatalf("want >=6 events, got %v", phases)
+	}
+	if phases[len(phases)-1] != vm.PhaseReady {
+		t.Fatalf("last phase %v", phases)
+	}
+	if readyName != "stream1" {
+		t.Fatalf("ready name %q", readyName)
+	}
+	// confirm image..ready order contains required phases
+	joined := strings.Join(phases, ",")
+	for _, p := range []string{vm.PhaseImage, vm.PhaseDisk, vm.PhaseSeed, vm.PhaseQEMU, vm.PhaseWaitSSH, vm.PhaseReady} {
+		if !strings.Contains(joined, p) {
+			t.Fatalf("missing phase %s in %v", p, phases)
+		}
 	}
 }

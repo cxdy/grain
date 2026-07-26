@@ -3,6 +3,8 @@ package cli
 import (
 	"testing"
 	"time"
+
+	"github.com/cxdy/grain/internal/vm"
 )
 
 func TestCreateStage(t *testing.T) {
@@ -19,6 +21,25 @@ func TestCreateStage(t *testing.T) {
 	for _, tc := range cases {
 		if got := createStage(tc.d); got != tc.want {
 			t.Errorf("createStage(%v) = %q, want %q", tc.d, got, tc.want)
+		}
+	}
+}
+
+
+func TestPhaseLabel(t *testing.T) {
+	cases := map[string]string{
+		vm.PhaseImage:   "image",
+		vm.PhaseDisk:    "disk",
+		vm.PhaseSeed:    "seed",
+		vm.PhaseQEMU:    "boot",
+		vm.PhaseWaitSSH: "waiting ssh",
+		vm.PhaseReady:   "ready",
+		vm.PhaseError:   "error",
+		"":              "starting",
+	}
+	for phase, want := range cases {
+		if got := phaseLabel(phase); got != want {
+			t.Errorf("phaseLabel(%q)=%q want %q", phase, got, want)
 		}
 	}
 }

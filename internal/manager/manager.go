@@ -35,7 +35,28 @@ func New(cfg config.Config, st *store.Store, rt hypervisor.Runtime, disk hypervi
 	return &Manager{cfg: cfg, st: st, rt: rt, disk: disk, log: log}
 }
 
+// CreateTimeout is the outer deadline for API create (ReadyTimeout + buffer for image/disk).
+func (m *Manager) CreateTimeout() time.Duration {
+	t := m.cfg.ReadyTimeout + 2*time.Minute
+	if t < 5*time.Minute {
+		return 5 * time.Minute
+	}
+	return t
+}
+
+// ReadyTimeout is the configured SSH-ready wait.
+func (m *Manager) ReadyTimeout() time.Duration {
+	return m.cfg.ReadyTimeout
+}
+
+func emitCreate(opts vm.CreateOpts, ev vm.CreateEvent) {
+	if opts.OnEvent != nil {
+		opts.OnEvent(ev)
+	}
+}
+
 // Create launches a sandbox. Ephemeral by default (opts.Persistent=false).
+// When opts.OnEvent is set, progress phases are emitted: image, disk, seed, qemu, wait_ssh, ready|error.
 func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance, error) {
 	existing, err := m.st.Names()
 	if err != nil {
@@ -87,16 +108,18 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		return nil, err
 	}
 
+	emitCreate(opts, vm.CreateEvent{Phase: vm.PhaseImage, Name: name, Message: "ensuring base image"})
 	base, err := m.disk.EnsureBase(ctx, img)
 	if err != nil {
-		return m.fail(inst, fmt.Errorf("image: %w", err))
+		return m.fail(inst, fmt.Errorf("image: %w", err), opts)
 	}
 
 	vmDir := m.st.Dir(name)
 	diskPath := filepath.Join(vmDir, "disk.img")
 	// qcow2 overlay may rewrite extension
+	emitCreate(opts, vm.CreateEvent{Phase: vm.PhaseDisk, Name: name, Message: "cloning disk"})
 	if err := m.disk.Clone(ctx, base, diskPath, diskGB); err != nil {
-		return m.fail(inst, fmt.Errorf("disk: %w", err))
+		return m.fail(inst, fmt.Errorf("disk: %w", err), opts)
 	}
 	// detect qcow2 overlay path
 	if _, err := os.Stat(diskPath + ".qcow2"); err == nil {
@@ -111,9 +134,10 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	inst.DiskPath = diskPath
 
 	// SSH key + cloud-init (skip for mock disks that are tiny placeholders)
+	emitCreate(opts, vm.CreateEvent{Phase: vm.PhaseSeed, Name: name, Message: "writing cloud-init seed"})
 	priv, pub, err := sshkey.Ensure(m.cfg.DataDir)
 	if err != nil {
-		return m.fail(inst, fmt.Errorf("ssh key: %w", err))
+		return m.fail(inst, fmt.Errorf("ssh key: %w", err), opts)
 	}
 	_ = priv
 	// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
@@ -122,15 +146,22 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		m.log.Warn("cloud-init seed skipped", "err", err)
 	}
 
+	emitCreate(opts, vm.CreateEvent{Phase: vm.PhaseQEMU, Name: name, Message: "starting hypervisor"})
 	if err := m.rt.Start(ctx, inst, diskPath); err != nil {
-		return m.fail(inst, fmt.Errorf("start: %w", err))
+		return m.fail(inst, fmt.Errorf("start: %w", err), opts)
 	}
 	inst.Status = vm.StatusRunning
 	if err := m.st.Put(inst); err != nil {
 		return nil, err
 	}
 
-	// Wait for SSH when not mock and port assigned
+	// Wait for SSH — always emit wait_ssh (mock path skips the actual wait).
+	emitCreate(opts, vm.CreateEvent{
+		Phase:   vm.PhaseWaitSSH,
+		Name:    name,
+		Message: "waiting for ssh",
+		SSHPort: inst.SSHPort,
+	})
 	if m.cfg.Hypervisor != "mock" && inst.SSHPort > 0 {
 		user := m.cfg.SSHUser
 		if user == "" || user == "alpine" {
@@ -159,13 +190,28 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		"memory_mb", inst.MemoryMB,
 		"ssh_port", inst.SSHPort,
 	)
+	emitCreate(opts, vm.CreateEvent{
+		Phase:    vm.PhaseReady,
+		Name:     inst.Name,
+		Message:  "ready",
+		SSHPort:  inst.SSHPort,
+		Instance: inst,
+	})
 	return inst, nil
 }
 
-func (m *Manager) fail(inst *vm.Instance, err error) (*vm.Instance, error) {
+func (m *Manager) fail(inst *vm.Instance, err error, opts ...vm.CreateOpts) (*vm.Instance, error) {
 	inst.Status = vm.StatusError
 	inst.Error = err.Error()
 	_ = m.st.Put(inst)
+	if len(opts) > 0 {
+		emitCreate(opts[0], vm.CreateEvent{
+			Phase:   vm.PhaseError,
+			Name:    inst.Name,
+			Error:   err.Error(),
+			Message: err.Error(),
+		})
+	}
 	return nil, err
 }
 
