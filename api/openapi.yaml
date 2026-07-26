@@ -828,6 +828,9 @@ components:
           type: integer
         agent_port:
           type: integer
+        agent_cid:
+          type: integer
+          description: Guest virtio-vsock context ID (0 or omitted = TCP hostfwd only)
         forwards:
           type: array
           items:

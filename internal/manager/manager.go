@@ -231,6 +231,7 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		"memory_mb", inst.MemoryMB,
 		"ssh_port", inst.SSHPort,
 		"agent_port", inst.AgentPort,
+		"agent_cid", inst.AgentCID,
 		"wait", waitMode,
 	)
 	emitCreate(opts, vm.CreateEvent{
@@ -334,7 +335,7 @@ func (m *Manager) waitSSHMode(
 		return nil
 	}
 	sshUser := m.waitSSH(ctx, inst, img, priv, readyDeadline)
-	if sshUser != "" && inst.AgentPort > 0 {
+	if sshUser != "" && agentTarget(inst).HasEndpoint() {
 		_ = m.waitOrDeployAgent(ctx, inst, sshUser, priv, readyDeadline, emit, false)
 	}
 	return nil
@@ -362,21 +363,25 @@ func (m *Manager) waitAgentMode(
 	if isMock {
 		return nil
 	}
-	if inst.AgentPort <= 0 {
-		return fmt.Errorf("wait agent: no agent port allocated")
+	if !agentTarget(inst).HasEndpoint() {
+		return fmt.Errorf("wait agent: no agent endpoint allocated")
 	}
-
-	client := &agent.Client{BaseURL: fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort)}
 
 	waitFor := time.Until(readyDeadline)
 	if waitFor <= 0 {
 		waitFor = agentWaitFallback
 	}
 	probeCtx, probeCancel := context.WithTimeout(ctx, waitFor)
-	probeErr := agent.Wait(probeCtx, client)
+	client, dialErr := agent.Dial(probeCtx, agentTarget(inst))
+	var probeErr error
+	if dialErr != nil {
+		probeErr = dialErr
+	} else {
+		probeErr = agent.Wait(probeCtx, client)
+	}
 	probeCancel()
 	if probeErr == nil {
-		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort)
+		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID)
 		return nil
 	}
 
@@ -424,17 +429,21 @@ func (m *Manager) waitUserdata(
 	if isMock {
 		return nil
 	}
-	if inst.AgentPort <= 0 {
-		return fmt.Errorf("wait userdata: no agent port allocated")
+	if !agentTarget(inst).HasEndpoint() {
+		return fmt.Errorf("wait userdata: no agent endpoint allocated")
 	}
 
-	client := &agent.Client{BaseURL: fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort)}
 	waitFor := time.Until(readyDeadline)
 	if waitFor <= 0 {
 		waitFor = agentWaitFallback
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, waitFor)
 	defer cancel()
+
+	client, err := agent.Dial(waitCtx, agentTarget(inst))
+	if err != nil {
+		return fmt.Errorf("wait userdata: dial agent: %w", err)
+	}
 
 	if h, err := client.Health(waitCtx); err == nil && h.UserdataRan {
 		return nil
@@ -937,7 +946,7 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 	readyDeadline := time.Now().Add(m.cfg.ReadyTimeout)
 	if m.cfg.Hypervisor != "mock" && inst.SSHPort > 0 {
 		sshUser := m.waitSSH(ctx, inst, inst.Image, priv, readyDeadline)
-		if sshUser != "" && inst.AgentPort > 0 {
+		if sshUser != "" && agentTarget(inst).HasEndpoint() {
 			_ = m.waitOrDeployAgent(ctx, inst, sshUser, priv, readyDeadline, nil, false)
 		}
 	}
@@ -955,6 +964,7 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 		"persistent", inst.Persistent,
 		"ssh_port", inst.SSHPort,
 		"agent_port", inst.AgentPort,
+		"agent_cid", inst.AgentCID,
 	)
 	return inst, nil
 }
@@ -986,8 +996,6 @@ func (m *Manager) waitOrDeployAgent(
 	emit func(vm.CreateEvent),
 	hard bool,
 ) error {
-	baseURL := fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort)
-	client := &agent.Client{BaseURL: baseURL}
 	baked := m.imageHasAgent(inst.Image)
 
 	if emit != nil {
@@ -1012,10 +1020,16 @@ func (m *Manager) waitOrDeployAgent(
 		}
 	}
 	probeCtx, probeCancel := context.WithTimeout(ctx, probeFor)
-	probeErr := agent.Wait(probeCtx, client)
+	client, dialErr := agent.Dial(probeCtx, agentTarget(inst))
+	var probeErr error
+	if dialErr != nil {
+		probeErr = dialErr
+	} else {
+		probeErr = agent.Wait(probeCtx, client)
+	}
 	probeCancel()
 	if probeErr == nil {
-		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "baked", baked)
+		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "baked", baked)
 		return nil
 	}
 
@@ -1023,7 +1037,7 @@ func (m *Manager) waitOrDeployAgent(
 	binPath, err := agent.LinuxBinaryPath(m.cfg.DataDir)
 	if err != nil {
 		m.log.Warn("guest agent not ready (no deploy binary)",
-			"name", inst.Name, "agent_port", inst.AgentPort, "err", err)
+			"name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "err", err)
 		// Still try a longer wait in case the agent comes up without our help.
 	} else {
 		if emit != nil {
@@ -1050,15 +1064,31 @@ func (m *Manager) waitOrDeployAgent(
 	}
 	waitCtx, waitCancel := context.WithTimeout(ctx, waitFor)
 	defer waitCancel()
-	if err := agent.Wait(waitCtx, client); err != nil {
-		m.log.Warn("guest agent not ready", "name", inst.Name, "agent_port", inst.AgentPort, "err", err)
+	client, err = agent.Dial(waitCtx, agentTarget(inst))
+	if err != nil {
+		m.log.Warn("guest agent not ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "err", err)
 		if hard {
 			return err
 		}
 		return nil
 	}
-	m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort)
+	if err := agent.Wait(waitCtx, client); err != nil {
+		m.log.Warn("guest agent not ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "err", err)
+		if hard {
+			return err
+		}
+		return nil
+	}
+	m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID)
 	return nil
+}
+
+// agentTarget builds an agent.Dial target from instance metadata.
+func agentTarget(inst *vm.Instance) agent.Target {
+	if inst == nil {
+		return agent.Target{}
+	}
+	return agent.Target{CID: inst.AgentCID, Port: inst.AgentPort}
 }
 
 // imageHasAgent reports whether the base image ships grain-agent (catalog or local meta).

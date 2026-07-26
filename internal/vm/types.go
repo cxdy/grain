@@ -61,6 +61,9 @@ type Instance struct {
 	SSHPort    int               `json:"ssh_port,omitempty"`
 	// AgentPort is host TCP port forwarded to guest grain-agent (:7475).
 	AgentPort int `json:"agent_port,omitempty"`
+	// AgentCID is the guest virtio-vsock context ID when vsock transport is
+	// enabled (0 = use TCP hostfwd only). Host dials CID:7475 when > 0.
+	AgentCID int `json:"agent_cid,omitempty"`
 	// Forwards are extra hostfwd entries (beyond SSH :22). Host ports with 0
 	// are allocated before start and persisted so restarts reuse them.
 	Forwards []PortForward `json:"forwards,omitempty"`

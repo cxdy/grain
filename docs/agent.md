@@ -1,6 +1,6 @@
 # Guest agent (`grain-agent`)
 
-The guest agent is a small HTTP server that runs **inside** each Linux VM. The host CLI and daemon talk to it over a QEMU hostfwd to guest port **7475**, so common operations work without opening an interactive SSH session.
+The guest agent is a small HTTP server that runs **inside** each Linux VM. The host CLI and daemon talk to it over either **virtio-vsock** (when the host supports it) or a QEMU SLIRP hostfwd to guest port **7475**, so common operations work without opening an interactive SSH session.
 
 ## What it provides
 
@@ -126,6 +126,37 @@ Every VM gets a host-forwarded agent port (metadata `agent_port` → guest `7475
 ```bash
 grain fwd ls
 ```
+
+### Agent transport (vsock vs TCP)
+
+| Mode | When | How the host dials |
+|------|------|--------------------|
+| **vsock** | Linux host with `/dev/vhost-vsock`; config `agent_transport: auto` (default) or `vsock` | `AF_VSOCK` to guest CID **7475** (`agent_cid` on the instance) |
+| **TCP hostfwd** | macOS HVF, no vhost device, `agent_transport: tcp`, or vsock dial failure | `http://127.0.0.1:<agent_port>` → guest `:7475` |
+
+Config (`~/.grain/config.yaml`):
+
+```yaml
+agent_transport: auto  # auto | tcp | vsock
+```
+
+- **auto** — prefer vsock when `/dev/vhost-vsock` exists; otherwise TCP.  
+- **tcp** — always SLIRP hostfwd (typical on macOS).  
+- **vsock** — force QEMU `-device vhost-vsock-pci,guest-cid=<CID>` (requires the host device).
+
+TCP hostfwd is **always** configured as a fallback even when vsock is selected. The guest agent always listens on TCP `:7475` and **additionally** tries AF_VSOCK port `7475` on Linux (listen failure is ignored — TCP-only is fine).
+
+Host dial path (`agent.Dial`):
+
+1. If `agent_cid > 0`, try vsock `CID:7475`  
+2. Else (or on vsock failure) use `http://127.0.0.1:agent_port`
+
+Instance metadata:
+
+| Field | Meaning |
+|-------|---------|
+| `agent_port` | Host TCP port for SLIRP hostfwd |
+| `agent_cid` | Guest vsock context ID (`0` / omitted = TCP only) |
 
 ## Soft-fail and fallbacks
 

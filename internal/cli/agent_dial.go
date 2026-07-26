@@ -13,8 +13,8 @@ import (
 // errAgentSkip means the agent path was not usable (no port / unhealthy); fall back to SSH.
 var errAgentSkip = fmt.Errorf("agent skip")
 
-// dialGuestAgent builds an agent.Client from the VM's host-forwarded AgentPort.
-// When force is false and the agent is unavailable, returns errAgentSkip.
+// dialGuestAgent builds an agent.Client via agent.Dial (vsock when AgentCID > 0,
+// else TCP hostfwd). When force is false and the agent is unavailable, returns errAgentSkip.
 func dialGuestAgent(c *api.Client, name string, force bool) (*agent.Client, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -26,15 +26,20 @@ func dialGuestAgent(c *api.Client, name string, force bool) (*agent.Client, erro
 		}
 		return nil, errAgentSkip
 	}
-	if inst.AgentPort == 0 {
+	target := agent.Target{CID: inst.AgentCID, Port: inst.AgentPort}
+	if !target.HasEndpoint() {
 		if force {
-			return nil, fmt.Errorf("agent not available (no agent port for %s)", name)
+			return nil, fmt.Errorf("agent not available (no agent endpoint for %s)", name)
 		}
 		return nil, errAgentSkip
 	}
 
-	ac := &agent.Client{
-		BaseURL: fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort),
+	ac, err := agent.Dial(ctx, target)
+	if err != nil {
+		if force {
+			return nil, fmt.Errorf("agent not available for %s: %w", name, err)
+		}
+		return nil, errAgentSkip
 	}
 
 	hctx, hcancel := context.WithTimeout(context.Background(), 3*time.Second)

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -50,6 +51,12 @@ type Config struct {
 	// back to 9p with a warning. On Linux with virtiofsd available, virtiofs
 	// uses vhost-user-fs + a per-mount virtiofsd.
 	MountDriver string `yaml:"mount_driver"`
+	// AgentTransport selects how the host reaches grain-agent:
+	//   auto  — virtio-vsock when /dev/vhost-vsock exists (typical Linux), else TCP hostfwd
+	//   tcp   — always SLIRP hostfwd to guest :7475 (default on macOS HVF)
+	//   vsock — force vhost-vsock-pci (requires host /dev/vhost-vsock)
+	// TCP hostfwd is always configured as a fallback even when vsock is selected.
+	AgentTransport string `yaml:"agent_transport"`
 
 	// Resource caps (0 = unlimited). Stopped VMs do not count toward running caps.
 	// MaxVMs is the maximum number of concurrently running/creating VMs.
@@ -253,6 +260,7 @@ func Defaults() Config {
 		ReadyTimeout:     120 * time.Second,
 		LogLevel:         "info",
 		MountDriver:      "9p",
+		AgentTransport:   "auto",
 		MaxVMs:           8,
 		MaxCPUsTotal:     16,
 		MaxMemoryMBTotal: 32768,
@@ -322,6 +330,15 @@ func (c *Config) applyDefaults() {
 		// ok
 	default:
 		c.MountDriver = "9p"
+	}
+	if c.AgentTransport == "" {
+		c.AgentTransport = d.AgentTransport
+	}
+	switch strings.ToLower(strings.TrimSpace(c.AgentTransport)) {
+	case "auto", "tcp", "vsock":
+		c.AgentTransport = strings.ToLower(strings.TrimSpace(c.AgentTransport))
+	default:
+		c.AgentTransport = "auto"
 	}
 }
 

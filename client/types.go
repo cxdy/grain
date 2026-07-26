@@ -46,6 +46,8 @@ type Instance struct {
 	IP             string            `json:"ip,omitempty"`
 	SSHPort        int               `json:"ssh_port,omitempty"`
 	AgentPort      int               `json:"agent_port,omitempty"`
+	// AgentCID is the guest virtio-vsock context ID (0 = TCP hostfwd only).
+	AgentCID       int               `json:"agent_cid,omitempty"`
 	Forwards       []PortForward     `json:"forwards,omitempty"`
 	Mounts         []Mount           `json:"mounts,omitempty"`
 	SocketForwards []SocketForward   `json:"socket_forwards,omitempty"`

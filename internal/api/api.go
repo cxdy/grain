@@ -387,17 +387,23 @@ func (s *Server) removeForward(w http.ResponseWriter, r *http.Request) {
 }
 
 // agentClient returns a host-side agent client for the VM, or an HTTP status + error.
+// Prefers virtio-vsock when AgentCID > 0, else TCP hostfwd (see agent.Dial).
 func (s *Server) agentClient(name string) (*agent.Client, int, error) {
 	inst, err := s.mgr.Get(name)
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
-	if inst.AgentPort == 0 {
+	target := agent.Target{CID: inst.AgentCID, Port: inst.AgentPort}
+	if !target.HasEndpoint() {
 		return nil, http.StatusServiceUnavailable, errors.New("agent not available")
 	}
-	return &agent.Client{
-		BaseURL: fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort),
-	}, 0, nil
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ac, err := agent.Dial(ctx, target)
+	if err != nil {
+		return nil, http.StatusServiceUnavailable, err
+	}
+	return ac, 0, nil
 }
 
 // execVM proxies command execution to the guest grain-agent.

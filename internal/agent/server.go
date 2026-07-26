@@ -66,20 +66,37 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// ListenAndServe starts the HTTP server. Blocks until Shutdown or fatal error.
+// ListenAndServe starts the HTTP server on TCP (always) and optionally on
+// virtio-vsock (Linux guests when AF_VSOCK is available). Blocks until
+// Shutdown or a fatal TCP listen error. Vsock listen failure is non-fatal.
 func (s *Server) ListenAndServe() error {
 	ln, err := net.Listen("tcp", s.Addr)
 	if err != nil {
 		return err
 	}
+	httpSrv := &http.Server{Handler: s.Handler()}
 	s.mu.Lock()
 	s.listener = ln
-	s.httpSrv = &http.Server{Handler: s.Handler()}
+	s.httpSrv = httpSrv
 	s.started = time.Now()
 	s.mu.Unlock()
 
 	s.Log.Info("grain-agent listening", "addr", ln.Addr().String(), "version", Version)
-	err = s.httpSrv.Serve(ln)
+
+	// Best-effort vsock listener (same HTTP mux). Skipped on non-Linux builds
+	// or when the guest has no virtio-vsock device.
+	if vln, verr := listenVsock(DefaultVsockPort); verr == nil {
+		s.Log.Info("grain-agent vsock listening", "port", DefaultVsockPort)
+		go func() {
+			if err := httpSrv.Serve(vln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				s.Log.Warn("vsock serve ended", "err", err)
+			}
+		}()
+	} else {
+		s.Log.Debug("vsock listen unavailable", "err", verr)
+	}
+
+	err = httpSrv.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

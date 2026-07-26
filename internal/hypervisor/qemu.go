@@ -18,9 +18,13 @@ import (
 
 // QEMURuntime launches guests with QEMU (HVF on Apple Silicon when available).
 type QEMURuntime struct {
-	Binary      string
-	DataDir     string
-	MountDriver string // effective driver: 9p (default) or virtiofs
+	Binary         string
+	DataDir        string
+	MountDriver    string // effective driver: 9p (default) or virtiofs
+	// AgentTransport is auto|tcp|vsock (see config.agent_transport).
+	AgentTransport string
+	// VhostVsockPath overrides the host device path for tests (default /dev/vhost-vsock).
+	VhostVsockPath string
 }
 
 func NewQEMURuntime(binary, dataDir string) *QEMURuntime {
@@ -31,7 +35,12 @@ func NewQEMURuntime(binary, dataDir string) *QEMURuntime {
 			binary = "qemu-system-x86_64"
 		}
 	}
-	return &QEMURuntime{Binary: binary, DataDir: dataDir, MountDriver: MountDriver9p}
+	return &QEMURuntime{
+		Binary:         binary,
+		DataDir:        dataDir,
+		MountDriver:    MountDriver9p,
+		AgentTransport: AgentTransportAuto,
+	}
 }
 
 func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath string) error {
@@ -65,6 +74,14 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		return err
 	}
 	inst.AgentPort = agentPort
+
+	// Prefer virtio-vsock when host supports it; always keep TCP hostfwd as fallback.
+	transport := ResolveAgentTransport(q.AgentTransport, vhostVsockAvailable(q.VhostVsockPath))
+	if transport == AgentTransportVsock {
+		inst.AgentCID = AllocateGuestCID(inst.Name)
+	} else {
+		inst.AgentCID = 0
+	}
 
 	// Allocate any HostPort 0 entries left on the instance (manager usually does this first).
 	if err := AllocateForwardPorts(inst.Forwards); err != nil {
@@ -121,6 +138,11 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		args = append(args, fsdevArgs(inst.Mounts, driver, vmDir)...)
 	} else {
 		args = append(args, fsdevArgs(inst.Mounts, MountDriver9p, vmDir)...)
+	}
+
+	// virtio-vsock for low-latency guest agent (Linux host with /dev/vhost-vsock).
+	if inst.AgentCID >= MinGuestCID {
+		args = append(args, "-device", fmt.Sprintf("vhost-vsock-pci,guest-cid=%d", inst.AgentCID))
 	}
 
 	// UEFI firmware for aarch64 cloud images

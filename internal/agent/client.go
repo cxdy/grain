@@ -431,7 +431,10 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 	}
 	u.RawQuery = q.Encode()
 
-	conn, _, err := websocket.Dial(ctx, u.String(), nil)
+	// Pass HTTP client so vsock (custom Transport) and timeouts apply to WS upgrade.
+	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{
+		HTTPClient: c.longHTTP(),
+	})
 	if err != nil {
 		return fmt.Errorf("shell dial: %w", err)
 	}
