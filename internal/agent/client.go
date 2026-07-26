@@ -366,6 +366,61 @@ func (c *Client) GetTar(ctx context.Context, guestPath string, w io.Writer) erro
 	return err
 }
 
+// --- /stats ----------------------------------------------------------------
+
+// Stats fetches guest resource basics via GET /stats.
+func (c *Client) Stats(ctx context.Context) (*Stats, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base()+"/stats", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+		return nil, fmt.Errorf("stats: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var st Stats
+	if err := json.NewDecoder(res.Body).Decode(&st); err != nil {
+		return nil, fmt.Errorf("stats decode: %w", err)
+	}
+	return &st, nil
+}
+
+// --- /secrets/materialize --------------------------------------------------
+
+// MaterializeSecret writes a secret file into the guest via POST /secrets/materialize.
+func (c *Client) MaterializeSecret(ctx context.Context, req MaterializeSecretRequest) (*MaterializeSecretResponse, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base()+"/secrets/materialize", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	res, err := c.http().Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+		return nil, fmt.Errorf("materialize secret: status %d: %s", res.StatusCode, strings.TrimSpace(string(b)))
+	}
+	var out MaterializeSecretResponse
+	if res.StatusCode == http.StatusOK {
+		if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+			return nil, fmt.Errorf("materialize secret decode: %w", err)
+		}
+	}
+	return &out, nil
+}
+
 // --- /fs -------------------------------------------------------------------
 
 // ReadDir lists entries at guestPath via GET /fs/readdir.

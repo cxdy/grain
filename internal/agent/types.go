@@ -83,3 +83,33 @@ type MkdirRequest struct {
 	Recursive bool   `json:"recursive"`
 	Mode      string `json:"mode"` // optional octal, default 0755
 }
+
+// Stats is the response body for GET /stats (guest resource basics).
+type Stats struct {
+	UptimeSec float64 `json:"uptime_sec"`
+	MemTotal  uint64  `json:"mem_total_bytes"`
+	MemAvail  uint64  `json:"mem_available_bytes"`
+	Load1     float64 `json:"load1"`
+	// Optional disk fields (bytes); zero when unavailable.
+	DiskTotal uint64 `json:"disk_total_bytes,omitempty"`
+	DiskFree  uint64 `json:"disk_free_bytes,omitempty"`
+}
+
+// DefaultSecretsDir is the default guest path prefix for materialised secrets.
+const DefaultSecretsDir = "/run/grain/secrets"
+
+// MaterializeSecretRequest is the JSON body for POST /secrets/materialize.
+type MaterializeSecretRequest struct {
+	Name       string  `json:"name"`                  // secret name (used for default path)
+	DataBase64 string  `json:"data_base64"`           // secret payload
+	Path       string  `json:"path,omitempty"`        // guest path; default /run/grain/secrets/NAME
+	Mode       string  `json:"mode,omitempty"`        // octal file mode; default 0600
+	UID        *uint32 `json:"uid,omitempty"`
+	GID        *uint32 `json:"gid,omitempty"`
+}
+
+// MaterializeSecretResponse is returned after writing a secret into the guest.
+type MaterializeSecretResponse struct {
+	Path string `json:"path"`
+	Mode string `json:"mode"`
+}

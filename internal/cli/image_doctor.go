@@ -6,8 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
+	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/image"
 	"github.com/cxdy/grain/internal/sshkey"
@@ -172,6 +174,22 @@ func runDoctor(cfg config.Config) error {
 		return nil
 	})
 
+	// Guest agent binary (soft): needed for SSH deploy into non-golden images.
+	if path, err := agent.LinuxBinaryPath(cfg.DataDir); err == nil {
+		fmt.Printf("  ✓ guest agent binary %s\n", path)
+	} else {
+		fmt.Printf("  · guest agent binary missing — run: make agent-linux (SSH-only VMs still work)\n")
+	}
+
+	// QMP capability (optional soft check): pause/resume/graceful stop use QMP.
+	if _, err := exec.LookPath(qemu); err == nil {
+		if qemuSupportsQMP(qemu) {
+			fmt.Printf("  ✓ qmp (%s -qmp)\n", qemu)
+		} else {
+			fmt.Printf("  · qmp: could not confirm -qmp on %s (pause/resume may be unavailable)\n", qemu)
+		}
+	}
+
 	// socket
 	if _, err := os.Stat(cfg.Socket); err == nil {
 		fmt.Printf("  ✓ daemon socket %s\n", cfg.Socket)
@@ -184,4 +202,23 @@ func runDoctor(cfg config.Config) error {
 	}
 	fmt.Println("all good")
 	return nil
+}
+
+// qemuSupportsQMP reports whether the QEMU binary documents a -qmp flag.
+// Soft check only — does not dial a live monitor socket.
+func qemuSupportsQMP(qemuBin string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, qemuBin, "-help")
+	out, err := cmd.CombinedOutput()
+	if err != nil && len(out) == 0 {
+		// Some builds use -h; try once more.
+		cmd = exec.CommandContext(ctx, qemuBin, "-h")
+		out, err = cmd.CombinedOutput()
+		if err != nil && len(out) == 0 {
+			return false
+		}
+	}
+	s := strings.ToLower(string(out))
+	return strings.Contains(s, "-qmp") || strings.Contains(s, "qmp")
 }

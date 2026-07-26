@@ -459,3 +459,64 @@ func contains(ss []string, want string) bool {
 	}
 	return false
 }
+
+func TestStatsEndpoint(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "uptime"), []byte("10.0 20.0\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "meminfo"), []byte("MemTotal: 1024 kB\nMemAvailable: 512 kB\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "loadavg"), []byte("1.5 1.0 0.5 1/1 1\n"), 0o644)
+	restore := agent.SetProcPathsForTest(
+		filepath.Join(dir, "uptime"),
+		filepath.Join(dir, "meminfo"),
+		filepath.Join(dir, "loadavg"),
+	)
+	t.Cleanup(restore)
+
+	_, c := startTestServer(t)
+	st, err := c.Stats(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.UptimeSec != 10.0 {
+		t.Fatalf("uptime %v", st.UptimeSec)
+	}
+	if st.MemTotal != 1024*1024 {
+		t.Fatalf("mem total %d", st.MemTotal)
+	}
+	if st.Load1 != 1.5 {
+		t.Fatalf("load1 %v", st.Load1)
+	}
+}
+
+func TestMaterializeSecret(t *testing.T) {
+	_, c := startTestServer(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mysecret")
+	ctx := context.Background()
+	res, err := c.MaterializeSecret(ctx, agent.MaterializeSecretRequest{
+		Name:       "mysecret",
+		DataBase64: "aGVsbG8=", // hello
+		Path:       path,
+		Mode:       "0600",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Path != path {
+		t.Fatalf("path %q", res.Path)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "hello" {
+		t.Fatalf("content %q", b)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %o", info.Mode().Perm())
+	}
+}

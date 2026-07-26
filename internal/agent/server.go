@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("HEAD /health", s.handleHealth)
+	mux.HandleFunc("GET /stats", s.handleStats)
 	mux.HandleFunc("POST /exec", s.handleExec)
 	mux.HandleFunc("POST /cp", s.handleCPPut)
 	mux.HandleFunc("GET /cp", s.handleCPGet)
@@ -59,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /fs/stat", s.handleFSStat)
 	mux.HandleFunc("POST /fs/mkdir", s.handleFSMkdir)
 	mux.HandleFunc("DELETE /fs/remove", s.handleFSRemove)
+	mux.HandleFunc("POST /secrets/materialize", s.handleMaterializeSecret)
 	return mux
 }
 
@@ -111,6 +114,62 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h)
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, CollectStats())
+}
+
+func (s *Server) handleMaterializeSecret(w http.ResponseWriter, r *http.Request) {
+	var req MaterializeSecretRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" && req.Path == "" {
+		http.Error(w, "name or path is required", http.StatusBadRequest)
+		return
+	}
+	if req.DataBase64 == "" {
+		http.Error(w, "data_base64 is required", http.StatusBadRequest)
+		return
+	}
+	data, err := decodeBase64(req.DataBase64)
+	if err != nil {
+		http.Error(w, "invalid data_base64", http.StatusBadRequest)
+		return
+	}
+	path := req.Path
+	if path == "" {
+		path = filepath.Join(DefaultSecretsDir, req.Name)
+	}
+	mode := "0600"
+	if req.Mode != "" {
+		mode = req.Mode
+	}
+	perm, err := parseOctalMode(mode)
+	if err != nil {
+		http.Error(w, "invalid mode", http.StatusBadRequest)
+		return
+	}
+	if err := putBinary(path, bytes.NewReader(data), perm, req.UID, req.GID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, MaterializeSecretResponse{
+		Path: path,
+		Mode: fmt.Sprintf("%04o", perm),
+	})
+}
+
+func decodeBase64(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	return base64.RawStdEncoding.DecodeString(s)
 }
 
 func (s *Server) health() Health {

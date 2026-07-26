@@ -1,0 +1,314 @@
+#!/usr/bin/env bash
+# grain install script
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
+#
+# Installs the grain CLI to /usr/local/bin (if writable) or ~/.local/bin.
+# Prefers a GitHub release binary; falls back to `go install` when Go is present.
+
+set -euo pipefail
+
+REPO="cxdy/grain"
+BIN_NAME="grain"
+GITHUB_API="https://api.github.com/repos/${REPO}/releases/latest"
+GITHUB_RELEASES="https://github.com/${REPO}/releases"
+
+# --- colors (optional) --------------------------------------------------------
+if [[ -t 1 ]]; then
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  GREEN=$'\033[32m'
+  YELLOW=$'\033[33m'
+  RED=$'\033[31m'
+  RESET=$'\033[0m'
+else
+  BOLD= DIM= GREEN= YELLOW= RED= RESET=
+fi
+
+info()  { printf '%s\n' "${DIM}>${RESET} $*"; }
+ok()    { printf '%s\n' "${GREEN}✓${RESET} $*"; }
+warn()  { printf '%s\n' "${YELLOW}!${RESET} $*"; }
+die()   { printf '%s\n' "${RED}error:${RESET} $*" >&2; exit 1; }
+
+# --- OS / arch ----------------------------------------------------------------
+detect_os() {
+  local u
+  u="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  case "$u" in
+    darwin|linux) echo "$u" ;;
+    *) die "unsupported OS: $u (need darwin or linux)" ;;
+  esac
+}
+
+detect_arch() {
+  local m
+  m="$(uname -m)"
+  case "$m" in
+    x86_64|amd64)  echo "amd64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    *) die "unsupported arch: $m (need amd64 or arm64)" ;;
+  esac
+}
+
+# --- install dir --------------------------------------------------------------
+pick_install_dir() {
+  if [[ -n "${GRAIN_INSTALL_DIR:-}" ]]; then
+    echo "$GRAIN_INSTALL_DIR"
+    return
+  fi
+  if [[ -w /usr/local/bin ]] || [[ -w /usr/local ]]; then
+    echo "/usr/local/bin"
+    return
+  fi
+  # Try with sudo later only if needed; prefer user dir when /usr/local not writable.
+  if [[ ! -w /usr/local/bin ]] 2>/dev/null; then
+    echo "${HOME}/.local/bin"
+    return
+  fi
+  echo "/usr/local/bin"
+}
+
+ensure_dir() {
+  local d="$1"
+  if [[ -d "$d" ]]; then
+    return
+  fi
+  mkdir -p "$d" || die "cannot create install dir: $d"
+}
+
+need_sudo_for() {
+  local dest="$1"
+  local dir
+  dir="$(dirname "$dest")"
+  if [[ -w "$dir" ]]; then
+    return 1
+  fi
+  return 0
+}
+
+install_file() {
+  local src="$1"
+  local dest="$2"
+  chmod +x "$src"
+  if need_sudo_for "$dest"; then
+    if command -v sudo >/dev/null 2>&1; then
+      info "installing to ${dest} (sudo)"
+      sudo install -m 0755 "$src" "$dest"
+    else
+      die "cannot write ${dest}; re-run with write access or set GRAIN_INSTALL_DIR=~/.local/bin"
+    fi
+  else
+    install -m 0755 "$src" "$dest" 2>/dev/null || cp "$src" "$dest" && chmod 0755 "$dest"
+  fi
+}
+
+# --- download helpers ---------------------------------------------------------
+have_curl()  { command -v curl  >/dev/null 2>&1; }
+have_wget()  { command -v wget  >/dev/null 2>&1; }
+have_go()    { command -v go    >/dev/null 2>&1; }
+
+download() {
+  local url="$1"
+  local out="$2"
+  if have_curl; then
+    curl -fsSL --connect-timeout 15 --max-time 300 -o "$out" "$url"
+  elif have_wget; then
+    wget -q -O "$out" "$url"
+  else
+    die "need curl or wget to download release binaries"
+  fi
+}
+
+# Fetch latest release asset URL for grain_<os>_<arch>
+# Asset names from make release-build: grain_darwin_arm64, grain_linux_amd64, …
+latest_asset_url() {
+  local os="$1" arch="$2"
+  local asset="grain_${os}_${arch}"
+  local json=""
+
+  if have_curl; then
+    json="$(curl -fsSL --connect-timeout 10 --max-time 30 \
+      -H "Accept: application/vnd.github+json" \
+      -H "User-Agent: grain-install" \
+      "${GITHUB_API}" 2>/dev/null || true)"
+  elif have_wget; then
+    json="$(wget -q -O - \
+      --header="Accept: application/vnd.github+json" \
+      --header="User-Agent: grain-install" \
+      "${GITHUB_API}" 2>/dev/null || true)"
+  fi
+
+  if [[ -z "$json" ]]; then
+    return 1
+  fi
+
+  # Prefer python/jq if available; fall back to sed/grep for browser_download_url.
+  local url=""
+  if command -v jq >/dev/null 2>&1; then
+    url="$(printf '%s' "$json" | jq -r --arg a "$asset" \
+      '.assets[] | select(.name == $a) | .browser_download_url' 2>/dev/null | head -1)"
+  elif command -v python3 >/dev/null 2>&1; then
+    url="$(printf '%s' "$json" | python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+name=sys.argv[1]
+for a in data.get('assets') or []:
+    if a.get('name')==name:
+        print(a.get('browser_download_url') or '')
+        break
+" "$asset" 2>/dev/null || true)"
+  else
+    # Rough extract: find browser_download_url lines containing the asset name.
+    url="$(printf '%s' "$json" | tr '"' '\n' | grep -E "https://.*/${asset}\$" | head -1 || true)"
+  fi
+
+  if [[ -z "$url" || "$url" == "null" ]]; then
+    return 1
+  fi
+  printf '%s' "$url"
+}
+
+# --- install paths ------------------------------------------------------------
+install_from_release() {
+  local os="$1" arch="$2" dest_dir="$3"
+  local url
+  info "looking up latest GitHub release for ${os}/${arch}…"
+  if ! url="$(latest_asset_url "$os" "$arch")"; then
+    warn "no release binary found for grain_${os}_${arch}"
+    return 1
+  fi
+  info "downloading ${url}"
+  local tmp
+  tmp="$(mktemp -t grain.XXXXXX 2>/dev/null || mktemp)"
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp'" RETURN
+  if ! download "$url" "$tmp"; then
+    warn "download failed"
+    return 1
+  fi
+  # Sanity: non-empty and looks like a binary (not HTML error page)
+  if [[ ! -s "$tmp" ]]; then
+    warn "downloaded file is empty"
+    return 1
+  fi
+  if head -c 100 "$tmp" | grep -qi '<html\|<!doctype'; then
+    warn "download looks like HTML, not a binary"
+    return 1
+  fi
+  ensure_dir "$dest_dir"
+  local dest="${dest_dir}/${BIN_NAME}"
+  install_file "$tmp" "$dest"
+  ok "installed ${dest}"
+  return 0
+}
+
+install_from_go() {
+  local dest_dir="$1"
+  if ! have_go; then
+    return 1
+  fi
+  info "installing via go install github.com/${REPO}/cmd/grain@latest"
+  # go install puts the binary in GOBIN or GOPATH/bin
+  local gobin
+  gobin="$(go env GOBIN 2>/dev/null || true)"
+  if [[ -z "$gobin" ]]; then
+    gobin="$(go env GOPATH 2>/dev/null)/bin"
+  fi
+  GO111MODULE=on go install "github.com/${REPO}/cmd/grain@latest"
+  local src="${gobin}/${BIN_NAME}"
+  if [[ ! -x "$src" ]]; then
+    warn "go install finished but ${src} not found"
+    return 1
+  fi
+  # If go already installed into our preferred dir, done.
+  if [[ "$(cd "$(dirname "$src")" && pwd)" == "$(cd "$dest_dir" 2>/dev/null && pwd)" ]]; then
+    ok "installed ${src}"
+    return 0
+  fi
+  ensure_dir "$dest_dir"
+  local dest="${dest_dir}/${BIN_NAME}"
+  # Only copy if dest differs
+  if [[ "$src" != "$dest" ]]; then
+    install_file "$src" "$dest"
+    ok "installed ${dest} (from go install)"
+  else
+    ok "installed ${src}"
+  fi
+  return 0
+}
+
+print_next_steps() {
+  local dest_dir="$1"
+  local dest="${dest_dir}/${BIN_NAME}"
+  printf '\n'
+  printf '%s\n' "${BOLD}grain installed${RESET}"
+  if command -v grain >/dev/null 2>&1; then
+    ok "grain is on PATH: $(command -v grain)"
+    grain version 2>/dev/null || true
+  else
+    warn "grain is not on PATH yet"
+    printf '  add to your shell profile:\n'
+    printf '    export PATH="%s:$PATH"\n' "$dest_dir"
+    printf '  binary: %s\n' "$dest"
+  fi
+  printf '\n'
+  printf '%s\n' "${BOLD}Next steps${RESET}"
+  printf '  1. Install QEMU (required for real VMs):\n'
+  case "$(detect_os)" in
+    darwin) printf '       brew install qemu\n' ;;
+    linux)
+      if command -v apt-get >/dev/null 2>&1; then
+        printf '       sudo apt-get install -y qemu-system qemu-utils\n'
+      elif command -v dnf >/dev/null 2>&1; then
+        printf '       sudo dnf install -y qemu-system-x86 qemu-img\n'
+      else
+        printf '       install qemu-system and qemu-img for your distro\n'
+      fi
+      ;;
+  esac
+  printf '  2. Verify dependencies:\n'
+  printf '       grain doctor\n'
+  printf '  3. Start the daemon and create a sandbox:\n'
+  printf '       grain up\n'
+  printf '       grain image pull\n'
+  printf '       grain sh\n'
+  printf '\n'
+  printf 'Docs: https://github.com/%s#readme\n' "$REPO"
+  printf 'Recipes: https://github.com/%s/tree/main/docs/recipes\n' "$REPO"
+}
+
+# --- main ---------------------------------------------------------------------
+main() {
+  printf '%s\n' "${BOLD}grain installer${RESET}"
+  local os arch dest_dir
+  os="$(detect_os)"
+  arch="$(detect_arch)"
+  dest_dir="$(pick_install_dir)"
+  info "os=${os} arch=${arch} install_dir=${dest_dir}"
+
+  if install_from_release "$os" "$arch" "$dest_dir"; then
+    print_next_steps "$dest_dir"
+    return 0
+  fi
+
+  warn "release install unavailable — trying go install fallback"
+  if install_from_go "$dest_dir"; then
+    print_next_steps "$dest_dir"
+    return 0
+  fi
+
+  cat >&2 <<EOF
+${RED}error:${RESET} could not install grain.
+
+Options:
+  1. Download a binary from ${GITHUB_RELEASES}
+     (look for grain_${os}_${arch}), chmod +x, move to PATH
+  2. Install Go 1.23+ and run:
+       go install github.com/${REPO}/cmd/grain@latest
+  3. Build from source:
+       git clone https://github.com/${REPO}.git && cd grain && make build
+EOF
+  exit 1
+}
+
+main "$@"

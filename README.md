@@ -25,13 +25,23 @@ grain down
 
 ## Install
 
+### One-liner
+
 ```bash
-# from source (Go 1.23+)
+curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
+```
+
+The script detects OS/arch (`darwin`/`linux` × `arm64`/`amd64`), installs the latest GitHub release binary into `/usr/local/bin` or `~/.local/bin`, and falls back to `go install` when Go is present.
+
+### From source
+
+```bash
+# Go 1.23+
 go install github.com/cxdy/grain/cmd/grain@latest
 
-# or download a release binary from GitHub Releases:
+# or download a release binary:
 #   https://github.com/cxdy/grain/releases
-# pick grain_<os>_<arch> (darwin/linux × arm64/amd64), chmod +x, move to PATH
+# pick grain_<os>_<arch>, chmod +x, move to PATH
 ```
 
 ### Build from checkout
@@ -44,12 +54,21 @@ brew install qemu
 ./bin/grain image pull    # Ubuntu cloud (~300MB)
 ```
 
+After install:
+
+```bash
+brew install qemu   # macOS; on Linux install qemu-system + qemu-img
+grain doctor
+grain up
+```
+
 ## Commands
 
 | Cmd | Meaning |
 |-----|---------|
 | `up` / `down` | start/stop daemon |
 | `new` | launch sandbox (`-p` persist, `-n` name, `-c` cpus, `-m` mem, `-d` disk, `-i` image) |
+| `new --wait` | readiness: `ssh` (default), `agent`, or `userdata` |
 | `new -P` / `--publish` | host→guest ports (`HOST:GUEST` or `GUEST`; repeatable) |
 | `new -v` / `--volume` | share host dir `HOST:GUEST` via virtio-9p (repeatable) |
 | `new --profile NAME` | named profile from config (flags override profile fields) |
@@ -57,18 +76,22 @@ brew install qemu
 | `new --userdata-file` | cloud-init userdata or shell script |
 | `profile ls` | list named create profiles |
 | `stop` / `start` | stop VM (ephemeral deleted; persistent kept) / start stopped persistent |
+| `pause` / `resume` | QMP freeze / unfreeze guest vCPUs |
 | `ls` / `rm` | list / delete |
 | `sh` / `x` | shell / exec (`x` prefers guest agent with live streaming, SSH fallback; `--agent` / `--ssh`) |
-| `agent health` | guest agent readiness (`GET /health`) |
+| `agent health` | guest agent readiness (`GET /health` — version, uptime, userdata) |
 | `logs` | guest serial (default) or `--qemu` hypervisor log; `-f` follow |
 | `fwd ls` | list SSH + published port forwards |
+| `fwd add` / `fwd rm` | live-add / remove host→guest forwards on a running VM |
 | `cp` | `host path` or `NAME:path` (prefers agent Put/Get; scp fallback; `--agent` / `--ssh`) |
 | `fs ls` / `stat` / `mkdir` / `rm` | guest filesystem via agent (no SSH) |
 | `image ls` / `image pull` / `image import` | base images (pull ubuntu-cloud; import grain-ubuntu golden) |
-| `doctor` | dependency check |
+| `doctor` | dependency check (QEMU, image, optional agent binary + QMP) |
 | `version` | print version |
 
-**Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh).
+**Also in the surface area:** guest **stats** (`GET` agent `/stats` — uptime/mem/load), **secrets** (host store under `~/.grain/secrets`, agent `POST /secrets/materialize`), daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
+
+**Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh). Full overview: [docs/agent.md](docs/agent.md).
 
 **Profiles** (`~/.grain/config.yaml` → `profiles:`) set create defaults; resolve order is CLI flags → profile → global defaults. Instances get `Tags["profile"]=name`. **Presets** (`docker`, `k3s`) merge into userdata; `k3s` also suggests 2 CPU / 4096 MiB when unset and auto-publishes guest 6443.
 
@@ -76,18 +99,31 @@ brew install qemu
 grain new --profile agent
 grain new --preset docker
 grain new --preset k3s -n lab -p
+grain new --wait agent -v "$(pwd):/work"
 grain profile ls
+grain pause sbox-1 && grain resume sbox-1
+grain fwd add sbox-1 8080:80
 ```
 
 ## Docs
 
 | Guide | Topics |
 |-------|--------|
-| [docs/networking.md](docs/networking.md) | SLIRP, SSH, `--publish`, `fwd ls`, privileged ports |
+| [docs/agent.md](docs/agent.md) | guest agent: health, exec, cp, fs, deploy, wait modes |
+| [docs/networking.md](docs/networking.md) | SLIRP, SSH, `--publish`, `fwd ls/add/rm`, privileged ports |
 | [docs/mounts.md](docs/mounts.md) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
 | [docs/profiles.md](docs/profiles.md) | named profiles, docker/k3s presets |
 | [docs/images.md](docs/images.md) | `ubuntu-cloud`, `grain-ubuntu` golden import/bake, SHA verify |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
+
+### Recipes
+
+| Recipe | Topics |
+|--------|--------|
+| [docs/recipes/coding-agent.md](docs/recipes/coding-agent.md) | sandbox + mount repo + run agent + `cp` results |
+| [docs/recipes/k3s.md](docs/recipes/k3s.md) | `--preset k3s`, port forwards, grab kubeconfig |
+| [docs/recipes/docker-socket.md](docs/recipes/docker-socket.md) | Docker in VM + host socket/TCP forward pattern |
+| [docs/recipes/ci-ephemeral.md](docs/recipes/ci-ephemeral.md) | create → exec tests → `rm` (CI jobs) |
 
 ## How it works
 
@@ -122,7 +158,7 @@ make obs-up   # Prometheus :9090, Grafana :3000, Loki :3100
 curl -s http://127.0.0.1:7474/metrics
 ```
 
-JSON logs on stderr. Metrics: `grain_vms_*`.
+JSON logs on stderr. Metrics: `grain_vms_*`. Guest agent health exposes uptime/version via `grain agent health`.
 
 ## Config
 
@@ -132,6 +168,9 @@ JSON logs on stderr. Metrics: `grain_vms_*`.
 data_dir: ~/.grain
 socket: ~/.grain/grain.sock
 api: 127.0.0.1:7474
+# Optional API auth (Bearer). Empty = no auth (default for local unix socket).
+# CLI also reads env GRAIN_TOKEN.
+api_token: ""
 hypervisor: qemu          # or mock
 image: ubuntu-cloud
 cpus: 2
@@ -171,16 +210,42 @@ profiles:
 
 ## API
 
+Daemon HTTP over the unix socket and optional TCP (`api`). Spec: [`api/openapi.yaml`](api/openapi.yaml).
+
 | Method | Path |
 |--------|------|
 | GET | `/healthz`, `/info`, `/metrics` |
 | GET/POST | `/vms` |
 | GET/DELETE | `/vms/{name}` |
 | POST | `/vms/{name}/shutdown` |
+| POST | `/vms/{name}/pause`, `/vms/{name}/resume` |
+| POST | `/vms/{name}/forwards` · DELETE `/vms/{name}/forwards/{hostPort}` |
+| POST | `/vms/{name}/exec` |
+| GET | `/vms/{name}/agent/health` |
+| PUT/GET | `/vms/{name}/cp` |
+| GET/POST/DELETE | `/vms/{name}/fs/…` |
+
+When `api_token` (or `auth_token`) is set, all routes except `GET /healthz` require `Authorization: Bearer <token>`. The CLI sends `GRAIN_TOKEN` or the config token automatically.
 
 ```bash
 curl --unix-socket ~/.grain/grain.sock http://grain/vms
+# with token:
+curl -H "Authorization: Bearer $GRAIN_TOKEN" --unix-socket ~/.grain/grain.sock http://grain/vms
 ```
+
+### Go client SDK
+
+```go
+import "github.com/cxdy/grain/client"
+
+c, err := client.DialUnix(filepath.Join(os.Getenv("HOME"), ".grain", "grain.sock"))
+// or: client.DialHTTP("http://127.0.0.1:7474", os.Getenv("GRAIN_TOKEN"))
+
+inst, err := c.Create(ctx, client.CreateRequest{Persistent: false, Wait: "agent"})
+_ = c.Exec(ctx, inst.Name, "uname", "-a")
+```
+
+Package docs mirror the OpenAPI shapes; see [`client/`](client/) and [`api/openapi.yaml`](api/openapi.yaml).
 
 ## License
 
