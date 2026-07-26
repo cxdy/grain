@@ -75,7 +75,49 @@ The script:
 5. `qemu-img convert -O qcow2` flattens the overlay into a standalone base
 6. `grain image import … --id grain-ubuntu`
 
-Env knobs: `BAKE_VM`, `IMAGE_ID`, `GRAIN_BIN`, `GRAIN_DATA_DIR`, `KEEP_BAKE_VM=1`.
+Env knobs: `BAKE_VM`, `IMAGE_ID`, `GRAIN_BIN`, `GRAIN_DATA_DIR`, `KEEP_BAKE_VM=1`, `ARTIFACT_DIR` (with `--ci`).
+
+### CI bake artifacts
+
+GitHub Actions workflow [`.github/workflows/bake-golden.yml`](../.github/workflows/bake-golden.yml) builds `grain-ubuntu` on a schedule (weekly) and on manual **workflow_dispatch**.
+
+| Output | Notes |
+|--------|--------|
+| `grain-ubuntu-amd64.qcow2` | Flattened golden disk (ubuntu-cloud + grain-agent, `has_agent`) |
+| `grain-ubuntu-amd64.qcow2.sha256` | SHA-256 checksum file |
+
+**Arch:** `ubuntu-latest` is **amd64** only. arm64 golden bakes need a **self-hosted** runner with QEMU/KVM (not wired into the matrix yet).
+
+**KVM:** grain QEMU uses `-cpu host`, which needs KVM on Linux (or HVF on macOS). Many GitHub-hosted runners lack `/dev/kvm`; the job may fail or time out under pure TCG. Prefer a self-hosted runner with KVM, or bake on a laptop and use the artifact/import path below.
+
+#### Download from Actions
+
+1. Open the repo on GitHub → **Actions** → workflow **Bake golden image**.
+2. Open a successful run → **Artifacts** → download `grain-ubuntu-amd64`.
+3. Unpack if needed, then import:
+
+```bash
+grain image import ./grain-ubuntu-amd64.qcow2 --id grain-ubuntu
+# optional: verify checksum
+sha256sum -c grain-ubuntu-amd64.qcow2.sha256
+grain image ls
+grain new -i grain-ubuntu
+```
+
+#### Local / CI script
+
+```bash
+make build agent-linux
+# Full CI path (isolated data dir, writes dist/golden/…):
+./scripts/ci-bake-golden.sh
+# or:
+./scripts/bake-golden.sh --ci
+# ARTIFACT_DIR=./out CI_READY_TIMEOUT=15m ./scripts/bake-golden.sh --ci
+```
+
+Optional **workflow_dispatch** input `release_tag` (e.g. `v0.1.0`) attaches the qcow2 + checksum to an **existing** GitHub Release when `GITHUB_TOKEN` can write contents.
+
+The catalog entry for `grain-ubuntu` stays **`LocalOnly: true`** until a real public download URL is published (no placeholder URLs). See the comment in `internal/image/catalog.go`.
 
 ### Bake manually
 

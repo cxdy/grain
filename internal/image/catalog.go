@@ -71,7 +71,14 @@ func Catalog() map[string]Spec {
 	}
 
 	// Golden image with grain-agent baked in. Register via `grain image import`
-	// or scripts/bake-golden.sh — no public download URL.
+	// or scripts/bake-golden.sh — no public download URL yet.
+	//
+	// Future public URL slot (keep LocalOnly true until a real published URL exists):
+	//   After .github/workflows/bake-golden.yml (or a release) publishes
+	//   grain-ubuntu-<arch>.qcow2 + sha256, set URL and SHA256 per GOARCH and
+	//   flip LocalOnly to false so `grain image pull grain-ubuntu` works.
+	//   Do not invent placeholder URLs; empty URL + LocalOnly is intentional.
+	//   See docs/images.md "CI bake artifacts".
 	c[IDGrainUbuntu] = Spec{
 		ID:          IDGrainUbuntu,
 		Description: "Ubuntu golden image with grain-agent (import or bake locally)",
@@ -79,7 +86,7 @@ func Catalog() map[string]Spec {
 		Format:      "qcow2",
 		SSHUser:     "ubuntu",
 		HasAgent:    true,
-		LocalOnly:   true,
+		LocalOnly:   true, // remains true until a real catalog URL is published
 	}
 
 	return c

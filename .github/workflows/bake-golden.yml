@@ -1,0 +1,103 @@
+# Bake grain-ubuntu golden qcow2 and upload as a workflow artifact.
+#
+# Triggers:
+#   - workflow_dispatch (manual): optional release_tag to attach assets to a release
+#   - schedule: weekly (Monday 06:00 UTC)
+#
+# Arch notes:
+#   - ubuntu-latest is amd64 only → produces grain-ubuntu-amd64.qcow2
+#   - arm64 bake needs a self-hosted runner with QEMU/KVM (not matrixed here yet)
+#
+# KVM: GitHub-hosted runners often lack /dev/kvm. grain QEMU uses -cpu host, so
+# the job may fail without nested virt. Prefer self-hosted + KVM, or bake locally
+# (./scripts/ci-bake-golden.sh / bake-golden.sh --ci) and import the artifact.
+# Catalog stays LocalOnly until a real public URL is published (do not invent URLs).
+name: Bake golden image
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Optional existing git tag to attach qcow2 + checksum to (e.g. v0.1.0). Empty = artifact only."
+        required: false
+        type: string
+        default: ""
+  schedule:
+    # Weekly Monday 06:00 UTC
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: write # needed only when attaching to a release via workflow_dispatch
+
+jobs:
+  bake:
+    name: bake grain-ubuntu (amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils
+          qemu-system-x86_64 --version | head -1
+          qemu-img --version | head -1
+          if [[ -e /dev/kvm ]]; then
+            echo "KVM: /dev/kvm present"
+            ls -l /dev/kvm
+            # ensure runner user can use KVM when the device exists
+            sudo chmod 666 /dev/kvm 2>/dev/null || true
+          else
+            echo "::warning::/dev/kvm missing — bake may fail (grain -cpu host needs KVM). See docs/images.md"
+          fi
+
+      - name: Build grain + agent-linux
+        run: make build agent-linux
+
+      - name: Headless golden bake
+        env:
+          ARTIFACT_DIR: ${{ github.workspace }}/dist/golden
+          CI_READY_TIMEOUT: 15m
+        run: |
+          chmod +x scripts/bake-golden.sh scripts/ci-bake-golden.sh
+          ./scripts/ci-bake-golden.sh
+
+      - name: List artifacts
+        if: always()
+        run: |
+          ls -lah dist/golden/ 2>/dev/null || echo "no dist/golden yet"
+          if [[ -f dist/golden/grain-ubuntu-amd64.qcow2 ]]; then
+            qemu-img info dist/golden/grain-ubuntu-amd64.qcow2 || true
+          fi
+
+      - name: Upload qcow2 + checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: grain-ubuntu-amd64
+          path: |
+            dist/golden/grain-ubuntu-amd64.qcow2
+            dist/golden/grain-ubuntu-amd64.qcow2.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      # Optional: attach to an existing GitHub Release when dispatch provides release_tag.
+      - name: Attach to release
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: |
+            dist/golden/grain-ubuntu-amd64.qcow2
+            dist/golden/grain-ubuntu-amd64.qcow2.sha256
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
