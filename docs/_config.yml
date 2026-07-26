@@ -3,9 +3,6 @@ description: Fast Linux microVM sandboxes on your own hardware
 url: https://grainvm.com
 baseurl: ""
 
-# Set true and fill domain to enable Plausible (privacy-friendly, no cookies)
-plausible: false
-plausible_domain: grainvm.com
 
 markdown: kramdown
 highlighter: rouge
@@ -130,5 +127,3 @@ docs_nav:
         url: /explain/images-and-boot/
       - title: Product surface
         url: /explain/parity/
-      - title: Site analytics
-        url: /explain/site-analytics/
