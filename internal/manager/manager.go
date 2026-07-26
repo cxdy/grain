@@ -93,6 +93,10 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		img = image.DefaultID()
 	}
 
+	if err := m.checkResourceCaps(cpus, mem, ""); err != nil {
+		return nil, err
+	}
+
 	inst := &vm.Instance{
 		Name:       name,
 		Status:     vm.StatusCreating,
@@ -286,6 +290,11 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 		return nil, fmt.Errorf("vm %q has no disk (disk_path missing or gone)", name)
 	}
 
+	// Starting a non-running VM increases the running count — enforce caps.
+	if err := m.checkResourceCaps(inst.CPUs, inst.MemoryMB, name); err != nil {
+		return nil, err
+	}
+
 	priv, pub, err := sshkey.Ensure(m.cfg.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("ssh key: %w", err)
@@ -349,4 +358,52 @@ func (m *Manager) CleanupEphemeral(ctx context.Context) error {
 func DiskExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// activeStatus is true for VMs that consume host resources toward caps.
+// Stopped and error VMs do not count; creating does (in-flight create).
+func activeStatus(s vm.Status) bool {
+	return s == vm.StatusRunning || s == vm.StatusCreating
+}
+
+// checkResourceCaps rejects Create/Start when per-VM or host totals would exceed config.
+// excludeName skips that instance when summing (used on Start so a stopped VM's own
+// prior resources are not double-counted if it were somehow still listed as active).
+// Zero config fields mean unlimited for that dimension.
+func (m *Manager) checkResourceCaps(cpus, mem int, excludeName string) error {
+	cfg := m.cfg
+	if cfg.MaxCPUsPerVM > 0 && cpus > cfg.MaxCPUsPerVM {
+		return fmt.Errorf("resource cap: max_cpus_per_vm is %d (requested %d)", cfg.MaxCPUsPerVM, cpus)
+	}
+	if cfg.MaxMemoryMBPerVM > 0 && mem > cfg.MaxMemoryMBPerVM {
+		return fmt.Errorf("resource cap: max_memory_mb_per_vm is %d (requested %d)", cfg.MaxMemoryMBPerVM, mem)
+	}
+
+	list, err := m.st.List()
+	if err != nil {
+		return err
+	}
+	var nRunning, totalCPUs, totalMem int
+	for _, inst := range list {
+		if excludeName != "" && inst.Name == excludeName {
+			continue
+		}
+		if !activeStatus(inst.Status) {
+			continue
+		}
+		nRunning++
+		totalCPUs += inst.CPUs
+		totalMem += inst.MemoryMB
+	}
+
+	if cfg.MaxVMs > 0 && nRunning+1 > cfg.MaxVMs {
+		return fmt.Errorf("resource cap: max_vms is %d (already %d running)", cfg.MaxVMs, nRunning)
+	}
+	if cfg.MaxCPUsTotal > 0 && totalCPUs+cpus > cfg.MaxCPUsTotal {
+		return fmt.Errorf("resource cap: max_cpus_total is %d (already %d in use, requested %d)", cfg.MaxCPUsTotal, totalCPUs, cpus)
+	}
+	if cfg.MaxMemoryMBTotal > 0 && totalMem+mem > cfg.MaxMemoryMBTotal {
+		return fmt.Errorf("resource cap: max_memory_mb_total is %d (already %d in use, requested %d)", cfg.MaxMemoryMBTotal, totalMem, mem)
+	}
+	return nil
 }

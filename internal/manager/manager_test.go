@@ -2,6 +2,7 @@ package manager_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,8 +15,12 @@ import (
 
 func testManager(t *testing.T) (*manager.Manager, *hypervisor.MockRuntime, *hypervisor.MockDisk) {
 	t.Helper()
+	return testManagerCfg(t, config.Defaults())
+}
+
+func testManagerCfg(t *testing.T, cfg config.Config) (*manager.Manager, *hypervisor.MockRuntime, *hypervisor.MockDisk) {
+	t.Helper()
 	dir := t.TempDir()
-	cfg := config.Defaults()
 	cfg.DataDir = dir
 	cfg.Hypervisor = "mock"
 	cfg.ReadyTimeout = time.Second // never used for mock, but keep tests fast
@@ -241,5 +246,147 @@ func TestCreateEmitsEvents(t *testing.T) {
 		if phases[i] != want[i] {
 			t.Fatalf("phase[%d]=%s want %s (all %v)", i, phases[i], want[i], phases)
 		}
+	}
+}
+
+func TestResourceCapMaxVMs(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.MaxVMs = 2
+	cfg.MaxCPUsTotal = 0 // unlimited so we hit max_vms first
+	cfg.MaxMemoryMBTotal = 0
+	m, _, _ := testManagerCfg(t, cfg)
+
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "b"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := m.Create(context.Background(), vm.CreateOpts{Name: "c"})
+	if err == nil {
+		t.Fatal("expected max_vms cap error")
+	}
+	if !strings.Contains(err.Error(), "resource cap: max_vms is 2") {
+		t.Fatalf("error %v", err)
+	}
+	if !strings.Contains(err.Error(), "already 2 running") {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestResourceCapPerVMMemory(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.MaxMemoryMBPerVM = 1024
+	cfg.MaxVMs = 0
+	cfg.MaxCPUsTotal = 0
+	cfg.MaxMemoryMBTotal = 0
+	m, _, _ := testManagerCfg(t, cfg)
+
+	_, err := m.Create(context.Background(), vm.CreateOpts{Name: "big", MemoryMB: 2048})
+	if err == nil {
+		t.Fatal("expected max_memory_mb_per_vm cap error")
+	}
+	if !strings.Contains(err.Error(), "resource cap: max_memory_mb_per_vm is 1024") {
+		t.Fatalf("error %v", err)
+	}
+	// under the per-VM cap still works
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "ok", MemoryMB: 512}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResourceCapPerVMCPUs(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.MaxCPUsPerVM = 2
+	cfg.MaxVMs = 0
+	cfg.MaxCPUsTotal = 0
+	cfg.MaxMemoryMBTotal = 0
+	m, _, _ := testManagerCfg(t, cfg)
+
+	_, err := m.Create(context.Background(), vm.CreateOpts{Name: "wide", CPUs: 4})
+	if err == nil {
+		t.Fatal("expected max_cpus_per_vm cap error")
+	}
+	if !strings.Contains(err.Error(), "resource cap: max_cpus_per_vm is 2") {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestResourceCapStoppedDoesNotCount(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.MaxVMs = 1
+	cfg.MaxCPUsTotal = 0
+	cfg.MaxMemoryMBTotal = 0
+	m, _, _ := testManagerCfg(t, cfg)
+
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"}); err != nil {
+		t.Fatal(err)
+	}
+	// while running, second create must fail
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "other"}); err == nil {
+		t.Fatal("expected max_vms while first is running")
+	}
+	if err := m.Shutdown(context.Background(), "lab"); err != nil {
+		t.Fatal(err)
+	}
+	// stopped VM does not count — new create succeeds
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "other"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResourceCapStartRespectsMaxVMs(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.MaxVMs = 1
+	cfg.MaxCPUsTotal = 0
+	cfg.MaxMemoryMBTotal = 0
+	m, _, _ := testManagerCfg(t, cfg)
+
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Shutdown(context.Background(), "a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "b"}); err != nil {
+		t.Fatal(err)
+	}
+	// b is running; starting a should hit max_vms
+	_, err := m.Start(context.Background(), "a")
+	if err == nil {
+		t.Fatal("expected max_vms on start")
+	}
+	if !strings.Contains(err.Error(), "resource cap: max_vms is 1") {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestResourceCapTotalCPUs(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.MaxVMs = 0
+	cfg.MaxCPUsTotal = 4
+	cfg.MaxMemoryMBTotal = 0
+	cfg.MaxCPUsPerVM = 0
+	cfg.DefaultCPUs = 2
+	m, _, _ := testManagerCfg(t, cfg)
+
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "a", CPUs: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "b", CPUs: 2}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := m.Create(context.Background(), vm.CreateOpts{Name: "c", CPUs: 2})
+	if err == nil {
+		t.Fatal("expected max_cpus_total cap error")
+	}
+	if !strings.Contains(err.Error(), "resource cap: max_cpus_total is 4") {
+		t.Fatalf("error %v", err)
 	}
 }

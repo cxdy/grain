@@ -38,6 +38,18 @@ type Config struct {
 	ReadyTimeout time.Duration `yaml:"ready_timeout"`
 	// LogLevel: debug|info|warn|error
 	LogLevel string `yaml:"log_level"`
+
+	// Resource caps (0 = unlimited). Stopped VMs do not count toward running caps.
+	// MaxVMs is the maximum number of concurrently running/creating VMs.
+	MaxVMs int `yaml:"max_vms"`
+	// MaxCPUsTotal is the sum of CPUs across running/creating VMs.
+	MaxCPUsTotal int `yaml:"max_cpus_total"`
+	// MaxMemoryMBTotal is the sum of MemoryMB across running/creating VMs.
+	MaxMemoryMBTotal int `yaml:"max_memory_mb_total"`
+	// MaxCPUsPerVM rejects a single VM requesting more CPUs than this.
+	MaxCPUsPerVM int `yaml:"max_cpus_per_vm"`
+	// MaxMemoryMBPerVM rejects a single VM requesting more MemoryMB than this.
+	MaxMemoryMBPerVM int `yaml:"max_memory_mb_per_vm"`
 }
 
 // Defaults returns developer-friendly defaults for local Mac/Linux use.
@@ -48,18 +60,23 @@ func Defaults() Config {
 	}
 	dir := filepath.Join(home, ".grain")
 	return Config{
-		DataDir:         dir,
-		Socket:          filepath.Join(dir, "grain.sock"),
-		API:             "127.0.0.1:7474",
-		MetricsAddr:     "127.0.0.1:9091",
-		DefaultCPUs:     2,
-		DefaultMemoryMB: 2048,
-		DefaultDiskGB:   8,
-		Hypervisor:      "qemu",
-		Image:           "ubuntu-cloud",
-		SSHUser:         "ubuntu",
-		ReadyTimeout:    120 * time.Second,
-		LogLevel:        "info",
+		DataDir:          dir,
+		Socket:           filepath.Join(dir, "grain.sock"),
+		API:              "127.0.0.1:7474",
+		MetricsAddr:      "127.0.0.1:9091",
+		DefaultCPUs:      2,
+		DefaultMemoryMB:  2048,
+		DefaultDiskGB:    8,
+		Hypervisor:       "qemu",
+		Image:            "ubuntu-cloud",
+		SSHUser:          "ubuntu",
+		ReadyTimeout:     120 * time.Second,
+		LogLevel:         "info",
+		MaxVMs:           8,
+		MaxCPUsTotal:     16,
+		MaxMemoryMBTotal: 32768,
+		MaxCPUsPerVM:     8,
+		MaxMemoryMBPerVM: 16384,
 	}
 }
 

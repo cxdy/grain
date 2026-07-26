@@ -21,6 +21,22 @@ func TestDefaults(t *testing.T) {
 	if c.Hypervisor != "qemu" {
 		t.Fatalf("hypervisor %s", c.Hypervisor)
 	}
+	// finite resource caps so hosts cannot thrash by default
+	if c.MaxVMs != 8 {
+		t.Fatalf("max_vms %d", c.MaxVMs)
+	}
+	if c.MaxCPUsTotal != 16 {
+		t.Fatalf("max_cpus_total %d", c.MaxCPUsTotal)
+	}
+	if c.MaxMemoryMBTotal != 32768 {
+		t.Fatalf("max_memory_mb_total %d", c.MaxMemoryMBTotal)
+	}
+	if c.MaxCPUsPerVM != 8 {
+		t.Fatalf("max_cpus_per_vm %d", c.MaxCPUsPerVM)
+	}
+	if c.MaxMemoryMBPerVM != 16384 {
+		t.Fatalf("max_memory_mb_per_vm %d", c.MaxMemoryMBPerVM)
+	}
 }
 
 func TestLoadMissingUsesDefaults(t *testing.T) {
@@ -38,7 +54,7 @@ func TestLoadYAML(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	body := []byte("cpus: 4\nmemory_mb: 4096\nhypervisor: mock\n")
+	body := []byte("cpus: 4\nmemory_mb: 4096\nhypervisor: mock\nmax_vms: 2\nmax_cpus_per_vm: 4\n")
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -55,5 +71,30 @@ func TestLoadYAML(t *testing.T) {
 	// zero duration filled in
 	if c.ReadyTimeout < time.Second {
 		t.Fatalf("ready timeout %v", c.ReadyTimeout)
+	}
+	if c.MaxVMs != 2 || c.MaxCPUsPerVM != 4 {
+		t.Fatalf("caps max_vms=%d max_cpus_per_vm=%d", c.MaxVMs, c.MaxCPUsPerVM)
+	}
+	// unset caps keep defaults
+	if c.MaxMemoryMBPerVM != 16384 {
+		t.Fatalf("max_memory_mb_per_vm default %d", c.MaxMemoryMBPerVM)
+	}
+}
+
+func TestLoadYAMLZeroCapMeansUnlimited(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	// explicit 0 overrides default → unlimited for that field
+	body := []byte("max_vms: 0\nmax_cpus_total: 0\n")
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.MaxVMs != 0 || c.MaxCPUsTotal != 0 {
+		t.Fatalf("want zero (unlimited), got max_vms=%d max_cpus_total=%d", c.MaxVMs, c.MaxCPUsTotal)
 	}
 }
