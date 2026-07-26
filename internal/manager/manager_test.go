@@ -2,6 +2,8 @@ package manager_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -331,6 +333,103 @@ func TestStartReappliesForwards(t *testing.T) {
 	}
 	if got.Forwards[0].GuestPort != 8080 {
 		t.Fatalf("guest %d", got.Forwards[0].GuestPort)
+	}
+}
+
+func TestCreateStoresMounts(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	hostDir := t.TempDir()
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name: "mnt1",
+		Mounts: []vm.Mount{
+			{Host: hostDir, Guest: "/mnt/src"},
+			{Host: hostDir, Guest: "/data"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inst.Mounts) != 2 {
+		t.Fatalf("mounts %v", inst.Mounts)
+	}
+	if inst.Mounts[0].Tag != "grain0" || inst.Mounts[1].Tag != "grain1" {
+		t.Fatalf("tags %q %q", inst.Mounts[0].Tag, inst.Mounts[1].Tag)
+	}
+	if inst.Mounts[0].Guest != "/mnt/src" || inst.Mounts[1].Guest != "/data" {
+		t.Fatalf("guests %+v", inst.Mounts)
+	}
+	// host should be absolute
+	if !filepath.IsAbs(inst.Mounts[0].Host) {
+		t.Fatalf("host not abs: %s", inst.Mounts[0].Host)
+	}
+	// persisted
+	got, err := m.Get("mnt1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Mounts) != 2 || got.Mounts[0].Tag != "grain0" {
+		t.Fatalf("persisted mounts %+v", got.Mounts)
+	}
+}
+
+func TestCreateRejectsNonDirMount(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	f := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:   "badmnt",
+		Mounts: []vm.Mount{{Host: f, Guest: "/mnt/x"}},
+	})
+	if err == nil {
+		t.Fatal("expected non-directory error")
+	}
+	if !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestCreateRejectsMissingMountHost(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	_, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:   "nomnt",
+		Mounts: []vm.Mount{{Host: filepath.Join(t.TempDir(), "nope"), Guest: "/mnt/x"}},
+	})
+	if err == nil {
+		t.Fatal("expected missing host error")
+	}
+}
+
+func TestStartReappliesMounts(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	hostDir := t.TempDir()
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Persistent: true,
+		Name:       "mntsvc",
+		Mounts:     []vm.Mount{{Host: hostDir, Guest: "/work"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tag := inst.Mounts[0].Tag
+	host := inst.Mounts[0].Host
+	if err := m.Shutdown(context.Background(), "mntsvc"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Start(context.Background(), "mntsvc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Mounts) != 1 || got.Mounts[0].Tag != tag || got.Mounts[0].Host != host {
+		t.Fatalf("mounts after start %+v", got.Mounts)
+	}
+	if got.Mounts[0].Guest != "/work" {
+		t.Fatalf("guest %s", got.Mounts[0].Guest)
 	}
 }
 

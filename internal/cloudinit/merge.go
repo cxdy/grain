@@ -93,12 +93,36 @@ func MergeUserData(baseCloudConfig string, extra string) (string, error) {
 }
 
 // RenderUserData builds the final user-data document for a VM seed.
-func RenderUserData(hostname, sshPubLine, extra string) (string, error) {
-	baseYAML, err := yaml.Marshal(BaseUserData(hostname, sshPubLine))
+// mounts, when non-empty, add runcmd entries that mkdir + mount each 9p share.
+func RenderUserData(hostname, sshPubLine, extra string, mounts ...MountSpec) (string, error) {
+	base := BaseUserData(hostname, sshPubLine)
+	if len(mounts) > 0 {
+		rc := toAnySlice(base["runcmd"])
+		for _, m := range mounts {
+			if m.Tag == "" || m.Guest == "" {
+				continue
+			}
+			rc = append(rc, MountRuncmd(m.Tag, m.Guest))
+		}
+		base["runcmd"] = rc
+	}
+	baseYAML, err := yaml.Marshal(base)
 	if err != nil {
 		return "", err
 	}
 	return MergeUserData(string(baseYAML), extra)
+}
+
+// MountSpec is a guest-side 9p share (tag + mount point). Host path is not needed
+// in cloud-init — QEMU exposes the share by tag.
+type MountSpec struct {
+	Tag   string
+	Guest string
+}
+
+// MountRuncmd returns the shell command to mount a virtio-9p share in the guest.
+func MountRuncmd(tag, guest string) string {
+	return fmt.Sprintf("mkdir -p %s && mount -t 9p -o trans=virtio,version=9p2000.L %s %s", guest, tag, guest)
 }
 
 func isCloudConfig(s string) bool {

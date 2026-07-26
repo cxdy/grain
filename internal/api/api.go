@@ -84,6 +84,7 @@ type createBody struct {
 	Tags       map[string]string `json:"tags"`
 	Userdata   string            `json:"userdata"`
 	Forwards   []vm.PortForward  `json:"forwards"`
+	Mounts     []vm.Mount        `json:"mounts"`
 }
 
 func wantsCreateStream(r *http.Request) bool {
@@ -114,6 +115,7 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		Tags:       body.Tags,
 		Userdata:   body.Userdata,
 		Forwards:   body.Forwards,
+		Mounts:     body.Mounts,
 	}
 
 	if wantsCreateStream(r) {

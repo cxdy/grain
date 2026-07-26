@@ -10,13 +10,14 @@ import (
 
 // WriteNoCloud builds a cloud-init NoCloud seed ISO (volume label cidata).
 // userdataExtra is optional shell or #cloud-config merged into the base document.
-func WriteNoCloud(dir, hostname, sshPubLine, userdataExtra string) (seedPath string, err error) {
+// mounts, when non-empty, inject runcmd entries to mount each virtio-9p share.
+func WriteNoCloud(dir, hostname, sshPubLine, userdataExtra string, mounts ...MountSpec) (seedPath string, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	meta := fmt.Sprintf("instance-id: grain-%s\nlocal-hostname: %s\n", hostname, hostname)
 
-	user, err := RenderUserData(hostname, sshPubLine, userdataExtra)
+	user, err := RenderUserData(hostname, sshPubLine, userdataExtra, mounts...)
 	if err != nil {
 		return "", fmt.Errorf("cloud-init user-data: %w", err)
 	}

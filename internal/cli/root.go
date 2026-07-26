@@ -37,6 +37,7 @@ func Root(version string) *cobra.Command {
   grain new             ephemeral sandbox
   grain new -p          persistent sandbox
   grain new -P 8080:80  publish host:guest ports
+  grain new -v HOST:GUEST  share host dir via virtio-9p
   grain stop / start    stop or restart a persistent VM
   grain ls / rm / sh / x / cp
   grain fwd ls          list port forwards
@@ -174,6 +175,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var image string
 	var userdataFile string
 	var publish []string
+	var volumes []string
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Launch a sandbox (ephemeral by default)",
@@ -201,6 +203,10 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			mounts, err := parseVolumeFlags(volumes)
+			if err != nil {
+				return err
+			}
 			onEvent, stop := createProgressEvents("creating")
 			start := time.Now()
 			inst, err := c.CreateStream(ctx, api.CreateRequest{
@@ -212,6 +218,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				Image:      image,
 				Userdata:   userdata,
 				Forwards:   fwds,
+				Mounts:     mounts,
 			}, onEvent)
 			stop()
 			if err != nil {
@@ -228,6 +235,9 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				}
 				fmt.Printf("  %s=:%d→%d", proto, f.HostPort, f.GuestPort)
 			}
+			for _, m := range inst.Mounts {
+				fmt.Printf("  vol=%s→%s", m.Host, m.Guest)
+			}
 			fmt.Printf("  (%s)\n", time.Since(start).Round(time.Second))
 			fmt.Printf("next:  grain sh %s\n", inst.Name)
 			fmt.Printf("       grain x %s -- uname -a\n", inst.Name)
@@ -242,6 +252,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringVarP(&image, "image", "i", "", "base image id (default from config)")
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
 	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
+	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")
 	return cmd
 }
 

@@ -101,6 +101,10 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	if err != nil {
 		return nil, err
 	}
+	mounts, err := prepareMounts(opts.Mounts)
+	if err != nil {
+		return nil, err
+	}
 
 	inst := &vm.Instance{
 		Name:       name,
@@ -112,6 +116,7 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		Image:      img,
 		Tags:       opts.Tags,
 		Forwards:   fwds,
+		Mounts:     mounts,
 		CreatedAt:  time.Now().UTC(),
 	}
 	if err := m.st.Put(inst); err != nil {
@@ -151,7 +156,8 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	}
 	_ = priv
 	// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
-	if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, opts.Userdata); err != nil {
+	// Mount runcmds are injected from prepared mounts.
+	if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, opts.Userdata, mountSpecs(mounts)...); err != nil {
 		// mock / missing iso tools: log and continue (SSH inject won't work)
 		m.log.Warn("cloud-init seed skipped", "err", err)
 	}
@@ -308,6 +314,10 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 	if err := hypervisor.AllocateForwardPorts(inst.Forwards); err != nil {
 		return nil, err
 	}
+	// Re-validate mounts from meta (host dirs must still exist for QEMU 9p).
+	if err := validateStoredMounts(inst.Mounts); err != nil {
+		return nil, err
+	}
 
 	priv, pub, err := sshkey.Ensure(m.cfg.DataDir)
 	if err != nil {
@@ -317,11 +327,12 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 	vmDir := m.st.Dir(name)
 	seed := filepath.Join(vmDir, "seed.iso")
 	if !DiskExists(seed) {
-		if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, ""); err != nil {
+		if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, "", mountSpecs(inst.Mounts)...); err != nil {
 			m.log.Warn("cloud-init seed skipped", "err", err)
 		}
 	}
 
+	// Start uses inst.Mounts for virtio-9p device args.
 	if err := m.rt.Start(ctx, inst, inst.DiskPath); err != nil {
 		return m.fail(inst, fmt.Errorf("start: %w", err))
 	}
@@ -389,6 +400,71 @@ func copyAndPrepareForwards(in []vm.PortForward) ([]vm.PortForward, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// prepareMounts resolves host paths to absolute, rejects non-directories,
+// assigns tags grain0, grain1, … when empty, and deep-copies the list.
+func prepareMounts(in []vm.Mount) ([]vm.Mount, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make([]vm.Mount, 0, len(in))
+	for i, m := range in {
+		if m.Host == "" {
+			return nil, fmt.Errorf("mount[%d]: empty host path", i)
+		}
+		if m.Guest == "" {
+			return nil, fmt.Errorf("mount[%d]: empty guest path", i)
+		}
+		if m.Guest[0] != '/' {
+			return nil, fmt.Errorf("mount[%d]: guest path %q must be absolute (start with /)", i, m.Guest)
+		}
+		abs, err := filepath.Abs(m.Host)
+		if err != nil {
+			return nil, fmt.Errorf("mount host %q: %w", m.Host, err)
+		}
+		st, err := os.Stat(abs)
+		if err != nil {
+			return nil, fmt.Errorf("mount host %q: %w", abs, err)
+		}
+		if !st.IsDir() {
+			return nil, fmt.Errorf("mount host %q is not a directory", abs)
+		}
+		tag := m.Tag
+		if tag == "" {
+			tag = fmt.Sprintf("grain%d", i)
+		}
+		out = append(out, vm.Mount{Host: abs, Guest: m.Guest, Tag: tag})
+	}
+	return out, nil
+}
+
+// validateStoredMounts checks that persisted mount host paths still exist as dirs.
+func validateStoredMounts(mounts []vm.Mount) error {
+	for i, m := range mounts {
+		if m.Host == "" || m.Tag == "" {
+			return fmt.Errorf("mount[%d]: incomplete (host=%q tag=%q)", i, m.Host, m.Tag)
+		}
+		st, err := os.Stat(m.Host)
+		if err != nil {
+			return fmt.Errorf("mount host %q: %w", m.Host, err)
+		}
+		if !st.IsDir() {
+			return fmt.Errorf("mount host %q is not a directory", m.Host)
+		}
+	}
+	return nil
+}
+
+func mountSpecs(mounts []vm.Mount) []cloudinit.MountSpec {
+	if len(mounts) == 0 {
+		return nil
+	}
+	out := make([]cloudinit.MountSpec, len(mounts))
+	for i, m := range mounts {
+		out[i] = cloudinit.MountSpec{Tag: m.Tag, Guest: m.Guest}
+	}
+	return out
 }
 
 // activeStatus is true for VMs that consume host resources toward caps.

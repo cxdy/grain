@@ -191,6 +191,35 @@ func TestRenderUserData_IncludesGrainReadyAndSSH(t *testing.T) {
 	}
 }
 
+func TestRenderUserData_MountRuncmds(t *testing.T) {
+	got, err := cloudinit.RenderUserData("sbox-1", "ssh-ed25519 AAAA k", "",
+		cloudinit.MountSpec{Tag: "grain0", Guest: "/mnt/src"},
+		cloudinit.MountSpec{Tag: "grain1", Guest: "/data"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want0 := cloudinit.MountRuncmd("grain0", "/mnt/src")
+	want1 := cloudinit.MountRuncmd("grain1", "/data")
+	if !strings.Contains(got, want0) {
+		t.Fatalf("missing mount0 %q in:\n%s", want0, got)
+	}
+	if !strings.Contains(got, want1) {
+		t.Fatalf("missing mount1 %q in:\n%s", want1, got)
+	}
+	if !strings.Contains(got, "trans=virtio,version=9p2000.L") {
+		t.Fatalf("missing 9p options:\n%s", got)
+	}
+}
+
+func TestMountRuncmd(t *testing.T) {
+	got := cloudinit.MountRuncmd("grain0", "/work")
+	want := "mkdir -p /work && mount -t 9p -o trans=virtio,version=9p2000.L grain0 /work"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
 func mustParse(t *testing.T, cloudConfig string) map[string]any {
 	t.Helper()
 	var m map[string]any

@@ -97,6 +97,9 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		)
 	}
 
+	// Host directory mounts via virtio-9p (mapped-xattr for macOS).
+	args = append(args, virtio9pArgs(inst.Mounts)...)
+
 	// UEFI firmware for aarch64 cloud images
 	if runtime.GOARCH == "arm64" {
 		code, varsTemplate := findEDK()

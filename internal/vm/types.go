@@ -17,9 +17,17 @@ const (
 // PortForward maps a host port to a guest port (SLIRP hostfwd).
 // HostPort 0 means allocate a free high port at start time.
 type PortForward struct {
-	HostPort  int    `json:"host_port"`            // 0 = allocate free
+	HostPort  int    `json:"host_port"`       // 0 = allocate free
 	GuestPort int    `json:"guest_port"`
-	Proto     string `json:"proto,omitempty"`      // default tcp
+	Proto     string `json:"proto,omitempty"` // default tcp
+}
+
+// Mount shares a host directory into the guest via virtio-9p.
+// Tag is the 9p mount_tag (auto grain0, grain1, … when empty).
+type Mount struct {
+	Host  string `json:"host"`
+	Guest string `json:"guest"`
+	Tag   string `json:"tag,omitempty"`
 }
 
 // Instance is a managed microVM (sandbox or long-lived).
@@ -35,7 +43,9 @@ type Instance struct {
 	SSHPort    int               `json:"ssh_port,omitempty"`
 	// Forwards are extra hostfwd entries (beyond SSH :22). Host ports with 0
 	// are allocated before start and persisted so restarts reuse them.
-	Forwards  []PortForward     `json:"forwards,omitempty"`
+	Forwards []PortForward `json:"forwards,omitempty"`
+	// Mounts are host directories shared into the guest via virtio-9p.
+	Mounts    []Mount           `json:"mounts,omitempty"`
 	Tags      map[string]string `json:"tags,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
 	Error     string            `json:"error,omitempty"`
@@ -59,6 +69,8 @@ type CreateOpts struct {
 	Userdata string
 	// Forwards are optional extra host→guest port mappings at create time.
 	Forwards []PortForward
+	// Mounts are optional host directory shares (virtio-9p) at create time.
+	Mounts []Mount
 	// OnEvent receives progress phases during Create (optional; not serialized).
 	OnEvent func(CreateEvent)
 }
