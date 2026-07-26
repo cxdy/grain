@@ -32,8 +32,10 @@ func (m *MockRuntime) Start(_ context.Context, inst *vm.Instance, _ string) erro
 	m.alive[inst.Name] = true
 	inst.PID = 1
 	inst.IP = "127.0.0.1"
-	// allocate fake ssh ports starting at 2200
-	inst.SSHPort = 2200 + len(m.alive)
+	// allocate fake ssh / agent ports starting at 2200 / 7475
+	n := len(m.alive)
+	inst.SSHPort = 2200 + n
+	inst.AgentPort = 7475 + n
 	inst.Status = vm.StatusRunning
 	return nil
 }

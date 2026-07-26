@@ -41,6 +41,8 @@ type Instance struct {
 	Image      string            `json:"image"`
 	IP         string            `json:"ip,omitempty"`
 	SSHPort    int               `json:"ssh_port,omitempty"`
+	// AgentPort is host TCP port forwarded to guest grain-agent (:7475).
+	AgentPort int `json:"agent_port,omitempty"`
 	// Forwards are extra hostfwd entries (beyond SSH :22). Host ports with 0
 	// are allocated before start and persisted so restarts reuse them.
 	Forwards []PortForward `json:"forwards,omitempty"`

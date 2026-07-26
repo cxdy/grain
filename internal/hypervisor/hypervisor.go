@@ -8,7 +8,7 @@ import (
 
 // Runtime starts and stops a guest process.
 type Runtime interface {
-	// Start boots the VM. Updates inst fields (PID, IP, SSHPort) as available.
+	// Start boots the VM. Updates inst fields (PID, IP, SSHPort, AgentPort) as available.
 	Start(ctx context.Context, inst *vm.Instance, diskPath string) error
 	// Stop terminates the hypervisor process.
 	Stop(ctx context.Context, inst *vm.Instance) error

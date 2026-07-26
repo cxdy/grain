@@ -1,16 +1,17 @@
 package hypervisor
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/cxdy/grain/internal/vm"
 )
 
-func TestBuildUserNetdevSSHOnly(t *testing.T) {
+func TestBuildUserNetdevSSHAndAgent(t *testing.T) {
 	t.Parallel()
-	got := buildUserNetdev(2222, nil)
-	want := "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22"
+	got := buildUserNetdev(2222, 17475, nil)
+	want := "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22,hostfwd=tcp:127.0.0.1:17475-:7475"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
@@ -23,9 +24,9 @@ func TestBuildUserNetdevSSHPlusExtra(t *testing.T) {
 		{HostPort: 8443, GuestPort: 443, Proto: "tcp"},
 		{HostPort: 5353, GuestPort: 53, Proto: "udp"},
 	}
-	got := buildUserNetdev(2200, fwds)
-	if !strings.HasPrefix(got, "user,id=net0,hostfwd=tcp:127.0.0.1:2200-:22") {
-		t.Fatalf("missing ssh hostfwd: %s", got)
+	got := buildUserNetdev(2200, 17475, fwds)
+	if !strings.HasPrefix(got, "user,id=net0,hostfwd=tcp:127.0.0.1:2200-:22,hostfwd=tcp:127.0.0.1:17475-:7475") {
+		t.Fatalf("missing ssh/agent hostfwd: %s", got)
 	}
 	for _, frag := range []string{
 		"hostfwd=tcp:127.0.0.1:8080-:80",
@@ -41,10 +42,22 @@ func TestBuildUserNetdevSSHPlusExtra(t *testing.T) {
 func TestBuildUserNetdevSkipsZeroHost(t *testing.T) {
 	t.Parallel()
 	// unallocated HostPort 0 should be skipped (caller should allocate first)
-	got := buildUserNetdev(22, []vm.PortForward{{HostPort: 0, GuestPort: 80}})
-	want := "user,id=net0,hostfwd=tcp:127.0.0.1:22-:22"
+	got := buildUserNetdev(22, 17475, []vm.PortForward{{HostPort: 0, GuestPort: 80}})
+	want := "user,id=net0,hostfwd=tcp:127.0.0.1:22-:22,hostfwd=tcp:127.0.0.1:17475-:7475"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestBuildUserNetdevAgentPortAlwaysPresent(t *testing.T) {
+	t.Parallel()
+	got := buildUserNetdev(2222, 19000, nil)
+	agentFwd := fmt.Sprintf("hostfwd=tcp:127.0.0.1:19000-:%d", GuestAgentPort)
+	if !strings.Contains(got, agentFwd) {
+		t.Fatalf("missing agent hostfwd %q in %s", agentFwd, got)
+	}
+	if GuestAgentPort != 7475 {
+		t.Fatalf("GuestAgentPort = %d, want 7475", GuestAgentPort)
 	}
 }
 

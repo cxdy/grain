@@ -8,12 +8,19 @@ import (
 	"github.com/cxdy/grain/internal/vm"
 )
 
-// buildUserNetdev builds a QEMU SLIRP user netdev string with SSH hostfwd plus
-// any extra PortForward entries. Always forwards guest :22 to sshPort on loopback.
-func buildUserNetdev(sshPort int, fwds []vm.PortForward) string {
+// GuestAgentPort is the TCP port the grain-agent listens on inside the guest.
+const GuestAgentPort = 7475
+
+// buildUserNetdev builds a QEMU SLIRP user netdev string with SSH hostfwd,
+// grain-agent hostfwd, plus any extra PortForward entries.
+// Always forwards guest :22 → sshPort and guest :7475 → agentPort on loopback.
+func buildUserNetdev(sshPort int, agentPort int, fwds []vm.PortForward) string {
 	var b strings.Builder
 	b.WriteString("user,id=net0")
 	b.WriteString(fmt.Sprintf(",hostfwd=tcp:127.0.0.1:%d-:22", sshPort))
+	if agentPort > 0 {
+		b.WriteString(fmt.Sprintf(",hostfwd=tcp:127.0.0.1:%d-:%d", agentPort, GuestAgentPort))
+	}
 	for _, f := range fwds {
 		if f.GuestPort <= 0 || f.HostPort <= 0 {
 			continue
