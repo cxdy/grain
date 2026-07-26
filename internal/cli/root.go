@@ -61,6 +61,7 @@ func Root(version string) *cobra.Command {
 		cmdCp(&cfgPath),
 		cmdLogs(&cfgPath),
 		cmdFwd(&cfgPath),
+		cmdProfile(&cfgPath),
 		cmdImage(&cfgPath),
 		cmdDoctor(&cfgPath),
 		cmdVersion(version),
@@ -174,6 +175,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var cpus, mem, disk int
 	var image string
 	var userdataFile string
+	var profileName string
 	var publish []string
 	var volumes []string
 	cmd := &cobra.Command{
@@ -207,15 +209,47 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			// flags (explicit) > profile fields > global config defaults (daemon)
+			o := config.CreateOverrides{
+				CPUs:          cpus,
+				CPUsSet:       cmd.Flags().Changed("cpus"),
+				MemoryMB:      mem,
+				MemoryMBSet:   cmd.Flags().Changed("mem"),
+				DiskGB:        disk,
+				DiskGBSet:     cmd.Flags().Changed("disk"),
+				Image:         image,
+				ImageSet:      cmd.Flags().Changed("image"),
+				Persistent:    persistent,
+				PersistentSet: cmd.Flags().Changed("persist"),
+				ForwardsSet:   cmd.Flags().Changed("publish"),
+				MountsSet:     cmd.Flags().Changed("volume"),
+			}
+			resolved, err := cfg.ResolveCreate(profileName, o)
+			if err != nil {
+				return err
+			}
+			if !o.ForwardsSet {
+				fwds = profileForwardsToVM(resolved.Forwards)
+			}
+			if !o.MountsSet {
+				mounts = profileMountsToVM(resolved.Mounts)
+			}
+			var tags map[string]string
+			if resolved.ProfileName != "" {
+				tags = map[string]string{"profile": resolved.ProfileName}
+			}
+
 			onEvent, stop := createProgressEvents("creating")
 			start := time.Now()
 			inst, err := c.CreateStream(ctx, api.CreateRequest{
 				Name:       name,
-				Persistent: persistent,
-				CPUs:       cpus,
-				MemoryMB:   mem,
-				DiskGB:     disk,
-				Image:      image,
+				Persistent: resolved.Persistent,
+				CPUs:       resolved.CPUs,
+				MemoryMB:   resolved.MemoryMB,
+				DiskGB:     resolved.DiskGB,
+				Image:      resolved.Image,
+				Tags:       tags,
 				Userdata:   userdata,
 				Forwards:   fwds,
 				Mounts:     mounts,
@@ -251,6 +285,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().IntVarP(&disk, "disk", "d", 0, "disk GiB")
 	cmd.Flags().StringVarP(&image, "image", "i", "", "base image id (default from config)")
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
+	cmd.Flags().StringVar(&profileName, "profile", "", "named profile from config (flags override profile)")
 	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
 	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")
 	return cmd

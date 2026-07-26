@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -50,6 +51,165 @@ type Config struct {
 	MaxCPUsPerVM int `yaml:"max_cpus_per_vm"`
 	// MaxMemoryMBPerVM rejects a single VM requesting more MemoryMB than this.
 	MaxMemoryMBPerVM int `yaml:"max_memory_mb_per_vm"`
+
+	// Profiles are named create presets for `grain new --profile NAME`.
+	// Resolve order: CLI flags (explicit) > profile fields > global defaults.
+	Profiles map[string]Profile `yaml:"profiles"`
+}
+
+// Profile is a named set of create-time defaults (see Profiles).
+type Profile struct {
+	CPUs       int              `yaml:"cpus"`
+	MemoryMB   int              `yaml:"memory_mb"`
+	DiskGB     int              `yaml:"disk_gb"`
+	Image      string           `yaml:"image"`
+	Persistent bool             `yaml:"persistent"`
+	// Preset is an optional userdata preset name (e.g. docker, k3s).
+	Preset   string           `yaml:"preset"`
+	Mounts   []ProfileMount   `yaml:"mounts"`
+	Forwards []ProfileForward `yaml:"forwards"`
+}
+
+// ProfileMount is a host→guest directory share in a profile.
+type ProfileMount struct {
+	Host  string `yaml:"host"`
+	Guest string `yaml:"guest"`
+}
+
+// ProfileForward is a host→guest port mapping in a profile.
+// HostPort 0 means allocate a free host port.
+type ProfileForward struct {
+	HostPort  int    `yaml:"host_port"`
+	GuestPort int    `yaml:"guest_port"`
+	Proto     string `yaml:"proto"`
+}
+
+// CreateOverrides are explicitly-set CLI flags for profile resolution.
+// Zero-valued ints/strings mean "not set" unless the corresponding *Set bool is true
+// (for Persistent, use PersistentSet).
+type CreateOverrides struct {
+	CPUs          int
+	CPUsSet       bool
+	MemoryMB      int
+	MemoryMBSet   bool
+	DiskGB        int
+	DiskGBSet     bool
+	Image         string
+	ImageSet      bool
+	Persistent    bool
+	PersistentSet bool
+	// Preset from CLI --preset (empty + PresetSet false = unset).
+	Preset    string
+	PresetSet bool
+	// When true, CLI -P / -v were provided and override profile lists entirely.
+	ForwardsSet bool
+	MountsSet   bool
+}
+
+// ResolvedCreate is the result of merging CLI flags, a profile, and (later) global defaults.
+// Zero CPUs/MemoryMB/DiskGB/Image still mean "use daemon global defaults".
+type ResolvedCreate struct {
+	CPUs       int
+	MemoryMB   int
+	DiskGB     int
+	Image      string
+	Persistent bool
+	Preset     string
+	Mounts     []ProfileMount
+	Forwards   []ProfileForward
+	// ProfileName is set when a profile was applied (for Tags["profile"]).
+	ProfileName string
+}
+
+// LookupProfile returns the named profile or an error if missing.
+func (c Config) LookupProfile(name string) (Profile, error) {
+	if name == "" {
+		return Profile{}, fmt.Errorf("profile name is empty")
+	}
+	if c.Profiles == nil {
+		return Profile{}, fmt.Errorf("unknown profile %q", name)
+	}
+	p, ok := c.Profiles[name]
+	if !ok {
+		return Profile{}, fmt.Errorf("unknown profile %q", name)
+	}
+	return p, nil
+}
+
+// ProfileNames returns sorted profile names.
+func (c Config) ProfileNames() []string {
+	if len(c.Profiles) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(c.Profiles))
+	for n := range c.Profiles {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ResolveCreate merges CLI overrides with an optional named profile.
+// Order: explicit flags > profile fields > leave zero for global defaults (daemon).
+// Forwards/mounts: when ForwardsSet/MountsSet, profile lists are not applied
+// (caller supplies CLI lists). When unset, profile lists are copied.
+func (c Config) ResolveCreate(profileName string, o CreateOverrides) (ResolvedCreate, error) {
+	var r ResolvedCreate
+	var p Profile
+	if profileName != "" {
+		var err error
+		p, err = c.LookupProfile(profileName)
+		if err != nil {
+			return r, err
+		}
+		r.ProfileName = profileName
+	}
+
+	// CPUs: flag > profile > 0 (global)
+	if o.CPUsSet {
+		r.CPUs = o.CPUs
+	} else if p.CPUs > 0 {
+		r.CPUs = p.CPUs
+	}
+
+	if o.MemoryMBSet {
+		r.MemoryMB = o.MemoryMB
+	} else if p.MemoryMB > 0 {
+		r.MemoryMB = p.MemoryMB
+	}
+
+	if o.DiskGBSet {
+		r.DiskGB = o.DiskGB
+	} else if p.DiskGB > 0 {
+		r.DiskGB = p.DiskGB
+	}
+
+	if o.ImageSet {
+		r.Image = o.Image
+	} else if p.Image != "" {
+		r.Image = p.Image
+	}
+
+	if o.PersistentSet {
+		r.Persistent = o.Persistent
+	} else if profileName != "" {
+		r.Persistent = p.Persistent
+	}
+
+	if o.PresetSet {
+		r.Preset = o.Preset
+	} else if p.Preset != "" {
+		r.Preset = p.Preset
+	}
+
+	if !o.MountsSet && len(p.Mounts) > 0 {
+		r.Mounts = append([]ProfileMount(nil), p.Mounts...)
+	}
+	if !o.ForwardsSet && len(p.Forwards) > 0 {
+		r.Forwards = append([]ProfileForward(nil), p.Forwards...)
+	}
+
+	return r, nil
 }
 
 // Defaults returns developer-friendly defaults for local Mac/Linux use.
