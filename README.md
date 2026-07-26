@@ -91,7 +91,7 @@ grain up
 | `doctor` | dependency check (QEMU, image, optional agent binary + QMP) |
 | `version` | print version |
 
-**Also in the surface area:** guest **stats** (`GET` agent `/stats` — uptime/mem/load), **secrets** (host store under `~/.grain/secrets`, agent `POST /secrets/materialize`), daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
+**Also in the surface area:** guest **stats** (`GET` agent `/stats` — uptime/mem/load), **secrets** (host store under `~/.grain/secrets`, agent `POST /secrets/materialize`), daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), **TypeScript client SDK** ([`sdk/ts`](sdk/ts) — `@cxdy/grain`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
 
 **Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh). Full overview: [docs/agent.md](docs/agent.md).
 
@@ -222,11 +222,12 @@ Daemon HTTP over the unix socket and optional TCP (`api`). Spec: [`api/openapi.y
 | GET | `/healthz`, `/info`, `/metrics` |
 | GET/POST | `/vms` |
 | GET/DELETE | `/vms/{name}` |
-| POST | `/vms/{name}/shutdown` |
+| POST | `/vms/{name}/shutdown`, `/vms/{name}/start` |
 | POST | `/vms/{name}/pause`, `/vms/{name}/resume` |
+| POST | `/vms/{name}/suspend`, `/vms/{name}/restore` |
 | POST | `/vms/{name}/forwards` · DELETE `/vms/{name}/forwards/{hostPort}` |
 | POST | `/vms/{name}/exec` |
-| GET | `/vms/{name}/agent/health` |
+| GET | `/vms/{name}/agent/health`, `/vms/{name}/stats` |
 | PUT/GET | `/vms/{name}/cp` |
 | GET/POST/DELETE | `/vms/{name}/fs/…` |
 
@@ -250,7 +251,33 @@ inst, err := c.Create(ctx, client.CreateRequest{Persistent: false, Wait: "agent"
 _ = c.Exec(ctx, inst.Name, "uname", "-a")
 ```
 
-Package docs mirror the OpenAPI shapes; see [`client/`](client/) and [`api/openapi.yaml`](api/openapi.yaml).
+Package docs and lifecycle methods (pause/resume/suspend/restore, live forwards,
+create wait modes): [`client/README.md`](client/README.md). Spec: [`api/openapi.yaml`](api/openapi.yaml).
+
+### TypeScript client SDK
+
+Thin fetch client for Node automation: [`sdk/ts`](sdk/ts) (`@cxdy/grain`). Not published to npm yet — install from a local path (or future git/npm publish).
+
+```bash
+cd sdk/ts && npm install && npm run build
+# from your app:
+npm install /path/to/grain/sdk/ts
+```
+
+```ts
+import { GrainClient } from "@cxdy/grain";
+
+const grain = new GrainClient({
+  baseURL: "http://127.0.0.1:7474",
+  token: process.env.GRAIN_TOKEN,
+});
+
+await grain.health();
+const inst = await grain.create({ persistent: false });
+const out = await grain.exec(inst.name, "uname", ["-a"]);
+```
+
+Unix socket via optional `undici` (`socketPath` or custom `fetch`) — see [`sdk/ts/README.md`](sdk/ts/README.md).
 
 ## License
 

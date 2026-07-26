@@ -22,6 +22,14 @@ type PortForward struct {
 	Proto     string `json:"proto,omitempty"`
 }
 
+// LiveForward is a runtime SSH local port forward (ssh -N -L) on a running VM.
+// Distinct from PortForward (SLIRP hostfwd at create/start).
+type LiveForward struct {
+	HostPort  int `json:"host_port"`
+	GuestPort int `json:"guest_port"`
+	PID       int `json:"pid,omitempty"`
+}
+
 // Mount shares a host directory into the guest via virtio-9p.
 type Mount struct {
 	Host  string `json:"host"`
@@ -51,6 +59,8 @@ type Instance struct {
 	// AgentCID is the guest virtio-vsock context ID (0 = TCP hostfwd only).
 	AgentCID       int               `json:"agent_cid,omitempty"`
 	Forwards       []PortForward     `json:"forwards,omitempty"`
+	// LiveForwards are SSH -L tunnels added while running (cleared on stop).
+	LiveForwards   []LiveForward     `json:"live_forwards,omitempty"`
 	Mounts         []Mount           `json:"mounts,omitempty"`
 	SocketForwards []SocketForward   `json:"socket_forwards,omitempty"`
 	Tags           map[string]string `json:"tags,omitempty"`
@@ -61,7 +71,16 @@ type Instance struct {
 	PID            int               `json:"pid,omitempty"`
 }
 
+// Create wait mode values for CreateRequest.Wait (query param, not JSON body).
+const (
+	WaitAuto     = "auto"     // daemon picks (agent for golden images, else ssh)
+	WaitSSH      = "ssh"      // ready when SSH accepts connections
+	WaitAgent    = "agent"    // ready when grain-agent /health succeeds
+	WaitUserdata = "userdata" // ready when agent reports userdata finished
+)
+
 // CreateRequest is the JSON body for POST /vms.
+// Wait and Timeout are sent as query parameters (not JSON body).
 type CreateRequest struct {
 	Name           string            `json:"name,omitempty"`
 	Persistent     bool              `json:"persistent"`
@@ -74,6 +93,11 @@ type CreateRequest struct {
 	Forwards       []PortForward     `json:"forwards,omitempty"`
 	Mounts         []Mount           `json:"mounts,omitempty"`
 	SocketForwards []SocketForward   `json:"socket_forwards,omitempty"`
+	// Wait is auto|ssh|agent|userdata (empty = daemon default/auto).
+	// Legacy true/1 maps to ssh on the server.
+	Wait string `json:"-"`
+	// Timeout is an optional Go duration string for create readiness (e.g. "3m").
+	Timeout string `json:"-"`
 }
 
 // Stats is guest resource basics from GET /vms/{name}/stats.

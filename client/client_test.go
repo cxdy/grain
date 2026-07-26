@@ -41,16 +41,51 @@ func mockDaemon(t *testing.T, token string) *httptest.Server {
 		if !checkAuth(w, r, token) {
 			return
 		}
+		// Stream path: echo wait mode in NDJSON phases for tests.
+		if r.URL.Query().Get("stream") == "1" {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(200)
+			enc := json.NewEncoder(w)
+			wait := r.URL.Query().Get("wait")
+			_ = enc.Encode(client.CreateEvent{Phase: client.PhaseQEMU, Message: "qemu"})
+			switch wait {
+			case client.WaitAgent:
+				_ = enc.Encode(client.CreateEvent{Phase: client.PhaseWaitAgent, Message: "wait agent"})
+			case client.WaitUserdata:
+				_ = enc.Encode(client.CreateEvent{Phase: client.PhaseWaitAgent, Message: "wait agent"})
+				_ = enc.Encode(client.CreateEvent{Phase: "wait_userdata", Message: "wait userdata"})
+			default:
+				_ = enc.Encode(client.CreateEvent{Phase: client.PhaseWaitSSH, Message: "wait ssh"})
+			}
+			var req client.CreateRequest
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			name := req.Name
+			if name == "" {
+				name = "auto"
+			}
+			inst := &client.Instance{Name: name, Status: client.StatusRunning, CPUs: 2}
+			_ = enc.Encode(client.CreateEvent{Phase: client.PhaseReady, Name: name, Instance: inst})
+			return
+		}
 		var req client.CreateRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		name := req.Name
 		if name == "" {
 			name = "auto"
 		}
+		// Expose wait/timeout in tags so tests can assert query params.
+		tags := map[string]string{}
+		if wq := r.URL.Query().Get("wait"); wq != "" {
+			tags["wait"] = wq
+		}
+		if tq := r.URL.Query().Get("timeout"); tq != "" {
+			tags["timeout"] = tq
+		}
 		writeJSON(w, http.StatusCreated, &client.Instance{
 			Name:   name,
 			Status: client.StatusRunning,
 			CPUs:   2,
+			Tags:   tags,
 		})
 	})
 	mux.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +115,18 @@ func mockDaemon(t *testing.T, token string) *httptest.Server {
 		}
 		writeJSON(w, 200, &client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})
 	})
+	mux.HandleFunc("POST /vms/{name}/pause", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(w, r, token) {
+			return
+		}
+		writeJSON(w, 200, map[string]string{"message": "paused", "name": r.PathValue("name")})
+	})
+	mux.HandleFunc("POST /vms/{name}/resume", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(w, r, token) {
+			return
+		}
+		writeJSON(w, 200, map[string]string{"message": "running", "name": r.PathValue("name")})
+	})
 	mux.HandleFunc("POST /vms/{name}/suspend", func(w http.ResponseWriter, r *http.Request) {
 		if !checkAuth(w, r, token) {
 			return
@@ -91,6 +138,31 @@ func mockDaemon(t *testing.T, token string) *httptest.Server {
 			return
 		}
 		writeJSON(w, 200, &client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})
+	})
+	mux.HandleFunc("POST /vms/{name}/forwards", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(w, r, token) {
+			return
+		}
+		var body struct {
+			HostPort  int `json:"host_port"`
+			GuestPort int `json:"guest_port"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.GuestPort == 0 {
+			writeJSON(w, 400, map[string]string{"error": "guest_port is required"})
+			return
+		}
+		hp := body.HostPort
+		if hp == 0 {
+			hp = 18080
+		}
+		writeJSON(w, http.StatusCreated, &client.LiveForward{HostPort: hp, GuestPort: body.GuestPort, PID: 99})
+	})
+	mux.HandleFunc("DELETE /vms/{name}/forwards/{hostPort}", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(w, r, token) {
+			return
+		}
+		writeJSON(w, 200, map[string]string{"message": "removed"})
 	})
 	mux.HandleFunc("POST /vms/{name}/exec", func(w http.ResponseWriter, r *http.Request) {
 		if !checkAuth(w, r, token) {
@@ -240,14 +312,78 @@ func TestDialHTTPBasicLifecycle(t *testing.T) {
 	if _, err := c.Start(ctx, "box"); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
+	if err := c.Pause(ctx, "box"); err != nil {
+		t.Fatalf("Pause: %v", err)
+	}
+	if err := c.Resume(ctx, "box"); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
 	if err := c.Suspend(ctx, "box"); err != nil {
 		t.Fatalf("Suspend: %v", err)
 	}
 	if _, err := c.Restore(ctx, "box"); err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
+	lf, err := c.AddForward(ctx, "box", 0, 8080)
+	if err != nil {
+		t.Fatalf("AddForward: %v", err)
+	}
+	if lf.HostPort == 0 || lf.GuestPort != 8080 {
+		t.Fatalf("AddForward result %+v", lf)
+	}
+	if err := c.RemoveForward(ctx, "box", lf.HostPort); err != nil {
+		t.Fatalf("RemoveForward: %v", err)
+	}
 	if err := c.Delete(ctx, "box"); err != nil {
 		t.Fatalf("Delete: %v", err)
+	}
+}
+
+func TestCreateWaitAndTimeoutQuery(t *testing.T) {
+	t.Parallel()
+	ts := mockDaemon(t, "")
+	t.Cleanup(ts.Close)
+
+	c, err := client.DialHTTP(ts.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	inst, err := c.Create(ctx, client.CreateRequest{
+		Name:    "waitbox",
+		Wait:    client.WaitAgent,
+		Timeout: "45s",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if inst.Tags["wait"] != client.WaitAgent {
+		t.Fatalf("wait query not sent: tags=%v", inst.Tags)
+	}
+	if inst.Tags["timeout"] != "45s" {
+		t.Fatalf("timeout query not sent: tags=%v", inst.Tags)
+	}
+
+	var phases []string
+	streamInst, err := c.CreateStream(ctx, client.CreateRequest{
+		Name: "stream-agent",
+		Wait: client.WaitAgent,
+	}, func(ev client.CreateEvent) {
+		phases = append(phases, ev.Phase)
+	})
+	if err != nil {
+		t.Fatalf("CreateStream: %v", err)
+	}
+	if streamInst.Name != "stream-agent" {
+		t.Fatalf("stream name %q", streamInst.Name)
+	}
+	joined := strings.Join(phases, ",")
+	if !strings.Contains(joined, client.PhaseWaitAgent) {
+		t.Fatalf("want wait_agent in phases %v", phases)
+	}
+	if !strings.Contains(joined, client.PhaseReady) {
+		t.Fatalf("want ready in phases %v", phases)
 	}
 }
 

@@ -158,13 +158,39 @@ func (c *Client) List(ctx context.Context) ([]*Instance, error) {
 	return list, nil
 }
 
+// createVMsURL builds POST /vms with stream, wait, and timeout query params.
+func createVMsURL(base string, stream bool, req CreateRequest) (string, error) {
+	u, err := url.Parse(base + "/vms")
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	if stream {
+		q.Set("stream", "1")
+	}
+	if req.Wait != "" {
+		q.Set("wait", req.Wait)
+	}
+	if req.Timeout != "" {
+		q.Set("timeout", req.Timeout)
+	}
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
 // Create launches a VM (blocking JSON response until ready).
+// Set req.Wait to auto|ssh|agent|userdata and req.Timeout to a Go duration
+// (e.g. "3m") to control readiness; both are sent as query parameters.
 func (c *Client) Create(ctx context.Context, req CreateRequest) (*Instance, error) {
 	b, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms", bytes.NewReader(b))
+	endpoint, err := createVMsURL(c.base, false, req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
@@ -186,12 +212,17 @@ func (c *Client) Create(ctx context.Context, req CreateRequest) (*Instance, erro
 
 // CreateStream POSTs /vms?stream=1 and reads NDJSON CreateEvent lines.
 // onEvent is called for each event (may be nil). Returns the instance from the ready event.
+// Wait and Timeout from req are applied as query parameters (same as Create).
 func (c *Client) CreateStream(ctx context.Context, req CreateRequest, onEvent func(CreateEvent)) (*Instance, error) {
 	b, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms?stream=1", bytes.NewReader(b))
+	endpoint, err := createVMsURL(c.base, true, req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
@@ -407,28 +438,34 @@ func (c *Client) Restore(ctx context.Context, name string) (*Instance, error) {
 }
 
 // AddForward starts a live host→guest TCP forward on a running VM.
-func (c *Client) AddForward(ctx context.Context, name string, hostPort, guestPort int) error {
+// hostPort 0 lets the daemon allocate a free high port. Returns the
+// allocated LiveForward (including resolved host_port).
+func (c *Client) AddForward(ctx context.Context, name string, hostPort, guestPort int) (*LiveForward, error) {
 	body, err := json.Marshal(map[string]int{
 		"host_port":  hostPort,
 		"guest_port": guestPort,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms/"+url.PathEscape(name)+"/forwards", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	res, err := c.do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
-		return decodeAPIError(res)
+		return nil, decodeAPIError(res)
 	}
-	return nil
+	var lf LiveForward
+	if err := json.NewDecoder(res.Body).Decode(&lf); err != nil {
+		return nil, err
+	}
+	return &lf, nil
 }
 
 // RemoveForward tears down a live host forward.
