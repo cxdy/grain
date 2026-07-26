@@ -246,7 +246,8 @@ func Defaults() Config {
 		DefaultMemoryMB:  2048,
 		DefaultDiskGB:    8,
 		Hypervisor:       "qemu",
-		Image:            "ubuntu-cloud",
+		// "auto" prefers a local golden grain-ubuntu when present, else ubuntu-cloud.
+		Image:            "auto",
 		SSHUser:          "ubuntu",
 		ReadyTimeout:     120 * time.Second,
 		LogLevel:         "info",

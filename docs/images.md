@@ -1,36 +1,40 @@
 # Base images
 
-## Default: `ubuntu-cloud`
+## Default image selection (`auto`)
 
-grain’s catalog ships **Ubuntu 24.04 minimal cloud** as `ubuntu-cloud` (architecture-specific URL):
+Config default is `image: auto`:
 
-- arm64 / amd64 builds from [Ubuntu cloud images](https://cloud-images.ubuntu.com/minimal/releases/noble/release/)
-- qcow2 disk, **cloud-init** NoCloud, default SSH user **`ubuntu`**
-- Sized for a full cloud stack (~300 MB download), not a minimal initramfs toy
-- **HasAgent: false** — grain deploys `grain-agent` over SSH after first boot (`make agent-linux`)
+1. If a local **`grain-ubuntu`** golden disk is Ready under `~/.grain/images/`, use it.
+2. Otherwise use **`ubuntu-cloud`** (downloadable Ubuntu 24.04 minimal cloud).
 
 ```bash
 grain image ls
-grain image pull              # default id from config (ubuntu-cloud)
-grain image pull ubuntu-cloud
+grain image pull ubuntu-cloud   # pull catalog cloud image
+grain new                       # auto → grain-ubuntu if imported, else ubuntu-cloud
+grain new -i ubuntu-cloud       # force cloud image
 ```
 
-Config default:
+Config:
 
 ```yaml
-image: ubuntu-cloud
+image: auto          # prefer golden when present (default)
+# image: ubuntu-cloud
+# image: grain-ubuntu
 ssh_user: ubuntu
 ```
 
-Override per VM:
+**Wait mode:** when the selected image has a baked agent (`HasAgent` / `has_agent` meta), create defaults to `--wait agent`. Otherwise `--wait ssh` (soft agent deploy). Override with `grain new --wait ssh|agent|userdata`.
 
-```bash
-grain new -i ubuntu-cloud
-```
+## Catalog: `ubuntu-cloud`
+
+- arm64 / amd64 from [Ubuntu cloud images](https://cloud-images.ubuntu.com/minimal/releases/noble/release/)
+- qcow2, **cloud-init** NoCloud, SSH user **`ubuntu`**
+- ~300 MB download
+- **HasAgent: false** — grain deploys `grain-agent` over SSH when `~/.grain/agent/grain-agent-linux-*` or `make agent-linux` is available
 
 ## Golden image: `grain-ubuntu`
 
-`grain-ubuntu` is a **local-only** catalog id: Ubuntu cloud + **grain-agent baked in**. There is no public download URL; register a disk you baked or obtained yourself.
+`grain-ubuntu` is currently **local-only**: Ubuntu + **grain-agent baked in**. Register a disk you baked; public pull URL may land in a later release.
 
 | Field | Value |
 |-------|--------|

@@ -75,7 +75,8 @@ func emitCreate(opts vm.CreateOpts, ev vm.CreateEvent) {
 // When opts.OnEvent is set, progress phases are emitted:
 // image, disk, seed, qemu, wait_ssh, wait_agent, userdata, ready|error.
 //
-// WaitMode controls readiness after start (default "ssh"):
+// WaitMode controls readiness after start:
+//   - empty/"auto": agent if image HasAgent (golden), else ssh
 //   - ssh: WaitSSH + soft agent deploy/wait (failure does not fail Create)
 //   - agent: require guest agent health (hard fail); try agent first, SSH deploy fallback
 //   - userdata: require agent, then poll until Health.UserdataRan
@@ -95,11 +96,6 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		return nil, fmt.Errorf("vm %q already exists", name)
 	}
 
-	waitMode, err := NormalizeWaitMode(opts.WaitMode)
-	if err != nil {
-		return nil, err
-	}
-
 	cpus := opts.CPUs
 	if cpus <= 0 {
 		cpus = m.cfg.DefaultCPUs
@@ -112,12 +108,11 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	if diskGB <= 0 {
 		diskGB = m.cfg.DefaultDiskGB
 	}
-	img := opts.Image
-	if img == "" {
-		img = m.cfg.Image
-	}
-	if img == "" {
-		img = image.DefaultID()
+	img := m.resolveImageID(opts.Image)
+
+	waitMode, err := m.resolveWaitMode(opts.WaitMode, img)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := m.checkResourceCaps(cpus, mem, ""); err != nil {
@@ -241,18 +236,50 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 }
 
 
-// NormalizeWaitMode validates and defaults WaitMode. Empty → "ssh".
+// NormalizeWaitMode validates WaitMode.
+// Empty or "auto" leave the mode unresolved (caller should use resolveWaitMode).
 func NormalizeWaitMode(mode string) (string, error) {
-	switch mode {
-	case "", vm.WaitSSH:
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "auto":
+		return "", nil
+	case vm.WaitSSH:
 		return vm.WaitSSH, nil
 	case vm.WaitAgent:
 		return vm.WaitAgent, nil
 	case vm.WaitUserdata:
 		return vm.WaitUserdata, nil
 	default:
-		return "", fmt.Errorf("invalid wait mode %q (want ssh, agent, or userdata)", mode)
+		return "", fmt.Errorf("invalid wait mode %q (want auto, ssh, agent, or userdata)", mode)
 	}
+}
+
+// resolveWaitMode picks readiness: explicit mode, or agent when the image
+// ships grain-agent, otherwise ssh.
+func (m *Manager) resolveWaitMode(mode, img string) (string, error) {
+	mode, err := NormalizeWaitMode(mode)
+	if err != nil {
+		return "", err
+	}
+	if mode != "" {
+		return mode, nil
+	}
+	if m.imageHasAgent(img) {
+		return vm.WaitAgent, nil
+	}
+	return vm.WaitSSH, nil
+}
+
+// resolveImageID picks the base image: explicit opt, then config, then auto.
+// "auto" or empty config prefers local grain-ubuntu when Ready.
+func (m *Manager) resolveImageID(opt string) string {
+	img := strings.TrimSpace(opt)
+	if img == "" {
+		img = strings.TrimSpace(m.cfg.Image)
+	}
+	if img == "" || strings.EqualFold(img, "auto") {
+		return image.DefaultIDFor(m.cfg.DataDir)
+	}
+	return img
 }
 
 // waitReady runs the post-start readiness sequence based on waitMode.

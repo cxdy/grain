@@ -144,13 +144,15 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query()
-	// wait=ssh|agent|userdata (default ssh). Legacy wait=1/true accepted as ssh.
-	// wait=false/0 is not supported.
+	// wait=auto|ssh|agent|userdata (empty/auto → manager picks agent for golden images).
+	// Legacy wait=1/true → ssh. wait=false/0 is not supported.
 	waitRaw := q.Get("wait")
 	var waitMode string
 	var waitTimeout time.Duration
 	switch {
-	case waitRaw == "" || waitRaw == "1" || strings.EqualFold(waitRaw, "true"):
+	case waitRaw == "":
+		waitMode = "" // manager auto
+	case waitRaw == "1" || strings.EqualFold(waitRaw, "true"):
 		waitMode = vm.WaitSSH
 	case strings.EqualFold(waitRaw, "false") || waitRaw == "0":
 		writeErr(w, http.StatusBadRequest, errors.New("wait=false is not supported; use stream=1 for progress events"))

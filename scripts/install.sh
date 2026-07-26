@@ -119,11 +119,10 @@ download() {
   fi
 }
 
-# Fetch latest release asset URL for grain_<os>_<arch>
-# Asset names from make release-build: grain_darwin_arm64, grain_linux_amd64, …
-latest_asset_url() {
-  local os="$1" arch="$2"
-  local asset="grain_${os}_${arch}"
+# Fetch latest release asset URL by exact asset name.
+# Asset names from make release-build: grain_darwin_arm64, grain-agent-linux-arm64, …
+latest_asset_url_named() {
+  local asset="$1"
   local json=""
 
   if have_curl; then
@@ -142,7 +141,6 @@ latest_asset_url() {
     return 1
   fi
 
-  # Prefer python/jq if available; fall back to sed/grep for browser_download_url.
   local url=""
   if command -v jq >/dev/null 2>&1; then
     url="$(printf '%s' "$json" | jq -r --arg a "$asset" \
@@ -158,7 +156,6 @@ for a in data.get('assets') or []:
         break
 " "$asset" 2>/dev/null || true)"
   else
-    # Rough extract: find browser_download_url lines containing the asset name.
     url="$(printf '%s' "$json" | tr '"' '\n' | grep -E "https://.*/${asset}\$" | head -1 || true)"
   fi
 
@@ -166,6 +163,11 @@ for a in data.get('assets') or []:
     return 1
   fi
   printf '%s' "$url"
+}
+
+latest_asset_url() {
+  local os="$1" arch="$2"
+  latest_asset_url_named "grain_${os}_${arch}"
 }
 
 # --- install paths ------------------------------------------------------------
@@ -199,6 +201,37 @@ install_from_release() {
   local dest="${dest_dir}/${BIN_NAME}"
   install_file "$tmp" "$dest"
   ok "installed ${dest}"
+  return 0
+}
+
+# Install guest agent binary for SSH deploy into VMs (linux arch matching host).
+install_agent_from_release() {
+  local arch="$1"
+  local asset="grain-agent-linux-${arch}"
+  local agent_dir="${HOME}/.grain/agent"
+  local url
+  info "looking up guest agent ${asset}…"
+  if ! url="$(latest_asset_url_named "$asset")"; then
+    warn "no release asset ${asset} (run make agent-linux for local dev)"
+    return 1
+  fi
+  info "downloading ${url}"
+  local tmp
+  tmp="$(mktemp -t grain-agent.XXXXXX 2>/dev/null || mktemp)"
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp'" RETURN
+  if ! download "$url" "$tmp"; then
+    warn "agent download failed"
+    return 1
+  fi
+  if [[ ! -s "$tmp" ]]; then
+    warn "agent download empty"
+    return 1
+  fi
+  ensure_dir "$agent_dir"
+  local dest="${agent_dir}/${asset}"
+  install_file "$tmp" "$dest"
+  ok "installed guest agent ${dest}"
   return 0
 }
 
@@ -270,9 +303,11 @@ print_next_steps() {
   printf '       grain doctor\n'
   printf '  3. Start the daemon and create a sandbox:\n'
   printf '       grain up\n'
-  printf '       grain image pull\n'
+  printf '       grain image pull          # ubuntu-cloud, or import golden\n'
+  printf '       grain new                 # auto-picks grain-ubuntu if present\n'
   printf '       grain sh\n'
   printf '\n'
+  printf 'Guest agent for non-golden images is under ~/.grain/agent/\n'
   printf 'Docs: https://github.com/%s#readme\n' "$REPO"
   printf 'Recipes: https://github.com/%s/tree/main/docs/recipes\n' "$REPO"
 }
@@ -287,6 +322,7 @@ main() {
   info "os=${os} arch=${arch} install_dir=${dest_dir}"
 
   if install_from_release "$os" "$arch" "$dest_dir"; then
+    install_agent_from_release "$arch" || true
     print_next_steps "$dest_dir"
     return 0
   fi

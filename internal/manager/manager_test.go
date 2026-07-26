@@ -10,6 +10,7 @@ import (
 
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/hypervisor"
+	"github.com/cxdy/grain/internal/image"
 	"github.com/cxdy/grain/internal/manager"
 	"github.com/cxdy/grain/internal/store"
 	"github.com/cxdy/grain/internal/vm"
@@ -575,6 +576,40 @@ func TestResourceCapTotalCPUs(t *testing.T) {
 	}
 }
 
+func TestCreatePrefersGoldenImageWhenReady(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "mock"
+	cfg.Image = "auto"
+	cfg.ReadyTimeout = time.Second
+	// Plant a Ready grain-ubuntu disk (same layout as image.Ready / DefaultIDFor).
+	imgDir := filepath.Join(dir, "images", image.IDGrainUbuntu)
+	if err := os.MkdirAll(imgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(imgDir, "disk.qcow2"), make([]byte, 2*1024*1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(imgDir, "has_agent"), []byte("true\n"), 0o644); err != nil {
+		// has_agent may be a meta file format — ImageHasAgent reads meta; catalog HasAgent is enough for grain-ubuntu
+		_ = err
+	}
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mock disk EnsureBase may need the image id ready — MockDisk often ignores real files.
+	m := manager.New(cfg, st, hypervisor.NewMockRuntime(), hypervisor.NewMockDisk(), nil)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Image != image.IDGrainUbuntu {
+		t.Fatalf("image=%q want %q", inst.Image, image.IDGrainUbuntu)
+	}
+}
+
 func TestNormalizeWaitMode(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -582,12 +617,13 @@ func TestNormalizeWaitMode(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"", vm.WaitSSH, false},
+		{"", "", false},
+		{"auto", "", false},
 		{"ssh", vm.WaitSSH, false},
 		{"agent", vm.WaitAgent, false},
 		{"userdata", vm.WaitUserdata, false},
 		{"nope", "", true},
-		{"SSH", "", true},
+		{"SSH", vm.WaitSSH, false},
 	}
 	for _, tc := range cases {
 		got, err := manager.NormalizeWaitMode(tc.in)

@@ -30,7 +30,7 @@ jobs:
 
       - name: Checksums
         working-directory: dist
-        run: sha256sum grain_* > checksums.txt
+        run: sha256sum grain_* grain-agent-linux-* > checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -40,6 +40,8 @@ jobs:
             dist/grain_darwin_amd64
             dist/grain_linux_arm64
             dist/grain_linux_amd64
+            dist/grain-agent-linux-arm64
+            dist/grain-agent-linux-amd64
             dist/checksums.txt
           generate_release_notes: true
         env:

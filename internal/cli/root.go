@@ -319,7 +319,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("created %s  status=%s  persist=%v", inst.Name, inst.Status, inst.Persistent)
+			fmt.Printf("created %s  status=%s  image=%s  persist=%v", inst.Name, inst.Status, inst.Image, inst.Persistent)
 			if inst.SSHPort > 0 {
 				fmt.Printf("  ssh=:%d", inst.SSHPort)
 			}
@@ -351,7 +351,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
 	cmd.Flags().StringVar(&profileName, "profile", "", "named profile from config (flags override profile)")
 	cmd.Flags().StringVar(&presetName, "preset", "", "userdata preset: docker, k3s (merged into cloud-init)")
-	cmd.Flags().StringVar(&waitMode, "wait", "ssh", "readiness: ssh (default), agent, or userdata")
+	cmd.Flags().StringVar(&waitMode, "wait", "", "readiness: auto (agent if golden image), ssh, agent, or userdata")
 	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
 	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")
 	cmd.Flags().StringArrayVar(&publishSockets, "publish-socket", nil, "SSH streamlocal socket forward HOSTPATH:GUESTPATH (repeatable; docker-style)")

@@ -164,8 +164,8 @@ func runDoctor(cfg config.Config) error {
 
 	imgs := image.NewManager(cfg.DataDir)
 	def := cfg.Image
-	if def == "" {
-		def = image.DefaultID()
+	if def == "" || def == "auto" {
+		def = image.DefaultIDFor(cfg.DataDir)
 	}
 	check("base image "+def, func() error {
 		if !imgs.Ready(def) {
