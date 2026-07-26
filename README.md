@@ -42,6 +42,7 @@ brew install qemu
 | `new` | launch sandbox (`-p` persist, `-n` name, `-c` cpus, `-m` mem, `-d` disk) |
 | `ls` / `rm` | list / delete |
 | `sh` / `x` | shell / exec |
+| `logs` | guest serial (default) or `--qemu` hypervisor log; `-f` follow |
 | `cp` | `host path` or `NAME:path` |
 | `image ls` / `image pull` | base images |
 | `doctor` | dependency check |

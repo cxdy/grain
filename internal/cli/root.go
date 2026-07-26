@@ -37,6 +37,7 @@ func Root(version string) *cobra.Command {
   grain new             ephemeral sandbox
   grain new -p          persistent sandbox
   grain ls / rm / sh / x / cp
+  grain logs            guest serial / qemu logs
   grain doctor          check dependencies
   grain down            stop daemon`,
 		SilenceUsage: true,
@@ -52,6 +53,7 @@ func Root(version string) *cobra.Command {
 		cmdSh(&cfgPath),
 		cmdX(&cfgPath),
 		cmdCp(&cfgPath),
+		cmdLogs(&cfgPath),
 		cmdImage(&cfgPath),
 		cmdDoctor(&cfgPath),
 		cmdVersion(version),
