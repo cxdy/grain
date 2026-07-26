@@ -5,14 +5,21 @@
 Ephemeral by default. Persistent when you want. Short commands. Local-first.
 
 ```text
+# 1) start daemon (once per session)
 grain up
-grain image pull          # once
-grain new                 # ephemeral sandbox
-grain new -p -n lab       # keep it
+
+# 2) download base image (once)
+grain image pull
+
+# 3) shell in — auto-creates a VM if none exist
+grain sh
+
+# or step-by-step:
+grain new                 # prints: next: grain sh sbox-1
 grain ls
-grain sh sbox-1
-grain x sbox-1 -- uname -a
-grain rm sbox-1
+grain sh                  # name optional if only one VM
+grain x -- uname -a
+grain rm                  # name optional if only one
 grain down
 ```
 

@@ -187,7 +187,13 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("%s\t%s\tp=%v\n", inst.Name, inst.Status, inst.Persistent)
+			fmt.Printf("created %s  status=%s  persist=%v", inst.Name, inst.Status, inst.Persistent)
+			if inst.SSHPort > 0 {
+				fmt.Printf("  ssh=:%d", inst.SSHPort)
+			}
+			fmt.Println()
+			fmt.Printf("next:  grain sh %s\n", inst.Name)
+			fmt.Printf("       grain x %s -- uname -a\n", inst.Name)
 			return nil
 		},
 	}
@@ -217,12 +223,16 @@ func cmdLs(cfgPath *string) *cobra.Command {
 				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
 			}
 			if len(list) == 0 {
-				fmt.Println("(no vms)")
+				fmt.Println("no vms — create one:  grain new")
 				return nil
 			}
-			fmt.Printf("%-12s %-10s %-5s %-8s %s\n", "NAME", "STATUS", "CPUS", "MEM", "PERSIST")
+			fmt.Printf("%-12s %-10s %-5s %-8s %-8s %s\n", "NAME", "STATUS", "CPUS", "MEM", "SSH", "PERSIST")
 			for _, i := range list {
-				fmt.Printf("%-12s %-10s %-5d %-8d %v\n", i.Name, i.Status, i.CPUs, i.MemoryMB, i.Persistent)
+				ssh := "-"
+				if i.SSHPort > 0 {
+					ssh = fmt.Sprintf(":%d", i.SSHPort)
+				}
+				fmt.Printf("%-12s %-10s %-5d %-8d %-8s %v\n", i.Name, i.Status, i.CPUs, i.MemoryMB, ssh, i.Persistent)
 			}
 			return nil
 		},
@@ -233,20 +243,24 @@ func cmdRm(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:     "rm [name]",
 		Aliases: []string{"delete"},
-		Short:   "Delete a VM",
-		Args:    cobra.ExactArgs(1),
+		Short:   "Delete a VM (omit name if only one)",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
 				return err
 			}
 			c := clientFrom(cfg)
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if err := c.Delete(ctx, args[0]); err != nil {
+			name, err := resolveVMName(c, args, false)
+			if err != nil {
 				return err
 			}
-			fmt.Println("deleted", args[0])
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := c.Delete(ctx, name); err != nil {
+				return err
+			}
+			fmt.Println("deleted", name)
 			return nil
 		},
 	}
@@ -311,21 +325,64 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
+// resolveVMName picks a VM: explicit arg, or the only running/listed VM.
+// If createIfEmpty is true and no VMs exist, creates an ephemeral one.
+func resolveVMName(c *api.Client, args []string, createIfEmpty bool) (string, error) {
+	if len(args) >= 1 && args[0] != "" && args[0] != "--" {
+		return args[0], nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	list, err := c.List(ctx)
+	if err != nil {
+		return "", fmt.Errorf("daemon not up — run: grain up (%w)", err)
+	}
+	if len(list) == 0 {
+		if !createIfEmpty {
+			return "", fmt.Errorf("no vms — create one first:  grain new")
+		}
+		fmt.Fprintln(os.Stderr, "no vms — creating one …")
+		createCtx, createCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer createCancel()
+		inst, err := c.Create(createCtx, api.CreateRequest{})
+		if err != nil {
+			return "", fmt.Errorf("auto-create failed: %w\n  try: grain image pull && grain new", err)
+		}
+		fmt.Fprintf(os.Stderr, "created %s  ssh=:%d\n", inst.Name, inst.SSHPort)
+		return inst.Name, nil
+	}
+	if len(list) == 1 {
+		return list[0].Name, nil
+	}
+	var names []string
+	for _, i := range list {
+		names = append(names, i.Name)
+	}
+	return "", fmt.Errorf("which vm? pick one: %s\n  example: grain sh %s", strings.Join(names, ", "), names[0])
+}
+
 func cmdSh(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "sh [name]",
-		Short: "Shell into a VM",
-		Args:  cobra.ExactArgs(1),
+		Short: "Shell into a VM (auto-creates one if none exist)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
 				return err
 			}
 			c := clientFrom(cfg)
-			host, port, err := getVMSSH(c, args[0])
+			// Auto-create when no name given and no VMs — common first-run path.
+			createIfEmpty := len(args) == 0
+			name, err := resolveVMName(c, args, createIfEmpty)
 			if err != nil {
 				return err
 			}
+			host, port, err := getVMSSH(c, name)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "connecting to %s …\n", name)
 			ssh := exec.Command("ssh", sshBaseArgs(cfg, host, port)...)
 			ssh.Stdin = os.Stdin
 			ssh.Stdout = os.Stdout
@@ -338,19 +395,55 @@ func cmdSh(cfgPath *string) *cobra.Command {
 func cmdX(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "x [name] -- [cmd...]",
-		Short: "Exec a command in a VM",
-		Args:  cobra.MinimumNArgs(1),
+		Short: "Exec a command in a VM (name optional if only one)",
+		// name optional: grain x -- uname -a   OR   grain x sbox-1 -- uname -a
+		DisableFlagParsing: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
 				return err
 			}
-			name := args[0]
-			remote := args[1:]
-			if len(remote) == 0 {
-				return fmt.Errorf("usage: grain x NAME -- cmd args")
-			}
 			c := clientFrom(cfg)
+
+			// Split name vs remote command. If first arg is a known VM, use it.
+			var name string
+			var remote []string
+			if len(args) == 0 {
+				return fmt.Errorf("usage: grain x [name] -- cmd args\n  example: grain new && grain x -- uname -a")
+			}
+			// If first token looks like a flag remnant, error
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			list, err := c.List(ctx)
+			if err != nil {
+				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+			}
+			known := map[string]struct{}{}
+			for _, i := range list {
+				known[i.Name] = struct{}{}
+			}
+			if _, ok := known[args[0]]; ok {
+				name = args[0]
+				remote = args[1:]
+			} else {
+				// no explicit name — require single VM (do not auto-create for x)
+				name, err = resolveVMName(c, nil, false)
+				if err != nil {
+					return err
+				}
+				remote = args
+			}
+			if len(remote) == 0 {
+				return fmt.Errorf("missing command — example: grain x %s -- uname -a", name)
+			}
+			// strip leading -- if present
+			if remote[0] == "--" {
+				remote = remote[1:]
+			}
+			if len(remote) == 0 {
+				return fmt.Errorf("missing command after --")
+			}
+
 			host, port, err := getVMSSH(c, name)
 			if err != nil {
 				return err
