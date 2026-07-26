@@ -39,15 +39,14 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		return fmt.Errorf("%s not found — install qemu (brew install qemu)", q.Binary)
 	}
 
-	// Prefer existing disk.qcow2 overlay if present
-	if _, err := os.Stat(diskPath + ".qcow2"); err == nil {
-		diskPath = diskPath + ".qcow2"
-		inst.DiskPath = diskPath
-	}
+	// Prefer qcow2 overlay next to requested path
+	diskPath = resolveDisk(diskPath)
+	inst.DiskPath = diskPath
 
+	vmDir := filepath.Dir(diskPath)
 	logPath := filepath.Join(q.DataDir, "logs", inst.Name+".log")
 	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
 	}
@@ -60,7 +59,7 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	inst.SSHPort = sshPort
 	inst.IP = "127.0.0.1"
 
-	pidFile := filepath.Join(filepath.Dir(diskPath), "qemu.pid")
+	pidFile := filepath.Join(vmDir, "qemu.pid")
 	_ = os.Remove(pidFile)
 
 	driveFmt := "raw"
@@ -68,6 +67,7 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		driveFmt = "qcow2"
 	}
 
+	// -daemonize is incompatible with -nographic; use -display none instead.
 	args := []string{
 		"-name", inst.Name,
 		"-machine", machineType(),
@@ -76,23 +76,42 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		"-m", strconv.Itoa(inst.MemoryMB),
 		"-drive", fmt.Sprintf("file=%s,if=virtio,format=%s,cache=writeback", diskPath, driveFmt),
 		"-netdev", fmt.Sprintf("user,id=net0,hostfwd=tcp:127.0.0.1:%d-:22", sshPort),
-		"-device", "virtio-net-device,netdev=net0",
-		"-nographic",
-		"-serial", "file:" + logPath + ".serial",
+		"-device", "virtio-net-pci,netdev=net0",
+		"-display", "none",
+		"-serial", "file:" + filepath.Join(vmDir, "serial.log"),
 		"-pidfile", pidFile,
 		"-daemonize",
 	}
 
-	// cloud-init seed
-	seed := filepath.Join(filepath.Dir(diskPath), "seed.iso")
+	// cloud-init NoCloud seed — attach as virtio CD so datasource is found
+	seed := filepath.Join(vmDir, "seed.iso")
 	if _, err := os.Stat(seed); err == nil {
-		args = append(args, "-drive", fmt.Sprintf("file=%s,if=virtio,format=raw,readonly=on", seed))
+		args = append(args,
+			"-drive", fmt.Sprintf("if=none,id=cidata,format=raw,file=%s,readonly=on", seed),
+			"-device", "virtio-blk-pci,drive=cidata,serial=cidata",
+		)
 	}
 
-	// UEFI for aarch64
+	// UEFI firmware for aarch64 cloud images
 	if runtime.GOARCH == "arm64" {
-		if edk := findEDK(); edk != "" {
-			args = append(args, "-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", edk))
+		code, varsTemplate := findEDK()
+		if code != "" {
+			vars := filepath.Join(vmDir, "flash-vars.fd")
+			if _, err := os.Stat(vars); err != nil {
+				// copy template or create empty 64MiB vars store
+				if varsTemplate != "" {
+					if err := copyFile(varsTemplate, vars); err != nil {
+						// fall back to empty
+						_ = truncateFile(vars, 64*1024*1024)
+					}
+				} else {
+					_ = truncateFile(vars, 64*1024*1024)
+				}
+			}
+			args = append(args,
+				"-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", code),
+				"-drive", fmt.Sprintf("if=pflash,format=raw,file=%s", vars),
+			)
 		}
 	}
 
@@ -100,11 +119,19 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Run(); err != nil {
+		// include serial tail if any
+		serial, _ := os.ReadFile(filepath.Join(vmDir, "serial.log"))
+		extra := strings.TrimSpace(string(serial))
+		if len(extra) > 500 {
+			extra = extra[len(extra)-500:]
+		}
+		if extra != "" {
+			return fmt.Errorf("qemu: %w (see %s)\nserial: %s", err, logPath, extra)
+		}
 		return fmt.Errorf("qemu: %w (see %s)", err, logPath)
 	}
 
-	// pidfile may take a moment
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 40; i++ {
 		pidb, err := os.ReadFile(pidFile)
 		if err == nil {
 			var pid int
@@ -115,30 +142,48 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	if inst.PID == 0 {
+		return fmt.Errorf("qemu started but pidfile missing (%s)", pidFile)
+	}
 	inst.Status = vm.StatusRunning
 	return nil
 }
 
-func (q *QEMURuntime) Stop(_ context.Context, inst *vm.Instance) error {
-	if inst.PID > 0 {
-		proc, err := os.FindProcess(inst.PID)
-		if err == nil {
-			_ = proc.Signal(syscall.SIGTERM)
-			time.Sleep(300 * time.Millisecond)
-			_ = proc.Signal(syscall.SIGKILL)
+func resolveDisk(diskPath string) string {
+	cands := []string{
+		diskPath,
+		diskPath + ".qcow2",
+		filepath.Join(filepath.Dir(diskPath), "disk.qcow2"),
+		filepath.Join(filepath.Dir(diskPath), "disk.img.qcow2"),
+	}
+	for _, p := range cands {
+		if st, err := os.Stat(p); err == nil && st.Size() > 0 {
+			return p
 		}
 	}
-	// also try pidfile
+	return diskPath
+}
+
+func (q *QEMURuntime) Stop(_ context.Context, inst *vm.Instance) error {
+	pids := []int{}
+	if inst.PID > 0 {
+		pids = append(pids, inst.PID)
+	}
 	if inst.DiskPath != "" {
 		pidFile := filepath.Join(filepath.Dir(inst.DiskPath), "qemu.pid")
 		if b, err := os.ReadFile(pidFile); err == nil {
 			var pid int
 			if _, err := fmt.Sscanf(strings.TrimSpace(string(b)), "%d", &pid); err == nil && pid > 0 {
-				if p, err := os.FindProcess(pid); err == nil {
-					_ = p.Signal(syscall.SIGKILL)
-				}
+				pids = append(pids, pid)
 			}
 			_ = os.Remove(pidFile)
+		}
+	}
+	for _, pid := range pids {
+		if p, err := os.FindProcess(pid); err == nil {
+			_ = p.Signal(syscall.SIGTERM)
+			time.Sleep(200 * time.Millisecond)
+			_ = p.Signal(syscall.SIGKILL)
 		}
 	}
 	inst.PID = 0
@@ -171,23 +216,41 @@ func machineType() string {
 }
 
 func cpuType() string {
-	if runtime.GOOS == "darwin" {
-		return "host"
-	}
 	return "host"
 }
 
-func findEDK() string {
-	cands := []string{
+func findEDK() (code, vars string) {
+	codeCands := []string{
 		"/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
 		"/usr/local/share/qemu/edk2-aarch64-code.fd",
 		"/usr/share/AAVMF/AAVMF_CODE.fd",
 		"/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
 	}
-	for _, p := range cands {
+	varsCands := []string{
+		"/opt/homebrew/share/qemu/edk2-arm-vars.fd",
+		"/usr/local/share/qemu/edk2-arm-vars.fd",
+		"/usr/share/AAVMF/AAVMF_VARS.fd",
+	}
+	for _, p := range codeCands {
 		if _, err := os.Stat(p); err == nil {
-			return p
+			code = p
+			break
 		}
 	}
-	return ""
+	for _, p := range varsCands {
+		if _, err := os.Stat(p); err == nil {
+			vars = p
+			break
+		}
+	}
+	return code, vars
+}
+
+func truncateFile(path string, size int64) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Truncate(size)
 }

@@ -67,12 +67,13 @@ func clientFrom(cfg config.Config) *api.Client {
 	return &api.Client{
 		Base: "http://grain",
 		HTTP: &http.Client{
-			Timeout: 120 * time.Second,
+			// No global Timeout — create waits for SSH; use request context instead.
 			Transport: &http.Transport{
 				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 					var d net.Dialer
 					return d.DialContext(ctx, "unix", sock)
 				},
+				ResponseHeaderTimeout: 5 * time.Minute,
 			},
 		},
 	}
@@ -170,7 +171,8 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				return err
 			}
 			c := clientFrom(cfg)
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			// Allow boot + cloud-init (ReadyTimeout defaults to 2m; give API room).
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
 				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
