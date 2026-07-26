@@ -274,6 +274,135 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /vms/{name}/pause:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [vms]
+      summary: Pause VM (QMP stop)
+      operationId: pauseVM
+      responses:
+        "200":
+          description: Paused
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /vms/{name}/resume:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [vms]
+      summary: Resume paused VM (QMP cont)
+      operationId: resumeVM
+      responses:
+        "200":
+          description: Running
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /vms/{name}/forwards:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [vms]
+      summary: Add live host→guest TCP forward
+      operationId: addForward
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [guest_port]
+              properties:
+                host_port:
+                  type: integer
+                guest_port:
+                  type: integer
+      responses:
+        "200":
+          description: Forward added
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /vms/{name}/forwards/{hostPort}:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+      - name: hostPort
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      tags: [vms]
+      summary: Remove live host forward
+      operationId: removeForward
+      responses:
+        "200":
+          description: Removed
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /vms/{name}/stats:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    get:
+      tags: [agent]
+      summary: Guest resource stats via grain-agent
+      operationId: vmStats
+      responses:
+        "200":
+          description: Stats snapshot
+        "503":
+          $ref: "#/components/responses/Error"
+
+  /secrets:
+    get:
+      tags: [system]
+      summary: List host secrets metadata
+      operationId: listSecrets
+      responses:
+        "200":
+          description: Secret list
+    post:
+      tags: [system]
+      summary: Create or replace a secret
+      operationId: putSecret
+      responses:
+        "200":
+          description: Stored
+
+  /secrets/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [system]
+      summary: Delete a secret
+      operationId: deleteSecret
+      responses:
+        "200":
+          description: Deleted
+
+  /vms/{name}/secrets/{secretName}:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+      - name: secretName
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [agent]
+      summary: Inject host secret into guest
+      operationId: injectSecret
+      responses:
+        "200":
+          description: Materialized in guest
+
   /vms/{name}/exec:
     parameters:
       - $ref: "#/components/parameters/VMName"

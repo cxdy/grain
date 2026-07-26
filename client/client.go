@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -318,6 +319,83 @@ func (c *Client) Stop(ctx context.Context, name string) error {
 // Shutdown stops a VM (ephemeral is deleted; persistent is left stopped).
 func (c *Client) Shutdown(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms/"+url.PathEscape(name)+"/shutdown", nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// Pause freezes guest vCPUs via QMP (status becomes paused).
+func (c *Client) Pause(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms/"+url.PathEscape(name)+"/pause", nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// Resume continues a paused VM via QMP.
+func (c *Client) Resume(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms/"+url.PathEscape(name)+"/resume", nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// AddForward starts a live host→guest TCP forward on a running VM.
+func (c *Client) AddForward(ctx context.Context, name string, hostPort, guestPort int) error {
+	body, err := json.Marshal(map[string]int{
+		"host_port":  hostPort,
+		"guest_port": guestPort,
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms/"+url.PathEscape(name)+"/forwards", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// RemoveForward tears down a live host forward.
+func (c *Client) RemoveForward(ctx context.Context, name string, hostPort int) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		c.base+"/vms/"+url.PathEscape(name)+"/forwards/"+strconv.Itoa(hostPort), nil)
 	if err != nil {
 		return err
 	}
