@@ -33,6 +33,7 @@ func TestPhaseLabel(t *testing.T) {
 		vm.PhaseQEMU:      "boot",
 		vm.PhaseWaitSSH:   "waiting ssh",
 		vm.PhaseWaitAgent: "waiting agent",
+		vm.PhaseUserdata:  "waiting userdata",
 		vm.PhaseReady:     "ready",
 		vm.PhaseError:     "error",
 		"":                "starting",
