@@ -181,9 +181,16 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	if err != nil {
 		return m.fail(inst, fmt.Errorf("ssh key: %w", err), opts)
 	}
-		// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
+	// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
 	// Mount runcmds are injected from prepared mounts.
-	if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, opts.Userdata, mountSpecs(mounts)...); err != nil {
+	// Agent-ready goldens use a minimal seed so clone boots do less cloud-init work.
+	if _, err := cloudinit.WriteNoCloudOpts(vmDir, cloudinit.SeedOpts{
+		Hostname: name,
+		SSHPub:   pub,
+		Extra:    opts.Userdata,
+		Mounts:   mountSpecs(mounts),
+		Minimal:  m.imageHasAgent(img),
+	}); err != nil {
 		// mock / missing iso tools: log and continue (SSH inject won't work)
 		m.log.Warn("cloud-init seed skipped", "err", err)
 	}
@@ -905,7 +912,12 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 	vmDir := m.st.Dir(name)
 	seed := filepath.Join(vmDir, "seed.iso")
 	if !DiskExists(seed) {
-		if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, "", mountSpecs(inst.Mounts)...); err != nil {
+		if _, err := cloudinit.WriteNoCloudOpts(vmDir, cloudinit.SeedOpts{
+			Hostname: name,
+			SSHPub:   pub,
+			Mounts:   mountSpecs(inst.Mounts),
+			Minimal:  m.imageHasAgent(inst.Image),
+		}); err != nil {
 			m.log.Warn("cloud-init seed skipped", "err", err)
 		}
 	}

@@ -16,14 +16,35 @@ var listMergeKeys = map[string]bool{
 	"users":       true,
 }
 
-// BaseUserData builds the grain-managed cloud-config document as a map.
-// It injects hostname, SSH keys, the grain user, and the grain-ready marker.
-func BaseUserData(hostname, sshPubLine string) map[string]any {
+// sshAuthRuncmd injects the host SSH public key into ubuntu and root authorized_keys.
+func sshAuthRuncmd(sshPubLine string) string {
 	key := strings.TrimSpace(sshPubLine)
-	authCmd := fmt.Sprintf(
+	return fmt.Sprintf(
 		"mkdir -p /home/ubuntu/.ssh /root/.ssh; echo '%s' >> /home/ubuntu/.ssh/authorized_keys; echo '%s' >> /root/.ssh/authorized_keys; chown -R ubuntu:ubuntu /home/ubuntu/.ssh 2>/dev/null || true; chmod 600 /home/ubuntu/.ssh/authorized_keys /root/.ssh/authorized_keys 2>/dev/null || true",
 		key, key,
 	)
+}
+
+// grainUserEntry returns the cloud-config users map for the grain sudo user.
+func grainUserEntry(sshPubLine string) map[string]any {
+	key := strings.TrimSpace(sshPubLine)
+	return map[string]any{
+		"name":        "grain",
+		"groups":      []any{"sudo", "adm"},
+		"shell":       "/bin/bash",
+		"lock_passwd": true,
+		"sudo":        []any{"ALL=(ALL) NOPASSWD:ALL"},
+		"ssh_authorized_keys": []any{
+			key,
+		},
+	}
+}
+
+// BaseUserData builds the grain-managed cloud-config document as a map.
+// It injects hostname, SSH keys, the grain user, and the grain-ready marker.
+// Used for images without a baked agent (full first-boot setup).
+func BaseUserData(hostname, sshPubLine string) map[string]any {
+	key := strings.TrimSpace(sshPubLine)
 	return map[string]any{
 		"hostname":         hostname,
 		"fqdn":             hostname + ".local",
@@ -32,23 +53,57 @@ func BaseUserData(hostname, sshPubLine string) map[string]any {
 		"disable_root":     false,
 		"users": []any{
 			"default",
-			map[string]any{
-				"name":        "grain",
-				"groups":      []any{"sudo", "adm"},
-				"shell":       "/bin/bash",
-				"lock_passwd": true,
-				"sudo":        []any{"ALL=(ALL) NOPASSWD:ALL"},
-				"ssh_authorized_keys": []any{
-					key,
-				},
-			},
+			grainUserEntry(sshPubLine),
 		},
 		"ssh_authorized_keys": []any{
 			key,
 		},
 		"runcmd": []any{
-			[]any{"sh", "-c", authCmd},
+			[]any{"sh", "-c", sshAuthRuncmd(sshPubLine)},
 			[]any{"sh", "-c", "echo grain-ready > /var/lib/grain-ready"},
+		},
+	}
+}
+
+// BaseUserDataMinimal builds a lean cloud-config for agent-ready golden images.
+// Skips heavy package ops; keeps hostname, SSH keys, grain sudo user, and
+// readiness markers so clones finish cloud-init quickly.
+func BaseUserDataMinimal(hostname, sshPubLine string) map[string]any {
+	key := strings.TrimSpace(sshPubLine)
+	// Single runcmd: keys + readiness stamps (userdata-ran for agent Health, grain-ready legacy).
+	readyCmd := fmt.Sprintf(
+		"%s; mkdir -p /var/lib/grain; touch /var/lib/grain/userdata-ran; echo grain-ready > /var/lib/grain-ready",
+		sshAuthRuncmd(sshPubLine),
+	)
+	return map[string]any{
+		"hostname":         hostname,
+		"fqdn":             hostname + ".local",
+		"manage_etc_hosts": true,
+		"ssh_pwauth":       false,
+		// Avoid apt work on clone boots of pre-baked images.
+		"package_update":  false,
+		"package_upgrade": false,
+		"users": []any{
+			"default",
+			grainUserEntry(sshPubLine),
+		},
+		"ssh_authorized_keys": []any{
+			key,
+		},
+		// Limit config-stage modules so clone boots skip apt/locale/etc. while
+		// keeping hostname, disk grow, users, ssh, and runcmd on Ubuntu.
+		"cloud_config_modules": []any{
+			"growpart",
+			"resizefs",
+			"set_hostname",
+			"update_hostname",
+			"update_etc_hosts",
+			"users-groups",
+			"ssh",
+			"runcmd",
+		},
+		"runcmd": []any{
+			[]any{"sh", "-c", readyCmd},
 		},
 	}
 }
@@ -95,7 +150,22 @@ func MergeUserData(baseCloudConfig string, extra string) (string, error) {
 // RenderUserData builds the final user-data document for a VM seed.
 // mounts, when non-empty, add runcmd entries that mkdir + mount each 9p share.
 func RenderUserData(hostname, sshPubLine, extra string, mounts ...MountSpec) (string, error) {
-	base := BaseUserData(hostname, sshPubLine)
+	return renderUserData(BaseUserData(hostname, sshPubLine), extra, mounts...)
+}
+
+// RenderUserDataMinimal builds a lean user-data document for agent-ready goldens.
+// mounts and extra are merged the same way as RenderUserData.
+// When extra is non-empty, cloud_config_modules is dropped so packages/write_files
+// and other modules from the extra document can still run.
+func RenderUserDataMinimal(hostname, sshPubLine, extra string, mounts ...MountSpec) (string, error) {
+	base := BaseUserDataMinimal(hostname, sshPubLine)
+	if strings.TrimSpace(extra) != "" {
+		delete(base, "cloud_config_modules")
+	}
+	return renderUserData(base, extra, mounts...)
+}
+
+func renderUserData(base map[string]any, extra string, mounts ...MountSpec) (string, error) {
 	if len(mounts) > 0 {
 		rc := toAnySlice(base["runcmd"])
 		for _, m := range mounts {

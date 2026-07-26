@@ -212,6 +212,88 @@ func TestRenderUserData_MountRuncmds(t *testing.T) {
 	}
 }
 
+func TestRenderUserDataMinimal_HostnameKeysAndMarkers(t *testing.T) {
+	key := "ssh-ed25519 AAAA test@grain"
+	got, err := cloudinit.RenderUserDataMinimal("clone-1", key, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, "#cloud-config\n") {
+		t.Fatalf("missing #cloud-config header:\n%s", got)
+	}
+	doc := mustParse(t, got)
+	if doc["hostname"] != "clone-1" {
+		t.Fatalf("hostname %v", doc["hostname"])
+	}
+	if doc["fqdn"] != "clone-1.local" {
+		t.Fatalf("fqdn %v", doc["fqdn"])
+	}
+	if doc["ssh_pwauth"] != false {
+		t.Fatalf("ssh_pwauth %v", doc["ssh_pwauth"])
+	}
+	if doc["package_update"] != false || doc["package_upgrade"] != false {
+		t.Fatalf("expected package_update/upgrade false: update=%v upgrade=%v",
+			doc["package_update"], doc["package_upgrade"])
+	}
+	if !strings.Contains(got, key) {
+		t.Fatalf("missing ssh key:\n%s", got)
+	}
+	if !strings.Contains(got, "name: grain") {
+		t.Fatalf("missing grain user:\n%s", got)
+	}
+	if !strings.Contains(got, "/var/lib/grain/userdata-ran") {
+		t.Fatalf("missing userdata-ran marker:\n%s", got)
+	}
+	if !strings.Contains(got, "grain-ready") {
+		t.Fatalf("missing grain-ready:\n%s", got)
+	}
+	// Full seed should still work and not include package_update false by default.
+	full, err := cloudinit.RenderUserData("sbox-9", key, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullDoc := mustParse(t, full)
+	if fullDoc["hostname"] != "sbox-9" {
+		t.Fatalf("full hostname %v", fullDoc["hostname"])
+	}
+	if _, has := fullDoc["package_update"]; has {
+		t.Fatalf("full seed should not set package_update: %#v", fullDoc["package_update"])
+	}
+	if !strings.Contains(full, "name: grain") || !strings.Contains(full, key) {
+		t.Fatalf("full seed missing user/key:\n%s", full)
+	}
+}
+
+func TestRenderUserDataMinimal_MountsAndExtra(t *testing.T) {
+	got, err := cloudinit.RenderUserDataMinimal("m", "ssh-ed25519 AAAA k", "echo extra",
+		cloudinit.MountSpec{Tag: "grain0", Guest: "/work"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, cloudinit.MountRuncmd("grain0", "/work")) {
+		t.Fatalf("missing mount runcmd:\n%s", got)
+	}
+	if !strings.Contains(got, "echo extra") {
+		t.Fatalf("missing shell extra:\n%s", got)
+	}
+}
+
+func TestBaseUserDataMinimal_Map(t *testing.T) {
+	m := cloudinit.BaseUserDataMinimal("h1", "ssh-ed25519 BBBB k")
+	if m["hostname"] != "h1" {
+		t.Fatalf("hostname %v", m["hostname"])
+	}
+	mods, ok := m["cloud_config_modules"].([]any)
+	if !ok || len(mods) == 0 {
+		t.Fatalf("cloud_config_modules = %#v", m["cloud_config_modules"])
+	}
+	// Minimal must not grow packages list.
+	if _, has := m["packages"]; has {
+		t.Fatalf("minimal should not set packages")
+	}
+}
+
 func TestMountRuncmd(t *testing.T) {
 	got := cloudinit.MountRuncmd("grain0", "/work")
 	want := "mkdir -p /work && mount -t 9p -o trans=virtio,version=9p2000.L grain0 /work"

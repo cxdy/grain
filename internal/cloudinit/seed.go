@@ -8,16 +8,46 @@ import (
 	"runtime"
 )
 
+// SeedOpts configures a NoCloud seed ISO.
+type SeedOpts struct {
+	Hostname string
+	SSHPub   string
+	Extra    string
+	Mounts   []MountSpec
+	// Minimal selects lean user-data for agent-ready golden images (HasAgent).
+	Minimal bool
+}
+
 // WriteNoCloud builds a cloud-init NoCloud seed ISO (volume label cidata).
 // userdataExtra is optional shell or #cloud-config merged into the base document.
 // mounts, when non-empty, inject runcmd entries to mount each virtio-9p share.
+// Prefer WriteNoCloudOpts when Minimal or other options are needed.
 func WriteNoCloud(dir, hostname, sshPubLine, userdataExtra string, mounts ...MountSpec) (seedPath string, err error) {
+	return WriteNoCloudOpts(dir, SeedOpts{
+		Hostname: hostname,
+		SSHPub:   sshPubLine,
+		Extra:    userdataExtra,
+		Mounts:   mounts,
+		Minimal:  false,
+	})
+}
+
+// WriteNoCloudOpts builds a NoCloud seed ISO using SeedOpts.
+// When opts.Minimal is true, a lean user-data document is used (faster clone boots
+// on images that already ship grain-agent).
+func WriteNoCloudOpts(dir string, opts SeedOpts) (seedPath string, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
+	hostname := opts.Hostname
 	meta := fmt.Sprintf("instance-id: grain-%s\nlocal-hostname: %s\n", hostname, hostname)
 
-	user, err := RenderUserData(hostname, sshPubLine, userdataExtra, mounts...)
+	var user string
+	if opts.Minimal {
+		user, err = RenderUserDataMinimal(hostname, opts.SSHPub, opts.Extra, opts.Mounts...)
+	} else {
+		user, err = RenderUserData(hostname, opts.SSHPub, opts.Extra, opts.Mounts...)
+	}
 	if err != nil {
 		return "", fmt.Errorf("cloud-init user-data: %w", err)
 	}

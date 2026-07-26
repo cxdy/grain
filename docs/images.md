@@ -54,6 +54,21 @@ grain new -i grain-ubuntu
 
 Import copies/converts the source into `~/.grain/images/grain-ubuntu/disk.qcow2`, writes `has_agent=true` and `ssh_user`, and flattens qcow2 overlay chains when `qemu-img` is available.
 
+### Minimal cloud-init seed for golden clones
+
+When the base image is agent-ready (`HasAgent` / local `has_agent` meta), create (and Start when regenerating a missing seed) writes a **minimal** NoCloud user-data instead of the full first-boot document:
+
+| Full seed (`ubuntu-cloud`) | Minimal seed (`grain-ubuntu` / HasAgent) |
+|----------------------------|------------------------------------------|
+| Hostname, keys, grain user | Same |
+| Standard cloud-init module set | Limited `cloud_config_modules` (hostname, hosts, users, ssh, runcmd) |
+| Default package behaviour | `package_update` / `package_upgrade` false |
+| runcmd: SSH inject + grain-ready | Single runcmd: SSH inject + `userdata-ran` + grain-ready |
+
+The seed ISO is still attached for per-clone **hostname**, **SSH keys**, and **9p mount** runcmds. Heavy package installs and long cloud-init stages are avoided because the golden already has the agent and base tooling.
+
+Bake prepares the disk for this path (`cloud-init clean`, `userdata-ran` stamp, enabled `grain-agent`, cleared `machine-id`). Clones are expected to finish cloud-init and report agent-ready sooner than a cold `ubuntu-cloud` first boot; measure locally if you need hard p50 numbers.
+
 ### Bake from ubuntu-cloud (automated)
 
 On a Mac with QEMU:
@@ -70,7 +85,7 @@ The script:
 
 1. Ensures `grain-agent-linux-*` and `ubuntu-cloud`
 2. Creates a persistent bake VM (SSH deploy of the agent after boot)
-3. Enables `grain-agent` for future boots
+3. Enables `grain-agent`, runs `cloud-init clean --logs`, stamps `/var/lib/grain/userdata-ran`, and clears `/etc/machine-id` (systemd regenerates a unique id per clone)
 4. Stops the VM cleanly
 5. `qemu-img convert -O qcow2` flattens the overlay into a standalone base
 6. `grain image import … --id grain-ubuntu`
@@ -127,6 +142,9 @@ grain up
 grain image pull ubuntu-cloud
 grain new -p -n bake-vm -i ubuntu-cloud
 grain x bake-vm -- sudo systemctl enable grain-agent
+grain x bake-vm -- sudo cloud-init clean --logs
+grain x bake-vm -- sudo mkdir -p /var/lib/grain && sudo touch /var/lib/grain/userdata-ran
+grain x bake-vm -- sudo truncate -s 0 /etc/machine-id   # unique id regenerated on clone boot
 grain stop bake-vm
 qemu-img convert -O qcow2 ~/.grain/vms/bake-vm/disk.img.qcow2 /tmp/grain-ubuntu.qcow2
 grain image import /tmp/grain-ubuntu.qcow2 --id grain-ubuntu

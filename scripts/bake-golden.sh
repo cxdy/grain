@@ -236,16 +236,26 @@ else
   fi
 fi
 
-# 4) Ensure agent is enabled on boot (EnableAgent already does enable --now;
-#    re-run enable so a golden disk boots with agent without redeploy.)
-log "ensuring grain-agent is enabled for future boots"
+# 4) Prepare golden for clone-friendly boots:
+#    - enable grain-agent so clones start the agent without SSH deploy
+#    - cloud-init clean so the next boot (new instance-id) re-runs lean seed
+#    - touch userdata-ran for wait=userdata / agent Health
+#    - clear machine-id so systemd regenerates a unique id per clone
+log "preparing golden for clone-friendly boots (agent + cloud-init clean)"
 if [[ "$DRY_RUN" -eq 1 ]]; then
   printf '[dry-run] %s x %s -- sudo systemctl enable grain-agent\n' "${GRAIN[*]}" "$BAKE_VM"
+  printf '[dry-run] %s x %s -- sudo cloud-init clean --logs\n' "${GRAIN[*]}" "$BAKE_VM"
   printf '[dry-run] %s x %s -- sudo mkdir -p /var/lib/grain && sudo touch /var/lib/grain/userdata-ran\n' "${GRAIN[*]}" "$BAKE_VM"
+  printf '[dry-run] %s x %s -- sudo truncate -s 0 /etc/machine-id\n' "${GRAIN[*]}" "$BAKE_VM"
 else
   "${GRAIN[@]}" x "$BAKE_VM" -- sudo systemctl enable grain-agent
-  # Optional readiness stamp used by wait=userdata consumers
+  # Reset cloud-init state so clones with a new instance-id re-apply hostname/keys
+  # from the minimal NoCloud seed (fast path when HasAgent / has_agent).
+  "${GRAIN[@]}" x "$BAKE_VM" -- sudo cloud-init clean --logs || warn "cloud-init clean failed (non-fatal)"
+  # Readiness stamp used by wait=userdata / agent Health.UserdataRan
   "${GRAIN[@]}" x "$BAKE_VM" -- sudo mkdir -p /var/lib/grain && sudo touch /var/lib/grain/userdata-ran || true
+  # Empty machine-id: systemd regenerates a unique id on first boot of each clone.
+  "${GRAIN[@]}" x "$BAKE_VM" -- sudo truncate -s 0 /etc/machine-id || warn "machine-id truncate failed (non-fatal)"
 fi
 
 # 5) Clean shutdown so disk is consistent
@@ -343,6 +353,9 @@ echo
 echo "Manual alternative:"
 echo "  grain new -p -n bake-vm -i ubuntu-cloud"
 echo "  grain x bake-vm -- sudo systemctl enable grain-agent"
+echo "  grain x bake-vm -- sudo cloud-init clean --logs"
+echo "  grain x bake-vm -- sudo mkdir -p /var/lib/grain && sudo touch /var/lib/grain/userdata-ran"
+echo "  grain x bake-vm -- sudo truncate -s 0 /etc/machine-id"
 echo "  grain stop bake-vm"
 echo "  qemu-img convert -O qcow2 ~/.grain/vms/bake-vm/disk.img.qcow2 /tmp/grain-ubuntu.qcow2"
 echo "  grain image import /tmp/grain-ubuntu.qcow2 --id grain-ubuntu"
