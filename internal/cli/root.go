@@ -177,6 +177,8 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			if err := c.Health(ctx); err != nil {
 				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
 			}
+			stop := createProgress("creating")
+			start := time.Now()
 			inst, err := c.Create(ctx, api.CreateRequest{
 				Name:       name,
 				Persistent: persistent,
@@ -184,6 +186,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				MemoryMB:   mem,
 				DiskGB:     disk,
 			})
+			stop()
 			if err != nil {
 				return err
 			}
@@ -191,7 +194,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			if inst.SSHPort > 0 {
 				fmt.Printf("  ssh=:%d", inst.SSHPort)
 			}
-			fmt.Println()
+			fmt.Printf("  (%s)\n", time.Since(start).Round(time.Second))
 			fmt.Printf("next:  grain sh %s\n", inst.Name)
 			fmt.Printf("       grain x %s -- uname -a\n", inst.Name)
 			return nil
@@ -341,14 +344,16 @@ func resolveVMName(c *api.Client, args []string, createIfEmpty bool) (string, er
 		if !createIfEmpty {
 			return "", fmt.Errorf("no vms — create one first:  grain new")
 		}
-		fmt.Fprintln(os.Stderr, "no vms — creating one …")
 		createCtx, createCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer createCancel()
+		stop := createProgress("no vms — creating")
+		start := time.Now()
 		inst, err := c.Create(createCtx, api.CreateRequest{})
+		stop()
 		if err != nil {
 			return "", fmt.Errorf("auto-create failed: %w\n  try: grain image pull && grain new", err)
 		}
-		fmt.Fprintf(os.Stderr, "created %s  ssh=:%d\n", inst.Name, inst.SSHPort)
+		fmt.Fprintf(os.Stderr, "created %s  ssh=:%d  (%s)\n", inst.Name, inst.SSHPort, time.Since(start).Round(time.Second))
 		return inst.Name, nil
 	}
 	if len(list) == 1 {
