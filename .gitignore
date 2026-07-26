@@ -11,3 +11,6 @@ coverage.html
 # local daemon state (default under ~/.grain is outside repo)
 /tmp/
 bin/
+# TypeScript SDK (sdk/ts)
+sdk/ts/node_modules/
+sdk/ts/dist/

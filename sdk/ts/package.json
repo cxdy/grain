@@ -1,0 +1,53 @@
+{
+  "name": "@cxdy/grain",
+  "version": "0.1.0",
+  "description": "TypeScript client for the grain microVM daemon HTTP API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "grain",
+    "microvm",
+    "sandbox",
+    "qemu",
+    "client"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cxdy/grain.git",
+    "directory": "sdk/ts"
+  },
+  "homepage": "https://github.com/cxdy/grain/tree/main/sdk/ts",
+  "bugs": {
+    "url": "https://github.com/cxdy/grain/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.9.3"
+  },
+  "optionalDependencies": {
+    "undici": "^6.21.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
