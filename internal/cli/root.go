@@ -43,6 +43,7 @@ func Root(version string) *cobra.Command {
   grain new --preset docker   userdata preset (docker|k3s)
   grain stop / start    stop or restart a persistent VM
   grain ls / rm / sh / x / cp
+  grain fs              guest readdir/stat/mkdir/rm via agent
   grain profile ls      list named profiles
   grain fwd ls          list port forwards
   grain logs            guest serial / qemu logs
@@ -63,6 +64,7 @@ func Root(version string) *cobra.Command {
 		cmdSh(&cfgPath),
 		cmdX(&cfgPath),
 		cmdCp(&cfgPath),
+		cmdFs(&cfgPath),
 		cmdLogs(&cfgPath),
 		cmdFwd(&cfgPath),
 		cmdProfile(&cfgPath),
@@ -638,7 +640,10 @@ func cmdX(cfgPath *string) *cobra.Command {
 				if forceAgent {
 					return err
 				}
-				// Agent unavailable or transport failure → fall through to SSH.
+				// Only fall back to SSH when agent is missing/unhealthy.
+				if !isAgentUnavailable(err) {
+					return err
+				}
 			}
 
 			host, port, err := getVMSSH(c, name)
@@ -656,61 +661,6 @@ func cmdX(cfgPath *string) *cobra.Command {
 	cmd.Flags().BoolVar(&forceSSH, "ssh", false, "force SSH exec (skip guest agent)")
 	cmd.Flags().BoolVar(&forceAgent, "agent", false, "force guest agent only (error if unavailable)")
 	return cmd
-}
-
-// errAgentSkip means the agent path was not usable (no port / unhealthy); fall back to SSH.
-var errAgentSkip = fmt.Errorf("agent skip")
-
-// execViaAgent tries daemon → grain-agent exec. On success prints stdout/stderr and
-// returns nil or exitCodeError. force requires agent; otherwise returns errAgentSkip
-// when the agent is not available so the caller can fall back to SSH.
-func execViaAgent(c *api.Client, name string, remote []string, force bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	inst, err := c.Get(ctx, name)
-	if err != nil {
-		if force {
-			return err
-		}
-		return errAgentSkip
-	}
-	if inst.AgentPort == 0 {
-		if force {
-			return fmt.Errorf("agent not available (no agent port for %s)", name)
-		}
-		return errAgentSkip
-	}
-
-	if !force {
-		if _, err := c.AgentHealth(ctx, name); err != nil {
-			return errAgentSkip
-		}
-	}
-
-	res, err := c.Exec(ctx, name, remote[0], remote[1:]...)
-	if err != nil {
-		if force {
-			return fmt.Errorf("agent exec: %w", err)
-		}
-		return err // non-skip failure → caller may still SSH-fallback
-	}
-	if res.Stdout != "" {
-		fmt.Print(res.Stdout)
-	}
-	if res.Stderr != "" {
-		fmt.Fprint(os.Stderr, res.Stderr)
-	}
-	if res.Error != "" && res.ExitCode != 0 {
-		// Soft error from agent (timeout, spawn failure) with non-zero code.
-		if res.Stdout == "" && res.Stderr == "" {
-			fmt.Fprintln(os.Stderr, res.Error)
-		}
-	}
-	if res.ExitCode != 0 {
-		return exitCodeError(res.ExitCode)
-	}
-	return nil
 }
 
 func cmdAgent(cfgPath *string) *cobra.Command {
@@ -747,57 +697,6 @@ func cmdAgent(cfgPath *string) *cobra.Command {
 		},
 	})
 	return root
-}
-
-func cmdCp(cfgPath *string) *cobra.Command {
-	return &cobra.Command{
-		Use:   "cp [src] [dst]",
-		Short: "Copy files (host path or NAME:path)",
-		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadCfg(cfgPath)
-			if err != nil {
-				return err
-			}
-			c := clientFrom(cfg)
-
-			resolve := func(s string) (spec string, port int, err error) {
-				// NAME:path → user@host:path
-				if i := strings.Index(s, ":"); i > 0 && !strings.Contains(s[:i], "/") {
-					name, path := s[:i], s[i+1:]
-					host, p, err := getVMSSH(c, name)
-					if err != nil {
-						return "", 0, err
-					}
-					return fmt.Sprintf("%s@%s:%s", cfg.SSHUser, host, path), p, nil
-				}
-				return s, 0, nil
-			}
-
-			src, p1, err := resolve(args[0])
-			if err != nil {
-				return err
-			}
-			dst, p2, err := resolve(args[1])
-			if err != nil {
-				return err
-			}
-			port := p1
-			if p2 > 0 {
-				port = p2
-			}
-			id := grainSSHIdentity(cfg)
-			if !fileExists(id) {
-				id = ""
-			}
-			scpArgs := guest.SCPArgs(port, id)
-			scpArgs = append(scpArgs, src, dst)
-			scp := exec.Command("scp", scpArgs...)
-			scp.Stdout = os.Stdout
-			scp.Stderr = os.Stderr
-			return scp.Run()
-		},
-	}
 }
 
 func cmdVersion(v string) *cobra.Command {

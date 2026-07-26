@@ -58,16 +58,17 @@ brew install qemu
 | `profile ls` | list named create profiles |
 | `stop` / `start` | stop VM (ephemeral deleted; persistent kept) / start stopped persistent |
 | `ls` / `rm` | list / delete |
-| `sh` / `x` | shell / exec (`x` prefers guest agent, SSH fallback; `--agent` / `--ssh`) |
+| `sh` / `x` | shell / exec (`x` prefers guest agent with live streaming, SSH fallback; `--agent` / `--ssh`) |
 | `agent health` | guest agent readiness (`GET /health`) |
 | `logs` | guest serial (default) or `--qemu` hypervisor log; `-f` follow |
 | `fwd ls` | list SSH + published port forwards |
-| `cp` | `host path` or `NAME:path` |
+| `cp` | `host path` or `NAME:path` (prefers agent Put/Get; scp fallback; `--agent` / `--ssh`) |
+| `fs ls` / `stat` / `mkdir` / `rm` | guest filesystem via agent (no SSH) |
 | `image ls` / `image pull` | base images |
 | `doctor` | dependency check |
 | `version` | print version |
 
-**Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` uses the agent when available. Soft-fail: VMs still work SSH-only.
+**Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh).
 
 **Profiles** (`~/.grain/config.yaml` → `profiles:`) set create defaults; resolve order is CLI flags → profile → global defaults. Instances get `Tags["profile"]=name`. **Presets** (`docker`, `k3s`) merge into userdata; `k3s` also suggests 2 CPU / 4096 MiB when unset and auto-publishes guest 6443.
 

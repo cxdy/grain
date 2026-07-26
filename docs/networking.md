@@ -10,8 +10,9 @@ On every start, grain allocates a free host TCP port and maps it to guest port *
 hostfwd=tcp:127.0.0.1:<sshPort>-:22
 ```
 
-`grain sh` / `grain x` / `grain cp` use that port and the key under `~/.grain/ssh/`.  
-List it with:
+`grain sh` / `grain x --ssh` / `grain cp --ssh` use that port and the key under `~/.grain/ssh/`.  
+(Default `x` / `cp` prefer the guest agent on the forwarded agent port when healthy.)  
+List SSH forwards with:
 
 ```bash
 grain fwd ls
