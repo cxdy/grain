@@ -17,6 +17,7 @@ import (
 	"github.com/cxdy/grain/internal/api"
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/daemon"
+	"github.com/cxdy/grain/internal/guest"
 	"github.com/cxdy/grain/internal/observability"
 	"github.com/spf13/cobra"
 )
@@ -309,18 +310,13 @@ func grainSSHIdentity(cfg config.Config) string {
 	return filepath.Join(cfg.DataDir, "ssh", "id_grain")
 }
 
+// sshBaseArgs builds quiet OpenSSH args via guest.SSHArgs (identity when present).
 func sshBaseArgs(cfg config.Config, host string, port int) []string {
-	args := []string{
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "IdentitiesOnly=yes",
-		"-p", fmt.Sprintf("%d", port),
+	id := grainSSHIdentity(cfg)
+	if !fileExists(id) {
+		id = ""
 	}
-	if id := grainSSHIdentity(cfg); fileExists(id) {
-		args = append(args, "-i", id)
-	}
-	args = append(args, cfg.SSHUser+"@"+host)
-	return args
+	return guest.SSHArgs(cfg.SSHUser, host, port, id)
 }
 
 func fileExists(p string) bool {
@@ -500,10 +496,11 @@ func cmdCp(cfgPath *string) *cobra.Command {
 			if p2 > 0 {
 				port = p2
 			}
-			scpArgs := []string{"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"}
-			if port > 0 {
-				scpArgs = append(scpArgs, "-P", fmt.Sprintf("%d", port))
+			id := grainSSHIdentity(cfg)
+			if !fileExists(id) {
+				id = ""
 			}
+			scpArgs := guest.SCPArgs(port, id)
 			scpArgs = append(scpArgs, src, dst)
 			scp := exec.Command("scp", scpArgs...)
 			scp.Stdout = os.Stdout

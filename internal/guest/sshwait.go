@@ -48,16 +48,7 @@ func WaitSSH(ctx context.Context, host string, port int, user, privKey string) e
 }
 
 func sshProbe(ctx context.Context, host string, port int, user, privKey string) error {
-	args := []string{
-		"-i", privKey,
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "BatchMode=yes",
-		"-o", "ConnectTimeout=3",
-		"-p", fmt.Sprintf("%d", port),
-		fmt.Sprintf("%s@%s", user, host),
-		"--", "true",
-	}
+	args := SSHProbeArgs(user, host, port, privKey)
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
 	out, err := cmd.CombinedOutput()
