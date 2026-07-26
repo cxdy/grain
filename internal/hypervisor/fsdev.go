@@ -14,31 +14,52 @@ const MountDriver9p = "9p"
 // MountDriverVirtioFS requests virtiofs (falls back to 9p when unsupported).
 const MountDriverVirtioFS = "virtiofs"
 
-// ResolveMountDriver returns the effective driver. virtiofs is not fully
-// integrated (no virtiofsd lifecycle); on darwin or when unsupported it falls
-// back to 9p and logs a warning.
+// ResolveMountDriver returns the effective shared-fs driver.
+//
+// Rules:
+//   - empty / "9p" / unknown → 9p
+//   - "virtiofs" on darwin → 9p (HVF + memory-backend/vhost-user not reliable)
+//   - "virtiofs" on linux without virtiofsd → 9p + warn
+//   - "virtiofs" on linux with virtiofsd present → virtiofs
 func ResolveMountDriver(requested string, log *slog.Logger) string {
 	if requested == "" || requested == MountDriver9p {
 		return MountDriver9p
 	}
-	if requested == MountDriverVirtioFS {
-		// Full virtiofsd + QEMU virtio-fs is optional; HVF + virtiofs is not
-		// reliable without a host virtiofsd. Fall back to 9p with a warn.
+	if requested != MountDriverVirtioFS {
+		return MountDriver9p
+	}
+
+	// macOS: keep forced 9p — memory-backend share + vhost-user-fs conflicts
+	// with the usual HVF machine setup and host virtiofsd is uncommon.
+	if runtime.GOOS == "darwin" {
 		if log != nil {
-			log.Warn("mount_driver=virtiofs is not fully supported; falling back to 9p",
+			log.Warn("mount_driver=virtiofs is not supported on darwin; falling back to 9p",
 				"goos", runtime.GOOS,
 				"hint", "9p is the default and works with QEMU HVF on macOS")
 		}
 		return MountDriver9p
 	}
-	return MountDriver9p
+
+	if !VirtiofsdAvailable() {
+		if log != nil {
+			log.Warn("mount_driver=virtiofs requested but virtiofsd not found; falling back to 9p",
+				"goos", runtime.GOOS,
+				"hint", "install virtiofsd and ensure it is on PATH (or /usr/libexec/virtiofsd)")
+		}
+		return MountDriver9p
+	}
+
+	return MountDriverVirtioFS
 }
 
 // fsdevArgs builds QEMU shared-fs device args for mounts using the resolved driver.
-// Currently always emits virtio-9p (mapped-xattr); virtiofs is a documented stub
-// that falls back via ResolveMountDriver.
-func fsdevArgs(mounts []vm.Mount, driver string) []string {
-	_ = driver // reserved for future virtiofsd wiring
+// For virtiofs, vmDir is required (socket paths); memory-backend args are separate
+// (see virtiofsMemoryBackendArgs) and must be added once by the caller.
+// When driver is 9p or mounts are empty, vmDir is ignored.
+func fsdevArgs(mounts []vm.Mount, driver string, vmDir string) []string {
+	if driver == MountDriverVirtioFS {
+		return virtiofsDeviceArgs(mounts, vmDir)
+	}
 	return virtio9pArgs(mounts)
 }
 

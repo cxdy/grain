@@ -182,13 +182,14 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		return m.fail(inst, fmt.Errorf("ssh key: %w", err), opts)
 	}
 	// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
-	// Mount runcmds are injected from prepared mounts.
+	// Mount runcmds are injected from prepared mounts (9p or virtiofs).
 	// Agent-ready goldens use a minimal seed so clone boots do less cloud-init work.
+	mountDriver := hypervisor.ResolveMountDriver(m.cfg.MountDriver, m.log)
 	if _, err := cloudinit.WriteNoCloudOpts(vmDir, cloudinit.SeedOpts{
 		Hostname: name,
 		SSHPub:   pub,
 		Extra:    opts.Userdata,
-		Mounts:   mountSpecs(mounts),
+		Mounts:   mountSpecs(mounts, mountDriver),
 		Minimal:  m.imageHasAgent(img),
 	}); err != nil {
 		// mock / missing iso tools: log and continue (SSH inject won't work)
@@ -899,7 +900,7 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 	if err := hypervisor.AllocateForwardPorts(inst.Forwards); err != nil {
 		return nil, err
 	}
-	// Re-validate mounts from meta (host dirs must still exist for QEMU 9p).
+	// Re-validate mounts from meta (host dirs must still exist for QEMU shares).
 	if err := validateStoredMounts(inst.Mounts); err != nil {
 		return nil, err
 	}
@@ -911,18 +912,19 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 
 	vmDir := m.st.Dir(name)
 	seed := filepath.Join(vmDir, "seed.iso")
+	mountDriver := hypervisor.ResolveMountDriver(m.cfg.MountDriver, m.log)
 	if !DiskExists(seed) {
 		if _, err := cloudinit.WriteNoCloudOpts(vmDir, cloudinit.SeedOpts{
 			Hostname: name,
 			SSHPub:   pub,
-			Mounts:   mountSpecs(inst.Mounts),
+			Mounts:   mountSpecs(inst.Mounts, mountDriver),
 			Minimal:  m.imageHasAgent(inst.Image),
 		}); err != nil {
 			m.log.Warn("cloud-init seed skipped", "err", err)
 		}
 	}
 
-	// Start uses inst.Mounts for virtio-9p device args.
+	// Start uses inst.Mounts for shared-fs device args (9p or virtiofs).
 	if err := m.rt.Start(ctx, inst, inst.DiskPath); err != nil {
 		return m.fail(inst, fmt.Errorf("start: %w", err))
 	}
@@ -1157,13 +1159,16 @@ func validateStoredMounts(mounts []vm.Mount) error {
 	return nil
 }
 
-func mountSpecs(mounts []vm.Mount) []cloudinit.MountSpec {
+func mountSpecs(mounts []vm.Mount, driver string) []cloudinit.MountSpec {
 	if len(mounts) == 0 {
 		return nil
 	}
+	if driver == "" {
+		driver = "9p"
+	}
 	out := make([]cloudinit.MountSpec, len(mounts))
 	for i, m := range mounts {
-		out[i] = cloudinit.MountSpec{Tag: m.Tag, Guest: m.Guest}
+		out[i] = cloudinit.MountSpec{Tag: m.Tag, Guest: m.Guest, Driver: driver}
 	}
 	return out
 }

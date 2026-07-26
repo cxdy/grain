@@ -20,7 +20,7 @@ import (
 type QEMURuntime struct {
 	Binary      string
 	DataDir     string
-	MountDriver string // 9p (default) or virtiofs (falls back to 9p)
+	MountDriver string // effective driver: 9p (default) or virtiofs
 }
 
 func NewQEMURuntime(binary, dataDir string) *QEMURuntime {
@@ -109,9 +109,19 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		)
 	}
 
-	// Host directory mounts (9p default; virtiofs falls back to 9p).
+	// Host directory mounts: 9p (default) or virtiofs (Linux + virtiofsd).
 	driver := ResolveMountDriver(q.MountDriver, nil)
-	args = append(args, fsdevArgs(inst.Mounts, driver)...)
+	if driver == MountDriverVirtioFS && len(inst.Mounts) > 0 {
+		// vhost-user-fs requires a shared memory backend and a running virtiofsd
+		// per share. Clean up daemons if QEMU fails to start.
+		if err := StartVirtiofsDaemons(vmDir, inst.Mounts); err != nil {
+			return fmt.Errorf("virtiofsd: %w", err)
+		}
+		args = append(args, virtiofsMemoryBackendArgs(inst.MemoryMB)...)
+		args = append(args, fsdevArgs(inst.Mounts, driver, vmDir)...)
+	} else {
+		args = append(args, fsdevArgs(inst.Mounts, MountDriver9p, vmDir)...)
+	}
 
 	// UEFI firmware for aarch64 cloud images
 	if runtime.GOARCH == "arm64" {
@@ -140,6 +150,9 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Run(); err != nil {
+		if driver == MountDriverVirtioFS {
+			StopVirtiofsDaemons(vmDir)
+		}
 		// include serial tail if any
 		serial, _ := os.ReadFile(filepath.Join(vmDir, "serial.log"))
 		extra := strings.TrimSpace(string(serial))
@@ -309,6 +322,8 @@ func cleanupQEMUFiles(inst *vm.Instance) {
 	if inst.QMPPath != "" && inst.QMPPath != filepath.Join(dir, QMPSocketName) {
 		_ = os.Remove(inst.QMPPath)
 	}
+	// Stop any virtiofsd helpers started for this VM (no-op if none).
+	StopVirtiofsDaemons(dir)
 }
 
 

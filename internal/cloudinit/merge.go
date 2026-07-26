@@ -172,7 +172,7 @@ func renderUserData(base map[string]any, extra string, mounts ...MountSpec) (str
 			if m.Tag == "" || m.Guest == "" {
 				continue
 			}
-			rc = append(rc, MountRuncmd(m.Tag, m.Guest))
+			rc = append(rc, MountRuncmd(m.Tag, m.Guest, m.Driver))
 		}
 		base["runcmd"] = rc
 	}
@@ -183,16 +183,25 @@ func renderUserData(base map[string]any, extra string, mounts ...MountSpec) (str
 	return MergeUserData(string(baseYAML), extra)
 }
 
-// MountSpec is a guest-side 9p share (tag + mount point). Host path is not needed
-// in cloud-init — QEMU exposes the share by tag.
+// MountSpec is a guest-side shared-fs mount (tag + mount point). Host path is not
+// needed in cloud-init — QEMU exposes the share by tag.
+// Driver is "9p" (default) or "virtiofs"; empty means 9p.
 type MountSpec struct {
-	Tag   string
-	Guest string
+	Tag    string
+	Guest  string
+	Driver string // "9p" (default) or "virtiofs"
 }
 
-// MountRuncmd returns the shell command to mount a virtio-9p share in the guest.
-func MountRuncmd(tag, guest string) string {
-	return fmt.Sprintf("mkdir -p %s && mount -t 9p -o trans=virtio,version=9p2000.L %s %s", guest, tag, guest)
+// MountRuncmd returns the shell command to mount a host share in the guest.
+// driver is "9p" (default) or "virtiofs".
+func MountRuncmd(tag, guest, driver string) string {
+	switch driver {
+	case "virtiofs":
+		return fmt.Sprintf("mkdir -p %s && mount -t virtiofs %s %s", guest, tag, guest)
+	default:
+		// 9p and unknown → virtio-9p
+		return fmt.Sprintf("mkdir -p %s && mount -t 9p -o trans=virtio,version=9p2000.L %s %s", guest, tag, guest)
+	}
 }
 
 func isCloudConfig(s string) bool {

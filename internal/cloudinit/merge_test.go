@@ -199,8 +199,8 @@ func TestRenderUserData_MountRuncmds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want0 := cloudinit.MountRuncmd("grain0", "/mnt/src")
-	want1 := cloudinit.MountRuncmd("grain1", "/data")
+	want0 := cloudinit.MountRuncmd("grain0", "/mnt/src", "9p")
+	want1 := cloudinit.MountRuncmd("grain1", "/data", "")
 	if !strings.Contains(got, want0) {
 		t.Fatalf("missing mount0 %q in:\n%s", want0, got)
 	}
@@ -271,7 +271,7 @@ func TestRenderUserDataMinimal_MountsAndExtra(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, cloudinit.MountRuncmd("grain0", "/work")) {
+	if !strings.Contains(got, cloudinit.MountRuncmd("grain0", "/work", "9p")) {
 		t.Fatalf("missing mount runcmd:\n%s", got)
 	}
 	if !strings.Contains(got, "echo extra") {
@@ -295,10 +295,35 @@ func TestBaseUserDataMinimal_Map(t *testing.T) {
 }
 
 func TestMountRuncmd(t *testing.T) {
-	got := cloudinit.MountRuncmd("grain0", "/work")
+	got := cloudinit.MountRuncmd("grain0", "/work", "9p")
 	want := "mkdir -p /work && mount -t 9p -o trans=virtio,version=9p2000.L grain0 /work"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
+	}
+	// empty driver defaults to 9p
+	if got := cloudinit.MountRuncmd("grain0", "/work", ""); got != want {
+		t.Fatalf("empty driver: got %q want %q", got, want)
+	}
+	vfs := cloudinit.MountRuncmd("grain0", "/work", "virtiofs")
+	wantVFS := "mkdir -p /work && mount -t virtiofs grain0 /work"
+	if vfs != wantVFS {
+		t.Fatalf("virtiofs: got %q want %q", vfs, wantVFS)
+	}
+}
+
+func TestRenderUserData_MountRuncmdsVirtiofs(t *testing.T) {
+	got, err := cloudinit.RenderUserData("sbox-1", "ssh-ed25519 AAAA k", "",
+		cloudinit.MountSpec{Tag: "grain0", Guest: "/mnt/src", Driver: "virtiofs"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := cloudinit.MountRuncmd("grain0", "/mnt/src", "virtiofs")
+	if !strings.Contains(got, want) {
+		t.Fatalf("missing virtiofs mount %q in:\n%s", want, got)
+	}
+	if strings.Contains(got, "mount -t 9p") {
+		t.Fatalf("should not inject 9p mount for virtiofs driver:\n%s", got)
 	}
 }
 

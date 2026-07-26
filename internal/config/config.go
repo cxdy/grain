@@ -46,8 +46,9 @@ type Config struct {
 	// LogLevel: debug|info|warn|error
 	LogLevel string `yaml:"log_level"`
 	// MountDriver selects the QEMU shared-fs backend for -v mounts: "9p" (default)
-	// or "virtiofs". On darwin / without virtiofsd, virtiofs falls back to 9p
-	// with a warning — full virtiofsd integration is not required for M7.
+	// or "virtiofs". On darwin, or on Linux without virtiofsd, virtiofs falls
+	// back to 9p with a warning. On Linux with virtiofsd available, virtiofs
+	// uses vhost-user-fs + a per-mount virtiofsd.
 	MountDriver string `yaml:"mount_driver"`
 
 	// Resource caps (0 = unlimited). Stopped VMs do not count toward running caps.

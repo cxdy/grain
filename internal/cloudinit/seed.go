@@ -20,7 +20,7 @@ type SeedOpts struct {
 
 // WriteNoCloud builds a cloud-init NoCloud seed ISO (volume label cidata).
 // userdataExtra is optional shell or #cloud-config merged into the base document.
-// mounts, when non-empty, inject runcmd entries to mount each virtio-9p share.
+// mounts, when non-empty, inject runcmd entries to mount each shared-fs share.
 // Prefer WriteNoCloudOpts when Minimal or other options are needed.
 func WriteNoCloud(dir, hostname, sshPubLine, userdataExtra string, mounts ...MountSpec) (seedPath string, err error) {
 	return WriteNoCloudOpts(dir, SeedOpts{
