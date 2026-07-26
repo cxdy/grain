@@ -42,6 +42,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /vms/{name}", s.getVM)
 	mux.HandleFunc("DELETE /vms/{name}", s.deleteVM)
 	mux.HandleFunc("POST /vms/{name}/shutdown", s.shutdownVM)
+	mux.HandleFunc("POST /vms/{name}/start", s.startVM)
 	return loggingMiddleware(s.log, mux)
 }
 
@@ -138,6 +139,18 @@ func (s *Server) shutdownVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"message": "shutdown", "name": name})
+}
+
+func (s *Server) startVM(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	inst, err := s.mgr.Start(ctx, name)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, inst)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

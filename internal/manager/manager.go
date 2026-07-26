@@ -209,6 +209,7 @@ func (m *Manager) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
+// Shutdown stops a VM. Ephemeral VMs are deleted; persistent VMs remain stopped.
 func (m *Manager) Shutdown(ctx context.Context, name string) error {
 	inst, err := m.st.Get(name)
 	if err != nil {
@@ -223,6 +224,70 @@ func (m *Manager) Shutdown(ctx context.Context, name string) error {
 	inst.Status = vm.StatusStopped
 	inst.PID = 0
 	return m.st.Put(inst)
+}
+
+// Stop is an alias for Shutdown.
+func (m *Manager) Stop(ctx context.Context, name string) error {
+	return m.Shutdown(ctx, name)
+}
+
+// Start boots a stopped persistent (or any stored) VM using its existing disk.
+func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) {
+	inst, err := m.st.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if inst.Status == vm.StatusRunning && m.rt.Running(inst) {
+		return nil, fmt.Errorf("vm %q already running", name)
+	}
+	if inst.DiskPath == "" || !DiskExists(inst.DiskPath) {
+		return nil, fmt.Errorf("vm %q has no disk (disk_path missing or gone)", name)
+	}
+
+	priv, pub, err := sshkey.Ensure(m.cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("ssh key: %w", err)
+	}
+
+	vmDir := m.st.Dir(name)
+	seed := filepath.Join(vmDir, "seed.iso")
+	if !DiskExists(seed) {
+		if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, ""); err != nil {
+			m.log.Warn("cloud-init seed skipped", "err", err)
+		}
+	}
+
+	if err := m.rt.Start(ctx, inst, inst.DiskPath); err != nil {
+		return m.fail(inst, fmt.Errorf("start: %w", err))
+	}
+	inst.Status = vm.StatusRunning
+	inst.Error = ""
+	if err := m.st.Put(inst); err != nil {
+		return nil, err
+	}
+
+	if m.cfg.Hypervisor != "mock" && inst.SSHPort > 0 {
+		user := m.cfg.SSHUser
+		if user == "" || user == "alpine" {
+			if spec, err := image.Get(inst.Image); err == nil && spec.SSHUser != "" {
+				user = spec.SSHUser
+			}
+		}
+		waitCtx, cancel := context.WithTimeout(ctx, m.cfg.ReadyTimeout)
+		defer cancel()
+		if err := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, user, priv); err != nil {
+			if err2 := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, "grain", priv); err2 != nil {
+				m.log.Warn("ssh not ready yet", "name", name, "err", err)
+			}
+		}
+	}
+
+	m.log.Info("vm started",
+		"name", inst.Name,
+		"persistent", inst.Persistent,
+		"ssh_port", inst.SSHPort,
+	)
+	return inst, nil
 }
 
 func (m *Manager) CleanupEphemeral(ctx context.Context) error {

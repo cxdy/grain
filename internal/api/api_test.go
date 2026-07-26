@@ -71,3 +71,50 @@ func TestHealthAndCreateListDelete(t *testing.T) {
 		t.Fatalf("delete %d %s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestShutdownAndStartPersistent(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+
+	body := []byte(`{"name":"lab","persistent":true}`)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/lab/shutdown", nil))
+	if rr.Code != 200 {
+		t.Fatalf("shutdown %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/lab", nil))
+	if rr.Code != 200 {
+		t.Fatalf("get after shutdown %d %s", rr.Code, rr.Body.String())
+	}
+	var stopped map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &stopped); err != nil {
+		t.Fatal(err)
+	}
+	if stopped["status"] != "stopped" {
+		t.Fatalf("want stopped, got %v", stopped["status"])
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/lab/start", nil))
+	if rr.Code != 200 {
+		t.Fatalf("start %d %s", rr.Code, rr.Body.String())
+	}
+	var started map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+	if started["status"] != "running" {
+		t.Fatalf("want running, got %v", started["status"])
+	}
+}

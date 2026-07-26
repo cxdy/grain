@@ -77,6 +77,53 @@ func TestCreatePersistentAndShutdownKeepsMeta(t *testing.T) {
 	}
 }
 
+func TestPersistentShutdownThenStart(t *testing.T) {
+	t.Parallel()
+	m, rt, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Shutdown(context.Background(), inst.Name); err != nil {
+		t.Fatal(err)
+	}
+	if rt.Running(inst) {
+		t.Fatal("should not be running after shutdown")
+	}
+	got, err := m.Start(context.Background(), "lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != vm.StatusRunning {
+		t.Fatalf("status %s", got.Status)
+	}
+	if !rt.Running(got) {
+		t.Fatal("runtime should be running after start")
+	}
+	if got.PID == 0 {
+		t.Fatal("expected pid after start")
+	}
+	// second start while running should fail
+	if _, err := m.Start(context.Background(), "lab"); err == nil {
+		t.Fatal("expected already running error")
+	}
+}
+
+func TestStopAliasEphemeralDeletes(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Stop(context.Background(), inst.Name); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Get(inst.Name); err == nil {
+		t.Fatal("ephemeral should be gone after stop")
+	}
+}
+
 func TestShutdownEphemeralDeletes(t *testing.T) {
 	t.Parallel()
 	m, _, _ := testManager(t)

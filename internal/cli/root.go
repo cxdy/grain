@@ -36,6 +36,7 @@ func Root(version string) *cobra.Command {
   grain image pull      download base OS image
   grain new             ephemeral sandbox
   grain new -p          persistent sandbox
+  grain stop / start    stop or restart a persistent VM
   grain ls / rm / sh / x / cp
   grain logs            guest serial / qemu logs
   grain doctor          check dependencies
@@ -48,6 +49,8 @@ func Root(version string) *cobra.Command {
 		cmdUp(&cfgPath),
 		cmdDown(&cfgPath),
 		cmdNew(&cfgPath),
+		cmdStop(&cfgPath),
+		cmdStart(&cfgPath),
 		cmdLs(&cfgPath),
 		cmdRm(&cfgPath),
 		cmdSh(&cfgPath),
@@ -267,6 +270,69 @@ func cmdRm(cfgPath *string) *cobra.Command {
 				return err
 			}
 			fmt.Println("deleted", name)
+			return nil
+		},
+	}
+}
+
+func cmdStop(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop [name]",
+		Short: "Stop a VM (ephemeral is deleted; persistent stays on disk)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c := clientFrom(cfg)
+			name, err := resolveVMName(c, args, false)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := c.Shutdown(ctx, name); err != nil {
+				return err
+			}
+			fmt.Println("stopped", name)
+			return nil
+		},
+	}
+}
+
+func cmdStart(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "start [name]",
+		Short: "Start a stopped persistent VM",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c := clientFrom(cfg)
+			name, err := resolveVMName(c, args, false)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			if err := c.Health(ctx); err != nil {
+				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+			}
+			stop := createProgress("starting")
+			start := time.Now()
+			inst, err := c.Start(ctx, name)
+			stop()
+			if err != nil {
+				return err
+			}
+			fmt.Printf("started %s  status=%s", inst.Name, inst.Status)
+			if inst.SSHPort > 0 {
+				fmt.Printf("  ssh=:%d", inst.SSHPort)
+			}
+			fmt.Printf("  (%s)\n", time.Since(start).Round(time.Second))
 			return nil
 		},
 	}
