@@ -81,6 +81,7 @@ grain profile ls
 |-------|--------|
 | [docs/networking.md](docs/networking.md) | SLIRP, SSH, `--publish`, `fwd ls`, privileged ports |
 | [docs/mounts.md](docs/mounts.md) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
+| [docs/profiles.md](docs/profiles.md) | named profiles, docker/k3s presets |
 | [docs/images.md](docs/images.md) | `ubuntu-cloud`, pull once, SHA verify |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
 
