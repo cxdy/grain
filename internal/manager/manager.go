@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/cloudinit"
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/guest"
@@ -18,6 +19,13 @@ import (
 	"github.com/cxdy/grain/internal/store"
 	"github.com/cxdy/grain/internal/vm"
 )
+
+// agentProbeTimeout is a short health check used when the guest may already
+// ship grain-agent (golden images). On failure we attempt SSH deploy.
+const agentProbeTimeout = 3 * time.Second
+
+// agentWaitFallback is used when the ReadyTimeout budget is exhausted after SSH.
+const agentWaitFallback = 60 * time.Second
 
 // Manager orchestrates VM lifecycle: name → disk → start → record.
 type Manager struct {
@@ -56,7 +64,9 @@ func emitCreate(opts vm.CreateOpts, ev vm.CreateEvent) {
 }
 
 // Create launches a sandbox. Ephemeral by default (opts.Persistent=false).
-// When opts.OnEvent is set, progress phases are emitted: image, disk, seed, qemu, wait_ssh, ready|error.
+// When opts.OnEvent is set, progress phases are emitted:
+// image, disk, seed, qemu, wait_ssh, wait_agent (non-mock), ready|error.
+// Agent readiness is a soft dependency: failure is logged, Create still succeeds.
 func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance, error) {
 	existing, err := m.st.Names()
 	if err != nil {
@@ -178,25 +188,28 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		Message: "waiting for ssh",
 		SSHPort: inst.SSHPort,
 	})
+	readyDeadline := time.Now().Add(m.cfg.ReadyTimeout)
 	if m.cfg.Hypervisor != "mock" && inst.SSHPort > 0 {
-		user := m.cfg.SSHUser
-		if user == "" || user == "alpine" {
-			if spec, err := image.Get(img); err == nil && spec.SSHUser != "" {
-				user = spec.SSHUser
-			}
-		}
-		// also try "grain" user from cloud-init
-		waitCtx, cancel := context.WithTimeout(ctx, m.cfg.ReadyTimeout)
-		defer cancel()
+		user := m.resolveSSHUser(img)
+		waitCtx, cancel := context.WithDeadline(ctx, readyDeadline)
+		sshUser := user
 		if err := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, user, priv); err != nil {
-			// try grain user
+			// try grain user from cloud-init
 			if err2 := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, "grain", priv); err2 != nil {
 				m.log.Warn("ssh not ready yet", "name", name, "err", err)
+				sshUser = ""
 			} else {
-				user = "grain"
+				sshUser = "grain"
 			}
 		}
-		_ = user
+		cancel()
+
+		// Soft-depend on guest agent: probe, optionally deploy over SSH, then wait.
+		if sshUser != "" && inst.AgentPort > 0 {
+			m.waitOrDeployAgent(ctx, inst, sshUser, priv, readyDeadline, func(ev vm.CreateEvent) {
+				emitCreate(opts, ev)
+			})
+		}
 	}
 
 	m.log.Info("vm created",
@@ -205,6 +218,7 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		"cpus", inst.CPUs,
 		"memory_mb", inst.MemoryMB,
 		"ssh_port", inst.SSHPort,
+		"agent_port", inst.AgentPort,
 	)
 	emitCreate(opts, vm.CreateEvent{
 		Phase:    vm.PhaseReady,
@@ -342,19 +356,23 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 		return nil, err
 	}
 
+	readyDeadline := time.Now().Add(m.cfg.ReadyTimeout)
 	if m.cfg.Hypervisor != "mock" && inst.SSHPort > 0 {
-		user := m.cfg.SSHUser
-		if user == "" || user == "alpine" {
-			if spec, err := image.Get(inst.Image); err == nil && spec.SSHUser != "" {
-				user = spec.SSHUser
-			}
-		}
-		waitCtx, cancel := context.WithTimeout(ctx, m.cfg.ReadyTimeout)
-		defer cancel()
+		user := m.resolveSSHUser(inst.Image)
+		waitCtx, cancel := context.WithDeadline(ctx, readyDeadline)
+		sshUser := user
 		if err := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, user, priv); err != nil {
 			if err2 := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, "grain", priv); err2 != nil {
 				m.log.Warn("ssh not ready yet", "name", name, "err", err)
+				sshUser = ""
+			} else {
+				sshUser = "grain"
 			}
+		}
+		cancel()
+
+		if sshUser != "" && inst.AgentPort > 0 {
+			m.waitOrDeployAgent(ctx, inst, sshUser, priv, readyDeadline, nil)
 		}
 	}
 
@@ -362,8 +380,92 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 		"name", inst.Name,
 		"persistent", inst.Persistent,
 		"ssh_port", inst.SSHPort,
+		"agent_port", inst.AgentPort,
 	)
 	return inst, nil
+}
+
+// resolveSSHUser picks the guest SSH username from config / image catalog.
+func (m *Manager) resolveSSHUser(img string) string {
+	user := m.cfg.SSHUser
+	if user == "" || user == "alpine" {
+		if spec, err := image.Get(img); err == nil && spec.SSHUser != "" {
+			user = spec.SSHUser
+		}
+	}
+	if user == "" {
+		user = "grain"
+	}
+	return user
+}
+
+// waitOrDeployAgent probes the guest agent, deploys it over SSH when missing,
+// then waits for /health. Failures are logged as warnings only (M1 soft dependency).
+// emit may be nil (e.g. Start); when set, PhaseWaitAgent events are sent.
+func (m *Manager) waitOrDeployAgent(
+	ctx context.Context,
+	inst *vm.Instance,
+	sshUser, privKey string,
+	readyDeadline time.Time,
+	emit func(vm.CreateEvent),
+) {
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort)
+	client := &agent.Client{BaseURL: baseURL}
+
+	if emit != nil {
+		emit(vm.CreateEvent{
+			Phase:   vm.PhaseWaitAgent,
+			Name:    inst.Name,
+			Message: "waiting for guest agent",
+			SSHPort: inst.SSHPort,
+		})
+	}
+
+	// Short probe: golden images may already have the agent.
+	probeCtx, probeCancel := context.WithTimeout(ctx, agentProbeTimeout)
+	probeErr := agent.Wait(probeCtx, client)
+	probeCancel()
+	if probeErr == nil {
+		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort)
+		return
+	}
+
+	// Deploy if we have a linux binary.
+	binPath, err := agent.LinuxBinaryPath(m.cfg.DataDir)
+	if err != nil {
+		m.log.Warn("guest agent not ready (no deploy binary)",
+			"name", inst.Name, "agent_port", inst.AgentPort, "err", err)
+		// Still try a longer wait in case the agent comes up without our help.
+	} else {
+		if emit != nil {
+			emit(vm.CreateEvent{
+				Phase:   vm.PhaseWaitAgent,
+				Name:    inst.Name,
+				Message: "deploying guest agent over ssh",
+				SSHPort: inst.SSHPort,
+			})
+		}
+		m.log.Info("deploying guest agent", "name", inst.Name, "binary", binPath)
+		deployCtx, deployCancel := context.WithTimeout(ctx, agentWaitFallback)
+		err := guest.EnsureAgent(deployCtx, inst.IP, inst.SSHPort, sshUser, privKey, binPath)
+		deployCancel()
+		if err != nil {
+			m.log.Warn("guest agent deploy failed", "name", inst.Name, "err", err)
+		}
+	}
+
+	// Wait with remaining ReadyTimeout budget; fall back to 60s if exhausted.
+	waitFor := time.Until(readyDeadline)
+	if waitFor <= 0 {
+		waitFor = agentWaitFallback
+	}
+	waitCtx, waitCancel := context.WithTimeout(ctx, waitFor)
+	defer waitCancel()
+	if err := agent.Wait(waitCtx, client); err != nil {
+		m.log.Warn("guest agent not ready", "name", inst.Name, "agent_port", inst.AgentPort, "err", err)
+		return
+	}
+	m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort)
 }
 
 func (m *Manager) CleanupEphemeral(ctx context.Context) error {

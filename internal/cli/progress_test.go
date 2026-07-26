@@ -25,17 +25,17 @@ func TestCreateStage(t *testing.T) {
 	}
 }
 
-
 func TestPhaseLabel(t *testing.T) {
 	cases := map[string]string{
-		vm.PhaseImage:   "image",
-		vm.PhaseDisk:    "disk",
-		vm.PhaseSeed:    "seed",
-		vm.PhaseQEMU:    "boot",
-		vm.PhaseWaitSSH: "waiting ssh",
-		vm.PhaseReady:   "ready",
-		vm.PhaseError:   "error",
-		"":              "starting",
+		vm.PhaseImage:     "image",
+		vm.PhaseDisk:      "disk",
+		vm.PhaseSeed:      "seed",
+		vm.PhaseQEMU:      "boot",
+		vm.PhaseWaitSSH:   "waiting ssh",
+		vm.PhaseWaitAgent: "waiting agent",
+		vm.PhaseReady:     "ready",
+		vm.PhaseError:     "error",
+		"":                "starting",
 	}
 	for phase, want := range cases {
 		if got := phaseLabel(phase); got != want {

@@ -157,6 +157,8 @@ func phaseLabel(phase string) string {
 		return "boot"
 	case vm.PhaseWaitSSH:
 		return "waiting ssh"
+	case vm.PhaseWaitAgent:
+		return "waiting agent"
 	case vm.PhaseReady:
 		return "ready"
 	case vm.PhaseError:

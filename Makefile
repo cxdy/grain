@@ -20,7 +20,11 @@ agent:
 	@mkdir -p bin
 	go build -ldflags "$(LDFLAGS)" -o bin/grain-agent ./cmd/grain-agent
 
-# Guest agent cross-builds for deploy into Linux VMs
+# Guest agent cross-builds for deploy into Linux VMs.
+# Required for live create/start when the guest does not already ship grain-agent
+# (manager SCPs bin/grain-agent-linux-$(GOARCH) over SSH). Not part of `all` to
+# keep default builds fast; run before qemu-backed agent deploy:
+#   make agent-linux
 agent-linux:
 	@mkdir -p bin
 	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/grain-agent-linux-arm64 ./cmd/grain-agent
