@@ -18,8 +18,9 @@ import (
 
 // QEMURuntime launches guests with QEMU (HVF on Apple Silicon when available).
 type QEMURuntime struct {
-	Binary  string
-	DataDir string
+	Binary      string
+	DataDir     string
+	MountDriver string // 9p (default) or virtiofs (falls back to 9p)
 }
 
 func NewQEMURuntime(binary, dataDir string) *QEMURuntime {
@@ -30,7 +31,7 @@ func NewQEMURuntime(binary, dataDir string) *QEMURuntime {
 			binary = "qemu-system-x86_64"
 		}
 	}
-	return &QEMURuntime{Binary: binary, DataDir: dataDir}
+	return &QEMURuntime{Binary: binary, DataDir: dataDir, MountDriver: MountDriver9p}
 }
 
 func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath string) error {
@@ -108,8 +109,9 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		)
 	}
 
-	// Host directory mounts via virtio-9p (mapped-xattr for macOS).
-	args = append(args, virtio9pArgs(inst.Mounts)...)
+	// Host directory mounts (9p default; virtiofs falls back to 9p).
+	driver := ResolveMountDriver(q.MountDriver, nil)
+	args = append(args, fsdevArgs(inst.Mounts, driver)...)
 
 	// UEFI firmware for aarch64 cloud images
 	if runtime.GOARCH == "arm64" {

@@ -28,8 +28,8 @@ On success, create output includes `vol=<host>→<guest>` for each share.
 
 ## How it works
 
-1. **QEMU** exposes each host dir as a virtio-9p device with a mount tag (`grain0`, `grain1`, …).
-2. **security_model=mapped-xattr** — macOS-friendly; not `passthrough`. File ownership/permissions are mapped via xattrs rather than applying host UIDs directly.
+1. **QEMU** exposes each host dir as a shared-fs device with a mount tag (`grain0`, `grain1`, …).
+2. **Default driver is virtio-9p** (`security_model=mapped-xattr`) — macOS-friendly with QEMU HVF; not `passthrough`. File ownership/permissions are mapped via xattrs rather than applying host UIDs directly.
 3. **cloud-init** injects first-boot `runcmd` entries that mkdir the guest path and mount:
 
 ```bash
@@ -37,6 +37,23 @@ mkdir -p /mnt/src && mount -t 9p -o trans=virtio,version=9p2000.L grain0 /mnt/sr
 ```
 
 Mounts are stored in VM metadata. On `grain start`, grain re-validates that host dirs still exist and re-attaches the 9p devices. If the NoCloud seed is missing, it is regenerated including mount runcmds (first-boot only for new seeds; an already-booted guest may already have mounts or fstab—recreate if you need a clean first boot).
+
+## Mount driver (`mount_driver`)
+
+Config key (default `9p`):
+
+```yaml
+# ~/.grain/config.yaml
+mount_driver: 9p        # default — works on macOS HVF and Linux
+# mount_driver: virtiofs  # optional; currently falls back to 9p with a warn log
+```
+
+| Driver | Status |
+|--------|--------|
+| **9p** | Default. Stable with QEMU on macOS (HVF) and Linux. Guest mounts with `mount -t 9p`. |
+| **virtiofs** | Preferred long-term on Linux hosts with virtiofsd, but **not fully integrated** in grain yet (no virtiofsd lifecycle). Selecting it logs a warning and **falls back to 9p**. |
+
+On darwin, virtiofs is not easily available with QEMU HVF without a host virtiofsd; use **9p**.
 
 ## Caveats
 

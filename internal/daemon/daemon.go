@@ -35,7 +35,9 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		rt = hypervisor.NewMockRuntime()
 		disk = hypervisor.NewMockDisk()
 	default:
-		rt = hypervisor.NewQEMURuntime(cfg.QEMUBinary, cfg.DataDir)
+		qrt := hypervisor.NewQEMURuntime(cfg.QEMUBinary, cfg.DataDir)
+		qrt.MountDriver = hypervisor.ResolveMountDriver(cfg.MountDriver, log)
+		rt = qrt
 		disk = hypervisor.NewLocalDisk(cfg.DataDir)
 	}
 

@@ -23,6 +23,7 @@ import (
 	"github.com/cxdy/grain/internal/hypervisor"
 	"github.com/cxdy/grain/internal/manager"
 	"github.com/cxdy/grain/internal/observability"
+	"github.com/cxdy/grain/internal/secrets"
 	"github.com/cxdy/grain/internal/store"
 	"github.com/cxdy/grain/internal/vm"
 )
@@ -45,7 +46,13 @@ func testServerWithStore(t *testing.T) (*api.Server, *store.Store) {
 		t.Fatal(err)
 	}
 	mgr := manager.New(cfg, st, hypervisor.NewMockRuntime(), hypervisor.NewMockDisk(), nil)
-	return api.New(mgr, observability.NewMetrics(), nil), st
+	srv := api.New(mgr, observability.NewMetrics(), nil)
+	sec, err := secrets.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.Secrets = sec
+	return srv, st
 }
 
 // startLocalAgent boots a grain-agent on 127.0.0.1:0 and returns its host port.
@@ -939,4 +946,59 @@ func TestLiveForwardAPI(t *testing.T) {
 	if rr.Code != 200 {
 		t.Fatalf("rm forward %d %s", rr.Code, rr.Body.String())
 	}
+}
+
+func TestSecretsAPI(t *testing.T) {
+	srv := testServer(t)
+	// POST
+	body := `{"name":"api-tok","data_base64":"c2VjcmV0","mode":"0600"}`
+	req := httptest.NewRequest(http.MethodPost, "/secrets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create status %d: %s", w.Code, w.Body.String())
+	}
+	// LIST
+	req = httptest.NewRequest(http.MethodGet, "/secrets", nil)
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status %d", w.Code)
+	}
+	// DELETE
+	req = httptest.NewRequest(http.MethodDelete, "/secrets/api-tok", nil)
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete status %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestVMStatsAPI(t *testing.T) {
+	srv, st := testServerWithStore(t)
+	port := startLocalAgent(t)
+	// Seed a running-ish VM with agent port.
+	inst := &vm.Instance{
+		Name:      "statsvm",
+		Status:    vm.StatusRunning,
+		AgentPort: port,
+		CPUs:      1,
+		MemoryMB:  512,
+	}
+	if err := st.Put(inst); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/vms/statsvm/stats", nil)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("stats status %d: %s", w.Code, w.Body.String())
+	}
+	var stBody agent.Stats
+	if err := json.NewDecoder(w.Body).Decode(&stBody); err != nil {
+		t.Fatal(err)
+	}
+	// On darwin without /proc, fields may be zero; just ensure JSON shape.
+	_ = stBody
 }

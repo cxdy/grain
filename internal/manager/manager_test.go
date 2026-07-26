@@ -814,3 +814,46 @@ func TestResourceCapPausedCounts(t *testing.T) {
 		t.Fatal("expected max_vms while first is paused")
 	}
 }
+
+func TestCreateSocketForwardsMock(t *testing.T) {
+	m, _, _ := testManager(t)
+	hostSock := filepath.Join(t.TempDir(), "docker.sock")
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name: "sockvm",
+		SocketForwards: []vm.SocketForward{
+			{HostPath: hostSock, GuestPath: "/var/run/docker.sock"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inst.SocketForwards) != 1 {
+		t.Fatalf("socket forwards %+v", inst.SocketForwards)
+	}
+	if inst.SocketForwards[0].GuestPath != "/var/run/docker.sock" {
+		t.Fatalf("guest %s", inst.SocketForwards[0].GuestPath)
+	}
+	if inst.SocketForwards[0].PID != 1 {
+		t.Fatalf("mock pid %d", inst.SocketForwards[0].PID)
+	}
+	got, err := m.Get("sockvm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.SocketForwards) != 1 || got.SocketForwards[0].HostPath != hostSock {
+		t.Fatalf("persisted %+v", got.SocketForwards)
+	}
+}
+
+func TestCreateSocketForwardsRejectsRelativeGuest(t *testing.T) {
+	m, _, _ := testManager(t)
+	_, err := m.Create(context.Background(), vm.CreateOpts{
+		Name: "bad-sock",
+		SocketForwards: []vm.SocketForward{
+			{HostPath: filepath.Join(t.TempDir(), "a.sock"), GuestPath: "relative"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for relative guest path")
+	}
+}

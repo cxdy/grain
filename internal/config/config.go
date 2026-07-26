@@ -45,6 +45,10 @@ type Config struct {
 	ReadyTimeout time.Duration `yaml:"ready_timeout"`
 	// LogLevel: debug|info|warn|error
 	LogLevel string `yaml:"log_level"`
+	// MountDriver selects the QEMU shared-fs backend for -v mounts: "9p" (default)
+	// or "virtiofs". On darwin / without virtiofsd, virtiofs falls back to 9p
+	// with a warning — full virtiofsd integration is not required for M7.
+	MountDriver string `yaml:"mount_driver"`
 
 	// Resource caps (0 = unlimited). Stopped VMs do not count toward running caps.
 	// MaxVMs is the maximum number of concurrently running/creating VMs.
@@ -246,6 +250,7 @@ func Defaults() Config {
 		SSHUser:          "ubuntu",
 		ReadyTimeout:     120 * time.Second,
 		LogLevel:         "info",
+		MountDriver:      "9p",
 		MaxVMs:           8,
 		MaxCPUsTotal:     16,
 		MaxMemoryMBTotal: 32768,
@@ -306,6 +311,15 @@ func (c *Config) applyDefaults() {
 	}
 	if c.LogLevel == "" {
 		c.LogLevel = d.LogLevel
+	}
+	if c.MountDriver == "" {
+		c.MountDriver = d.MountDriver
+	}
+	switch c.MountDriver {
+	case "9p", "virtiofs":
+		// ok
+	default:
+		c.MountDriver = "9p"
 	}
 }
 

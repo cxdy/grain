@@ -31,6 +31,15 @@ type LiveForward struct {
 	PID       int `json:"pid,omitempty"` // ssh -N process
 }
 
+// SocketForward maps a host Unix socket path to a guest Unix socket path
+// via OpenSSH streamlocal local forward (ssh -N -L hostPath:guestPath).
+// Used for docker-style workflows (e.g. host docker.sock ← guest docker.sock).
+type SocketForward struct {
+	HostPath  string `json:"host_path"`
+	GuestPath string `json:"guest_path"`
+	PID       int    `json:"pid,omitempty"` // ssh -N process when running
+}
+
 // Mount shares a host directory into the guest via virtio-9p.
 // Tag is the 9p mount_tag (auto grain0, grain1, … when empty).
 type Mount struct {
@@ -58,6 +67,9 @@ type Instance struct {
 	// LiveForwards are SSH -L forwards managed while the VM is running.
 	// Cleared on stop/delete; not re-applied automatically on start.
 	LiveForwards []LiveForward `json:"live_forwards,omitempty"`
+	// SocketForwards are SSH streamlocal forwards (host unix → guest unix).
+	// Config is persisted; PIDs are cleared on stop and re-applied on start.
+	SocketForwards []SocketForward `json:"socket_forwards,omitempty"`
 	// Mounts are host directories shared into the guest via virtio-9p.
 	Mounts    []Mount           `json:"mounts,omitempty"`
 	Tags      map[string]string `json:"tags,omitempty"`
@@ -94,6 +106,8 @@ type CreateOpts struct {
 	Forwards []PortForward
 	// Mounts are optional host directory shares (virtio-9p) at create time.
 	Mounts []Mount
+	// SocketForwards are optional host→guest Unix socket forwards at create time.
+	SocketForwards []SocketForward
 	// WaitMode selects readiness: ssh (default), agent, or userdata.
 	WaitMode string
 	// WaitTimeout overrides ReadyTimeout when > 0.

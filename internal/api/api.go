@@ -19,6 +19,7 @@ import (
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/manager"
 	"github.com/cxdy/grain/internal/observability"
+	"github.com/cxdy/grain/internal/secrets"
 	"github.com/cxdy/grain/internal/vm"
 )
 
@@ -27,6 +28,8 @@ type Server struct {
 	mgr *manager.Manager
 	met *observability.Metrics
 	log *slog.Logger
+	// Secrets is the host-side secret store (optional; nil disables /secrets).
+	Secrets *secrets.Store
 	// APIToken, when non-empty, requires Authorization: Bearer <token>
 	// on all routes except GET /healthz.
 	APIToken string
@@ -61,12 +64,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /vms/{name}/forwards/{hostPort}", s.removeForward)
 	mux.HandleFunc("POST /vms/{name}/exec", s.execVM)
 	mux.HandleFunc("GET /vms/{name}/agent/health", s.agentHealth)
+	mux.HandleFunc("GET /vms/{name}/stats", s.vmStats)
 	mux.HandleFunc("PUT /vms/{name}/cp", s.putCP)
 	mux.HandleFunc("GET /vms/{name}/cp", s.getCP)
 	mux.HandleFunc("GET /vms/{name}/fs/readdir", s.fsReadDir)
 	mux.HandleFunc("GET /vms/{name}/fs/stat", s.fsStat)
 	mux.HandleFunc("POST /vms/{name}/fs/mkdir", s.fsMkdir)
 	mux.HandleFunc("DELETE /vms/{name}/fs/remove", s.fsRemove)
+	// Host secrets store
+	mux.HandleFunc("GET /secrets", s.listSecrets)
+	mux.HandleFunc("POST /secrets", s.createSecret)
+	mux.HandleFunc("GET /secrets/{name}", s.getSecret)
+	mux.HandleFunc("PATCH /secrets/{name}", s.patchSecret)
+	mux.HandleFunc("DELETE /secrets/{name}", s.deleteSecret)
+	// Materialize host secret into guest
+	mux.HandleFunc("POST /vms/{name}/secrets/{secretName}", s.injectSecret)
 	return loggingMiddleware(s.log, authMiddleware(s.APIToken, mux))
 }
 
@@ -103,16 +115,17 @@ func (s *Server) listVMs(w http.ResponseWriter, r *http.Request) {
 }
 
 type createBody struct {
-	Name       string            `json:"name"`
-	Persistent bool              `json:"persistent"`
-	CPUs       int               `json:"cpus"`
-	MemoryMB   int               `json:"memory_mb"`
-	DiskGB     int               `json:"disk_gb"`
-	Image      string            `json:"image"`
-	Tags       map[string]string `json:"tags"`
-	Userdata   string            `json:"userdata"`
-	Forwards   []vm.PortForward  `json:"forwards"`
-	Mounts     []vm.Mount        `json:"mounts"`
+	Name           string             `json:"name"`
+	Persistent     bool               `json:"persistent"`
+	CPUs           int                `json:"cpus"`
+	MemoryMB       int                `json:"memory_mb"`
+	DiskGB         int                `json:"disk_gb"`
+	Image          string             `json:"image"`
+	Tags           map[string]string  `json:"tags"`
+	Userdata       string             `json:"userdata"`
+	Forwards       []vm.PortForward   `json:"forwards"`
+	Mounts         []vm.Mount         `json:"mounts"`
+	SocketForwards []vm.SocketForward `json:"socket_forwards"`
 }
 
 func wantsCreateStream(r *http.Request) bool {
@@ -165,18 +178,19 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	opts := vm.CreateOpts{
-		Name:        body.Name,
-		Persistent:  body.Persistent,
-		CPUs:        body.CPUs,
-		MemoryMB:    body.MemoryMB,
-		DiskGB:      body.DiskGB,
-		Image:       body.Image,
-		Tags:        body.Tags,
-		Userdata:    body.Userdata,
-		Forwards:    body.Forwards,
-		Mounts:      body.Mounts,
-		WaitMode:    waitMode,
-		WaitTimeout: waitTimeout,
+		Name:           body.Name,
+		Persistent:     body.Persistent,
+		CPUs:           body.CPUs,
+		MemoryMB:       body.MemoryMB,
+		DiskGB:         body.DiskGB,
+		Image:          body.Image,
+		Tags:           body.Tags,
+		Userdata:       body.Userdata,
+		Forwards:       body.Forwards,
+		Mounts:         body.Mounts,
+		SocketForwards: body.SocketForwards,
+		WaitMode:       waitMode,
+		WaitTimeout:    waitTimeout,
 	}
 
 	if wantsCreateStream(r) {
@@ -769,6 +783,171 @@ func (s *Server) agentHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h)
+}
+
+// vmStats proxies GET /stats from the guest grain-agent.
+func (s *Server) vmStats(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	st, err := ac.Stats(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+// --- host secrets ----------------------------------------------------------
+
+func (s *Server) requireSecrets(w http.ResponseWriter) bool {
+	if s.Secrets == nil {
+		writeErr(w, http.StatusServiceUnavailable, errors.New("secrets store not configured"))
+		return false
+	}
+	return true
+}
+
+func (s *Server) listSecrets(w http.ResponseWriter, _ *http.Request) {
+	if !s.requireSecrets(w) {
+		return
+	}
+	list, err := s.Secrets.List()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if list == nil {
+		list = []secrets.Meta{}
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) createSecret(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSecrets(w) {
+		return
+	}
+	var body secrets.PutRequest
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
+			return
+		}
+	}
+	m, err := s.Secrets.Put(body)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, m)
+}
+
+func (s *Server) getSecret(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSecrets(w) {
+		return
+	}
+	name := r.PathValue("name")
+	includeData := r.URL.Query().Get("data") == "1" || r.URL.Query().Get("data") == "true"
+	sec, err := s.Secrets.Get(name, includeData)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeErr(w, http.StatusNotFound, err)
+			return
+		}
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sec)
+}
+
+func (s *Server) patchSecret(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSecrets(w) {
+		return
+	}
+	name := r.PathValue("name")
+	var body secrets.PutRequest
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
+			return
+		}
+	}
+	m, err := s.Secrets.Patch(name, body)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeErr(w, http.StatusNotFound, err)
+			return
+		}
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
+func (s *Server) deleteSecret(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSecrets(w) {
+		return
+	}
+	name := r.PathValue("name")
+	if err := s.Secrets.Delete(name); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeErr(w, http.StatusNotFound, err)
+			return
+		}
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "deleted", "name": name})
+}
+
+// injectSecret materializes a host secret into a running VM via the guest agent.
+// Optional JSON body: { "path": "/run/grain/secrets/NAME" } overrides guest path.
+func (s *Server) injectSecret(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSecrets(w) {
+		return
+	}
+	vmName := r.PathValue("name")
+	secretName := r.PathValue("secretName")
+	sec, err := s.Secrets.Get(secretName, true)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeErr(w, http.StatusNotFound, err)
+			return
+		}
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	var body struct {
+		Path string `json:"path"`
+	}
+	if r.Body != nil {
+		defer r.Body.Close()
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
+	}
+	ac, code, err := s.agentClient(vmName)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	req := agent.MaterializeSecretRequest{
+		Name:       sec.Name,
+		DataBase64: sec.DataBase64,
+		Path:       body.Path,
+		Mode:       sec.Mode,
+		UID:        sec.UID,
+		GID:        sec.GID,
+	}
+	out, err := ac.MaterializeSecret(r.Context(), req)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

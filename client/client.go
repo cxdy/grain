@@ -483,6 +483,124 @@ func (c *Client) AgentHealth(ctx context.Context, name string) (*Health, error) 
 	return &h, nil
 }
 
+// Stats proxies guest grain-agent GET /stats for the named VM.
+func (c *Client) Stats(ctx context.Context, name string) (*Stats, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/vms/"+url.PathEscape(name)+"/stats", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var st Stats
+	if err := json.NewDecoder(res.Body).Decode(&st); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// ListSecrets returns host secret metadata.
+func (c *Client) ListSecrets(ctx context.Context) ([]SecretMeta, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/secrets", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var list []SecretMeta
+	if err := json.NewDecoder(res.Body).Decode(&list); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// SetSecret creates or replaces a host secret.
+func (c *Client) SetSecret(ctx context.Context, req SecretPut) (*SecretMeta, error) {
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/secrets", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	res, err := c.do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var m SecretMeta
+	if err := json.NewDecoder(res.Body).Decode(&m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// DeleteSecret removes a host secret.
+func (c *Client) DeleteSecret(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.base+"/secrets/"+url.PathEscape(name), nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// InjectSecret materializes a host secret into a running VM.
+func (c *Client) InjectSecret(ctx context.Context, vmName, secretName, guestPath string) (map[string]string, error) {
+	var body io.Reader
+	if guestPath != "" {
+		b, err := json.Marshal(map[string]string{"path": guestPath})
+		if err != nil {
+			return nil, err
+		}
+		body = bytes.NewReader(b)
+	}
+	u := fmt.Sprintf("%s/vms/%s/secrets/%s", c.base, url.PathEscape(vmName), url.PathEscape(secretName))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, body)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var out map[string]string
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PutFile uploads raw bytes to guestPath via PUT /vms/{name}/cp.
 func (c *Client) PutFile(ctx context.Context, name, guestPath string, r io.Reader, size int64, opts CPOpts) error {
 	if guestPath == "" {

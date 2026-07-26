@@ -27,39 +27,75 @@ type Mount struct {
 	Tag   string `json:"tag,omitempty"`
 }
 
+// SocketForward maps a host Unix socket to a guest Unix socket via SSH streamlocal.
+type SocketForward struct {
+	HostPath  string `json:"host_path"`
+	GuestPath string `json:"guest_path"`
+	PID       int    `json:"pid,omitempty"`
+}
+
 // Instance is a managed microVM as returned by the daemon API.
 type Instance struct {
-	Name       string            `json:"name"`
-	Status     Status            `json:"status"`
-	Persistent bool              `json:"persistent"`
-	CPUs       int               `json:"cpus"`
-	MemoryMB   int               `json:"memory_mb"`
-	DiskGB     int               `json:"disk_gb"`
-	Image      string            `json:"image"`
-	IP         string            `json:"ip,omitempty"`
-	SSHPort    int               `json:"ssh_port,omitempty"`
-	AgentPort  int               `json:"agent_port,omitempty"`
-	Forwards   []PortForward     `json:"forwards,omitempty"`
-	Mounts     []Mount           `json:"mounts,omitempty"`
-	Tags       map[string]string `json:"tags,omitempty"`
-	CreatedAt  time.Time         `json:"created_at"`
-	Error      string            `json:"error,omitempty"`
-	DiskPath   string            `json:"disk_path,omitempty"`
-	PID        int               `json:"pid,omitempty"`
+	Name           string            `json:"name"`
+	Status         Status            `json:"status"`
+	Persistent     bool              `json:"persistent"`
+	CPUs           int               `json:"cpus"`
+	MemoryMB       int               `json:"memory_mb"`
+	DiskGB         int               `json:"disk_gb"`
+	Image          string            `json:"image"`
+	IP             string            `json:"ip,omitempty"`
+	SSHPort        int               `json:"ssh_port,omitempty"`
+	AgentPort      int               `json:"agent_port,omitempty"`
+	Forwards       []PortForward     `json:"forwards,omitempty"`
+	Mounts         []Mount           `json:"mounts,omitempty"`
+	SocketForwards []SocketForward   `json:"socket_forwards,omitempty"`
+	Tags           map[string]string `json:"tags,omitempty"`
+	CreatedAt      time.Time         `json:"created_at"`
+	Error          string            `json:"error,omitempty"`
+	DiskPath       string            `json:"disk_path,omitempty"`
+	PID            int               `json:"pid,omitempty"`
 }
 
 // CreateRequest is the JSON body for POST /vms.
 type CreateRequest struct {
-	Name       string            `json:"name,omitempty"`
-	Persistent bool              `json:"persistent"`
-	CPUs       int               `json:"cpus,omitempty"`
-	MemoryMB   int               `json:"memory_mb,omitempty"`
-	DiskGB     int               `json:"disk_gb,omitempty"`
-	Image      string            `json:"image,omitempty"`
-	Tags       map[string]string `json:"tags,omitempty"`
-	Userdata   string            `json:"userdata,omitempty"`
-	Forwards   []PortForward     `json:"forwards,omitempty"`
-	Mounts     []Mount           `json:"mounts,omitempty"`
+	Name           string            `json:"name,omitempty"`
+	Persistent     bool              `json:"persistent"`
+	CPUs           int               `json:"cpus,omitempty"`
+	MemoryMB       int               `json:"memory_mb,omitempty"`
+	DiskGB         int               `json:"disk_gb,omitempty"`
+	Image          string            `json:"image,omitempty"`
+	Tags           map[string]string `json:"tags,omitempty"`
+	Userdata       string            `json:"userdata,omitempty"`
+	Forwards       []PortForward     `json:"forwards,omitempty"`
+	Mounts         []Mount           `json:"mounts,omitempty"`
+	SocketForwards []SocketForward   `json:"socket_forwards,omitempty"`
+}
+
+// Stats is guest resource basics from GET /vms/{name}/stats.
+type Stats struct {
+	UptimeSec float64 `json:"uptime_sec"`
+	MemTotal  uint64  `json:"mem_total_bytes"`
+	MemAvail  uint64  `json:"mem_available_bytes"`
+	Load1     float64 `json:"load1"`
+	DiskTotal uint64  `json:"disk_total_bytes,omitempty"`
+	DiskFree  uint64  `json:"disk_free_bytes,omitempty"`
+}
+
+// SecretMeta is host secret metadata (no payload).
+type SecretMeta struct {
+	Name      string    `json:"name"`
+	Mode      string    `json:"mode,omitempty"`
+	Size      int64     `json:"size"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SecretPut is the body for POST /secrets.
+type SecretPut struct {
+	Name       string  `json:"name"`
+	DataBase64 string  `json:"data_base64"`
+	Mode       string  `json:"mode,omitempty"`
+	UID        *uint32 `json:"uid,omitempty"`
+	GID        *uint32 `json:"gid,omitempty"`
 }
 
 // CreateEvent is one NDJSON progress line during streamed create.

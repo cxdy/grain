@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -131,19 +132,24 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	if err != nil {
 		return nil, err
 	}
+	sockFwds, err := prepareSocketForwards(opts.SocketForwards)
+	if err != nil {
+		return nil, err
+	}
 
 	inst := &vm.Instance{
-		Name:       name,
-		Status:     vm.StatusCreating,
-		Persistent: opts.Persistent,
-		CPUs:       cpus,
-		MemoryMB:   mem,
-		DiskGB:     diskGB,
-		Image:      img,
-		Tags:       opts.Tags,
-		Forwards:   fwds,
-		Mounts:     mounts,
-		CreatedAt:  time.Now().UTC(),
+		Name:           name,
+		Status:         vm.StatusCreating,
+		Persistent:     opts.Persistent,
+		CPUs:           cpus,
+		MemoryMB:       mem,
+		DiskGB:         diskGB,
+		Image:          img,
+		Tags:           opts.Tags,
+		Forwards:       fwds,
+		Mounts:         mounts,
+		SocketForwards: sockFwds,
+		CreatedAt:      time.Now().UTC(),
 	}
 	if err := m.st.Put(inst); err != nil {
 		return nil, err
@@ -205,6 +211,14 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 
 	if err := m.waitReady(ctx, inst, img, priv, waitMode, readyDeadline, emit); err != nil {
 		return m.fail(inst, err, opts)
+	}
+
+	// Start create-time socket forwards (SSH streamlocal) once SSH is up.
+	if err := m.startSocketForwards(inst); err != nil {
+		m.log.Warn("socket forwards failed", "name", inst.Name, "err", err)
+		// Non-fatal: VM is still usable; surface via log.
+	} else if err := m.st.Put(inst); err != nil {
+		return nil, err
 	}
 
 	m.log.Info("vm created",
@@ -454,6 +468,7 @@ func (m *Manager) List() ([]*vm.Instance, error) {
 	for _, inst := range list {
 		if (inst.Status == vm.StatusRunning || inst.Status == vm.StatusPaused) && !m.rt.Running(inst) {
 			m.killLiveForwards(inst)
+			m.killSocketForwards(inst)
 			inst.Status = vm.StatusStopped
 			inst.PID = 0
 			inst.QMPPath = ""
@@ -473,6 +488,8 @@ func (m *Manager) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	m.killLiveForwards(inst)
+	m.killSocketForwards(inst)
 	if m.rt.Running(inst) {
 		if err := m.rt.Stop(ctx, inst); err != nil {
 			m.log.Warn("stop failed", "name", name, "err", err)
@@ -493,6 +510,7 @@ func (m *Manager) Shutdown(ctx context.Context, name string) error {
 		return err
 	}
 	m.killLiveForwards(inst)
+	m.killSocketForwards(inst)
 	if err := m.rt.Stop(ctx, inst); err != nil {
 		return err
 	}
@@ -682,6 +700,129 @@ func (m *Manager) killLiveForwards(inst *vm.Instance) {
 	inst.LiveForwards = nil
 }
 
+// prepareSocketForwards validates and normalises create-time socket forwards.
+func prepareSocketForwards(in []vm.SocketForward) ([]vm.SocketForward, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make([]vm.SocketForward, 0, len(in))
+	seenHost := map[string]struct{}{}
+	for _, f := range in {
+		host := filepath.Clean(strings.TrimSpace(f.HostPath))
+		guest := strings.TrimSpace(f.GuestPath)
+		if host == "" || host == "." {
+			return nil, fmt.Errorf("socket forward: host_path is required")
+		}
+		if guest == "" || !strings.HasPrefix(guest, "/") {
+			return nil, fmt.Errorf("socket forward: guest_path must be absolute (got %q)", guest)
+		}
+		if !filepath.IsAbs(host) {
+			abs, err := filepath.Abs(host)
+			if err != nil {
+				return nil, fmt.Errorf("socket forward host_path: %w", err)
+			}
+			host = abs
+		}
+		if _, dup := seenHost[host]; dup {
+			return nil, fmt.Errorf("duplicate socket forward host_path %q", host)
+		}
+		seenHost[host] = struct{}{}
+		// Remove stale host socket so ssh can bind.
+		if st, err := os.Lstat(host); err == nil {
+			if st.Mode()&os.ModeSocket != 0 {
+				_ = os.Remove(host)
+			} else {
+				return nil, fmt.Errorf("socket forward host_path %q exists and is not a socket", host)
+			}
+		}
+		out = append(out, vm.SocketForward{HostPath: host, GuestPath: guest})
+	}
+	return out, nil
+}
+
+// startSocketForwards launches ssh -N -L streamlocal forwards for each entry.
+func (m *Manager) startSocketForwards(inst *vm.Instance) error {
+	if len(inst.SocketForwards) == 0 {
+		return nil
+	}
+	if m.cfg.Hypervisor == "mock" {
+		for i := range inst.SocketForwards {
+			inst.SocketForwards[i].PID = 1
+		}
+		return nil
+	}
+	if inst.SSHPort <= 0 {
+		return fmt.Errorf("vm %q has no SSH port", inst.Name)
+	}
+	priv, _, err := sshkey.Ensure(m.cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("ssh key: %w", err)
+	}
+	user := m.resolveSSHUser(inst.Image)
+	host := inst.IP
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	args := guest.SSHArgs(user, host, inst.SSHPort, priv)
+	if len(args) == 0 {
+		return fmt.Errorf("ssh args empty")
+	}
+	userHost := args[len(args)-1]
+	base := args[:len(args)-1]
+
+	for i := range inst.SocketForwards {
+		sf := &inst.SocketForwards[i]
+		// Clear any previous PID / stale host socket.
+		_ = killPID(sf.PID)
+		sf.PID = 0
+		if st, err := os.Lstat(sf.HostPath); err == nil && st.Mode()&os.ModeSocket != 0 {
+			_ = os.Remove(sf.HostPath)
+		}
+		// Ensure parent dir exists for host socket.
+		if err := os.MkdirAll(filepath.Dir(sf.HostPath), 0o755); err != nil {
+			return fmt.Errorf("mkdir for host socket %s: %w", sf.HostPath, err)
+		}
+		// OpenSSH streamlocal: -L local_socket:remote_socket
+		fwdSpec := sf.HostPath + ":" + sf.GuestPath
+		full := append([]string{}, base...)
+		full = append(full, "-N", "-L", fwdSpec, "-o", "ExitOnForwardFailure=yes", "-o", "BatchMode=yes", "-n", "-T", userHost)
+		cmd := exec.Command("ssh", full...)
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("start socket forward %s: %w", sf.HostPath, err)
+		}
+		time.Sleep(150 * time.Millisecond)
+		if cmd.Process == nil {
+			return fmt.Errorf("socket forward process missing for %s", sf.HostPath)
+		}
+		if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+			_ = cmd.Wait()
+			return fmt.Errorf("socket forward died for %s: %w", sf.HostPath, err)
+		}
+		go func() { _ = cmd.Wait() }()
+		sf.PID = cmd.Process.Pid
+		m.log.Info("socket forward started",
+			"name", inst.Name,
+			"host_path", sf.HostPath,
+			"guest_path", sf.GuestPath,
+			"pid", sf.PID,
+		)
+	}
+	return nil
+}
+
+func (m *Manager) killSocketForwards(inst *vm.Instance) {
+	for i := range inst.SocketForwards {
+		_ = killPID(inst.SocketForwards[i].PID)
+		inst.SocketForwards[i].PID = 0
+		// Best-effort remove host socket left by ssh.
+		if p := inst.SocketForwards[i].HostPath; p != "" {
+			if st, err := os.Lstat(p); err == nil && st.Mode()&os.ModeSocket != 0 {
+				_ = os.Remove(p)
+			}
+		}
+	}
+}
+
 func killPID(pid int) error {
 	if pid <= 0 {
 		return nil
@@ -758,6 +899,14 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 		if sshUser != "" && inst.AgentPort > 0 {
 			_ = m.waitOrDeployAgent(ctx, inst, sshUser, priv, readyDeadline, nil, false)
 		}
+	}
+
+	// Re-apply socket streamlocal forwards after SSH is up.
+	if err := m.startSocketForwards(inst); err != nil {
+		m.log.Warn("socket forwards failed on start", "name", inst.Name, "err", err)
+	}
+	if err := m.st.Put(inst); err != nil {
+		return nil, err
 	}
 
 	m.log.Info("vm started",

@@ -21,6 +21,7 @@ import (
 	"github.com/cxdy/grain/internal/guest"
 	"github.com/cxdy/grain/internal/image"
 	"github.com/cxdy/grain/internal/observability"
+	"github.com/cxdy/grain/internal/vm"
 	"github.com/spf13/cobra"
 )
 
@@ -50,6 +51,9 @@ func Root(version string) *cobra.Command {
   grain fs              guest readdir/stat/mkdir/rm via agent
   grain profile ls      list named profiles
   grain fwd ls/add/rm   list or live-add/remove port forwards
+  grain stats [name]    guest resource stats (agent)
+  grain secret ls|set|rm|inject  host secrets store
+  grain new --publish-socket H:G  SSH streamlocal socket forward
   grain logs            guest serial / qemu logs
   grain doctor          check dependencies
   grain down            stop daemon`,
@@ -73,6 +77,8 @@ func Root(version string) *cobra.Command {
 		cmdFs(&cfgPath),
 		cmdLogs(&cfgPath),
 		cmdFwd(&cfgPath),
+		cmdStats(&cfgPath),
+		cmdSecret(&cfgPath),
 		cmdProfile(&cfgPath),
 		cmdImage(&cfgPath),
 		cmdAgent(&cfgPath),
@@ -206,6 +212,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var profileName string
 	var presetName string
 	var publish []string
+	var publishSockets []string
 	var volumes []string
 	var waitMode string
 	cmd := &cobra.Command{
@@ -238,6 +245,14 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			mounts, err := parseVolumeFlags(volumes)
 			if err != nil {
 				return err
+			}
+			sockPairs, err := parsePublishSocketFlags(publishSockets)
+			if err != nil {
+				return err
+			}
+			var sockFwds []vm.SocketForward
+			for _, p := range sockPairs {
+				sockFwds = append(sockFwds, vm.SocketForward{HostPath: p.Host, GuestPath: p.Guest})
 			}
 
 			// flags (explicit) > profile fields > global config defaults (daemon)
@@ -287,17 +302,18 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			onEvent, stop := createProgressEvents("creating")
 			start := time.Now()
 			inst, err := c.CreateStream(ctx, api.CreateRequest{
-				Name:       name,
-				Persistent: resolved.Persistent,
-				CPUs:       resolved.CPUs,
-				MemoryMB:   resolved.MemoryMB,
-				DiskGB:     resolved.DiskGB,
-				Image:      resolved.Image,
-				Tags:       tags,
-				Userdata:   userdata,
-				Forwards:   fwds,
-				Mounts:     mounts,
-				Wait:       waitMode,
+				Name:           name,
+				Persistent:     resolved.Persistent,
+				CPUs:           resolved.CPUs,
+				MemoryMB:       resolved.MemoryMB,
+				DiskGB:         resolved.DiskGB,
+				Image:          resolved.Image,
+				Tags:           tags,
+				Userdata:       userdata,
+				Forwards:       fwds,
+				Mounts:         mounts,
+				SocketForwards: sockFwds,
+				Wait:           waitMode,
 			}, onEvent)
 			stop()
 			if err != nil {
@@ -317,6 +333,9 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			for _, m := range inst.Mounts {
 				fmt.Printf("  vol=%s→%s", m.Host, m.Guest)
 			}
+			for _, sf := range inst.SocketForwards {
+				fmt.Printf("  sock=%s→%s", sf.HostPath, sf.GuestPath)
+			}
 			fmt.Printf("  (%s)\n", time.Since(start).Round(time.Second))
 			fmt.Printf("next:  grain sh %s\n", inst.Name)
 			fmt.Printf("       grain x %s -- uname -a\n", inst.Name)
@@ -335,6 +354,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&waitMode, "wait", "ssh", "readiness: ssh (default), agent, or userdata")
 	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
 	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")
+	cmd.Flags().StringArrayVar(&publishSockets, "publish-socket", nil, "SSH streamlocal socket forward HOSTPATH:GUESTPATH (repeatable; docker-style)")
 	return cmd
 }
 

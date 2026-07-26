@@ -77,3 +77,28 @@ func TestVirtio9pArgsSkipsIncomplete(t *testing.T) {
 		t.Fatalf("expected fs1 for second entry: %v", got)
 	}
 }
+
+func TestResolveMountDriver(t *testing.T) {
+	t.Parallel()
+	if got := ResolveMountDriver("", nil); got != MountDriver9p {
+		t.Fatalf("empty → %s", got)
+	}
+	if got := ResolveMountDriver("9p", nil); got != MountDriver9p {
+		t.Fatalf("9p → %s", got)
+	}
+	// virtiofs falls back to 9p (no virtiofsd wiring yet)
+	if got := ResolveMountDriver("virtiofs", nil); got != MountDriver9p {
+		t.Fatalf("virtiofs fallback → %s", got)
+	}
+	if got := ResolveMountDriver("unknown", nil); got != MountDriver9p {
+		t.Fatalf("unknown → %s", got)
+	}
+}
+
+func TestFsdevArgsUses9p(t *testing.T) {
+	t.Parallel()
+	got := fsdevArgs([]vm.Mount{{Host: "/a", Guest: "/mnt/a", Tag: "grain0"}}, MountDriver9p)
+	if len(got) != 4 || !strings.Contains(got[3], "virtio-9p-pci") {
+		t.Fatalf("%v", got)
+	}
+}

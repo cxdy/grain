@@ -13,22 +13,24 @@ import (
 	"strings"
 
 	"github.com/cxdy/grain/internal/agent"
+	"github.com/cxdy/grain/internal/secrets"
 	"github.com/cxdy/grain/internal/vm"
 )
 
 // CreateRequest is the JSON body for POST /vms.
 // Wait and Timeout are sent as query parameters (not JSON body).
 type CreateRequest struct {
-	Name       string            `json:"name,omitempty"`
-	Persistent bool              `json:"persistent"`
-	CPUs       int               `json:"cpus,omitempty"`
-	MemoryMB   int               `json:"memory_mb,omitempty"`
-	DiskGB     int               `json:"disk_gb,omitempty"`
-	Image      string            `json:"image,omitempty"`
-	Tags       map[string]string `json:"tags,omitempty"`
-	Userdata   string            `json:"userdata,omitempty"`
-	Forwards   []vm.PortForward  `json:"forwards,omitempty"`
-	Mounts     []vm.Mount        `json:"mounts,omitempty"`
+	Name           string             `json:"name,omitempty"`
+	Persistent     bool               `json:"persistent"`
+	CPUs           int                `json:"cpus,omitempty"`
+	MemoryMB       int                `json:"memory_mb,omitempty"`
+	DiskGB         int                `json:"disk_gb,omitempty"`
+	Image          string             `json:"image,omitempty"`
+	Tags           map[string]string  `json:"tags,omitempty"`
+	Userdata       string             `json:"userdata,omitempty"`
+	Forwards       []vm.PortForward   `json:"forwards,omitempty"`
+	Mounts         []vm.Mount         `json:"mounts,omitempty"`
+	SocketForwards []vm.SocketForward `json:"socket_forwards,omitempty"`
 	// Wait is ssh|agent|userdata (default ssh on the server).
 	Wait string `json:"-"`
 	// Timeout is an optional Go duration string for create readiness (e.g. "30s").
@@ -368,6 +370,126 @@ func (c *Client) AgentHealth(ctx context.Context, name string) (*agent.Health, e
 		return nil, err
 	}
 	return &h, nil
+}
+
+// Stats proxies guest grain-agent GET /stats for the named VM.
+func (c *Client) Stats(ctx context.Context, name string) (*agent.Stats, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Base+"/vms/"+url.PathEscape(name)+"/stats", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var st agent.Stats
+	if err := json.NewDecoder(res.Body).Decode(&st); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// --- secrets ---------------------------------------------------------------
+
+// ListSecrets returns host secret metadata (no payloads).
+func (c *Client) ListSecrets(ctx context.Context) ([]secrets.Meta, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Base+"/secrets", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var list []secrets.Meta
+	if err := json.NewDecoder(res.Body).Decode(&list); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// SetSecret creates or replaces a host secret.
+func (c *Client) SetSecret(ctx context.Context, req secrets.PutRequest) (*secrets.Meta, error) {
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/secrets", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	res, err := c.http().Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var m secrets.Meta
+	if err := json.NewDecoder(res.Body).Decode(&m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// DeleteSecret removes a host secret by name.
+func (c *Client) DeleteSecret(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.Base+"/secrets/"+url.PathEscape(name), nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// InjectSecret materializes a host secret into a running VM.
+func (c *Client) InjectSecret(ctx context.Context, vmName, secretName, guestPath string) (*agent.MaterializeSecretResponse, error) {
+	var body io.Reader
+	if guestPath != "" {
+		b, err := json.Marshal(map[string]string{"path": guestPath})
+		if err != nil {
+			return nil, err
+		}
+		body = bytes.NewReader(b)
+	}
+	u := fmt.Sprintf("%s/vms/%s/secrets/%s", c.Base, url.PathEscape(vmName), url.PathEscape(secretName))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, body)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var out agent.MaterializeSecretResponse
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // ExecStream runs a command via the daemon with buffered=false and calls onFrame
