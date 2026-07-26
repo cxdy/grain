@@ -3,7 +3,7 @@
 <head>
   {% include head.html %}
 </head>
-<body class="layout-docs">
+<body class="layout-docs" data-search-index="{{ '/search-data.json' | relative_url }}">
   {% include nav.html %}
   <div class="docs-shell wrap">
     {% include docs-sidebar.html %}
@@ -15,5 +15,6 @@
   </div>
   {% include footer.html %}
   <script src="{{ '/assets/js/site.js' | relative_url }}" defer></script>
+  <script src="{{ '/assets/js/search.js' | relative_url }}" defer></script>
 </body>
 </html>

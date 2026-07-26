@@ -7,11 +7,12 @@ description: grain runs disposable Linux sandboxes locally — install in one co
 <section class="hero">
   <div class="wrap hero-grid">
     <div>
+      <img class="hero-logo" src="{{ '/assets/img/logo.svg' | relative_url }}" width="48" height="48" alt="grain — a grain of sand" />
       <div class="eyebrow">Open source · Apache-2.0 · grainvm.com</div>
       <h1>Real Linux sandboxes.<br>On your machine.</h1>
       <p class="hero-lead">
-        grain is a local microVM control plane: ephemeral by default, persistent when you need it,
-        with a guest agent for exec, files, and shell — without shipping your code to someone else’s cloud.
+        grain is a local microVM control plane — small like a grain of sand, complete like a real Linux box.
+        Ephemeral by default, persistent when you need it, with a guest agent for exec, files, and shell.
       </p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#install">Install grain</a>

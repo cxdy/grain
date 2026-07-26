@@ -1,19 +1,20 @@
 <header class="site-header">
   <div class="wrap header-inner">
     <a class="brand" href="{{ '/' | relative_url }}">
-      <span class="brand-mark" aria-hidden="true"></span>
+      <img class="brand-logo" src="{{ '/assets/img/logo.svg' | relative_url }}" width="28" height="28" alt="" />
       <span class="brand-name">grain</span>
     </a>
     <nav class="nav-main" aria-label="Primary">
       {% for item in site.nav %}
         {% if item.external %}
-          <a href="{{ item.url }}" {% if item.external %}rel="noopener" target="_blank"{% endif %}>{{ item.title }}</a>
+          <a href="{{ item.url }}" rel="noopener" target="_blank">{{ item.title }}</a>
         {% else %}
           <a href="{{ item.url | relative_url }}" {% if page.url contains item.url %}aria-current="page"{% endif %}>{{ item.title }}</a>
         {% endif %}
       {% endfor %}
     </nav>
     <div class="header-actions">
+      {% include search.html %}
       <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme" title="Toggle theme">
         <span class="theme-icon theme-icon-moon" aria-hidden="true">☾</span>
         <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>

@@ -3,12 +3,13 @@
 <head>
   {% include head.html %}
 </head>
-<body class="layout-default">
+<body class="layout-default" data-search-index="{{ '/search-data.json' | relative_url }}">
   {% include nav.html %}
   <main class="site-main">
     {{ content }}
   </main>
   {% include footer.html %}
   <script src="{{ '/assets/js/site.js' | relative_url }}" defer></script>
+  <script src="{{ '/assets/js/search.js' | relative_url }}" defer></script>
 </body>
 </html>

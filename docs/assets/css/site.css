@@ -112,12 +112,17 @@ a:hover {
   letter-spacing: -0.03em;
 }
 
-.brand-mark {
-  width: 1.35rem;
-  height: 1.35rem;
-  border-radius: 7px;
-  background: linear-gradient(145deg, var(--brand), var(--accent));
+.brand-logo {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: block;
+  border-radius: 8px;
   box-shadow: 0 0 0 3px var(--brand-soft);
+  background: var(--bg-soft);
+}
+
+.brand-name {
+  font-size: 1.1rem;
 }
 
 .nav-main {
@@ -763,4 +768,162 @@ a:hover {
   padding-top: 1rem;
   border-top: 1px solid var(--border);
   font-size: 0.85rem;
+}
+
+/* Search */
+.search-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem 0.35rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.search-open:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--border));
+}
+
+.search-open-label {
+  display: none;
+}
+
+@media (min-width: 720px) {
+  .search-open-label {
+    display: inline;
+  }
+}
+
+.search-kbd {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.05rem 0.3rem;
+  color: var(--faint);
+  background: var(--bg-soft);
+}
+
+.search-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.search-panel {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  top: min(18vh, 8rem);
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 1.5rem));
+}
+
+.search-panel-inner {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.search-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-input-icon {
+  color: var(--faint);
+  font-size: 1.1rem;
+}
+
+.search-input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.05rem;
+}
+
+.search-results {
+  max-height: min(50vh, 22rem);
+  overflow: auto;
+  padding: 0.4rem;
+}
+
+.search-hint,
+.search-empty {
+  margin: 0;
+  padding: 1rem 0.85rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.search-hit {
+  display: block;
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.search-hit:hover,
+.search-hit.active {
+  background: var(--bg-soft);
+}
+
+.search-section {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+  margin-bottom: 0.15rem;
+}
+
+.search-hit-title {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.search-hit-desc {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.search-hit mark {
+  background: var(--brand-soft);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 0.15em;
+}
+
+body.search-open {
+  overflow: hidden;
+}
+
+/* Homepage logo in hero eyebrow area helper */
+.hero-logo {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 12px;
+  margin-bottom: 0.85rem;
+  box-shadow: 0 0 0 4px var(--brand-soft);
 }
