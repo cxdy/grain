@@ -9,10 +9,12 @@ Config default is `image: auto`:
 
 ```bash
 grain image ls
-grain image pull ubuntu-cloud     # Ubuntu 24.04 minimal cloud
 grain image pull grain-ubuntu     # golden (agent baked in) from GitHub Releases
+grain image pull ubuntu-cloud     # Ubuntu 24.04 minimal cloud
+grain image pull alpine-cloud     # Alpine Linux cloud (multi-distro)
 grain new                         # auto → grain-ubuntu if local, else ubuntu-cloud
-grain new -i ubuntu-cloud         # force cloud image
+grain new -i ubuntu-cloud         # force Ubuntu cloud image
+grain new -i alpine-cloud         # Alpine cloud (SSH user alpine)
 ```
 
 Config:
@@ -21,10 +23,11 @@ Config:
 image: auto          # prefer golden when present (default)
 # image: ubuntu-cloud
 # image: grain-ubuntu
-ssh_user: ubuntu
+# image: alpine-cloud
+ssh_user: ubuntu     # override per image when needed (alpine-cloud → alpine)
 ```
 
-**Wait mode:** when the selected image has a baked agent (`HasAgent` / `has_agent` meta), create defaults to `--wait agent`. Otherwise `--wait ssh` (soft agent deploy). Override with `grain new --wait ssh|agent|userdata`.
+**Wait mode:** empty/`auto` (the create default) picks **`agent`** when the selected image has a baked agent (`HasAgent` / `has_agent` meta), otherwise **`ssh`** (soft agent deploy). Override with `grain new --wait ssh|agent|userdata`.
 
 ## Catalog: `ubuntu-cloud`
 
@@ -32,6 +35,22 @@ ssh_user: ubuntu
 - qcow2, **cloud-init** NoCloud, SSH user **`ubuntu`**
 - ~300 MB download
 - **HasAgent: false** — grain deploys `grain-agent` over SSH when `~/.grain/agent/grain-agent-linux-*` or `make agent-linux` is available
+
+## Catalog: `alpine-cloud`
+
+- arm64 / amd64 from [Alpine cloud images](https://alpinelinux.org/cloud/) (`generic` UEFI + cloud-init qcow2)
+- qcow2, **cloud-init** (NoCloud auto-detected on the generic image), SSH user **`alpine`**
+- ~200–240 MB download (no pinned SHA256 — Alpine publishes GPG `.asc`, not sha256sum sidecars)
+- **HasAgent: false** — same SSH agent deploy path as `ubuntu-cloud`
+- Filenames use Alpine arch names (`aarch64` / `x86_64`); grain maps `GOARCH` accordingly
+
+```bash
+grain image pull alpine-cloud
+grain new -i alpine-cloud
+# cloud-init still injects SSH keys for user "alpine"
+```
+
+Refresh the catalog version when Alpine rolls a new cloud release under `dl-cdn.alpinelinux.org/alpine/v*/releases/cloud/`.
 
 ## Golden image: `grain-ubuntu`
 
@@ -203,6 +222,20 @@ grain new           # overlay on local base
 grain new           # same base again
 ```
 
+## Boot latency bench
+
+Measure create readiness (image must already be local; daemon up):
+
+```bash
+grain up
+grain image pull grain-ubuntu   # or ubuntu-cloud / alpine-cloud
+./scripts/bench-create.sh                 # default N=5, auto wait
+./scripts/bench-create.sh -n 10 -i grain-ubuntu --wait agent
+N=10 IMAGE=ubuntu-cloud WAIT=ssh ./scripts/bench-create.sh
+```
+
+The script times N `grain new` runs, deletes each VM after timing (unless `--keep`), and prints **min / max / avg / p50 / p95** in milliseconds. Use it to compare cold `ubuntu-cloud` (SSH + agent deploy) vs golden `grain-ubuntu` (agent already in image).
+
 ## SHA-256 verification
 
 Catalog entries pin a **SHA-256** digest for the current noble minimal release files. After download (before rename into place):
@@ -238,4 +271,5 @@ Firecracker does not use UEFI the same way as QEMU aarch64 cloud boots. Prefer a
 
 - [Troubleshooting](troubleshooting.md) — pull failures, doctor image check
 - [Firecracker](firecracker.md) — experimental FC backend, kernel/rootfs, vsock
+- [Agent](agent.md) — wait modes, deploy, golden HasAgent path
 - [Mounts](mounts.md) — 9p shares into the guest

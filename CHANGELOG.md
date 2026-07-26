@@ -1,0 +1,37 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- **Guest agent (`grain-agent`)** — in-guest HTTP server for health, streaming/buffered exec, interactive shell (PTY), file copy, filesystem ops, stats, and secret materialization; deploy over SSH when missing; optional vsock transport with TCP hostfwd fallback.
+- **Create wait modes** — `auto` (default: agent when image HasAgent, else ssh), `ssh`, `agent`, `userdata`.
+- **Golden image `grain-ubuntu`** — bake scripts, CI bake workflow, pull from GitHub Release tag `golden-latest` with companion `.sha256` sidecars; minimal cloud-init seed for agent-ready clones; auto default when local Ready.
+- **Multi-distro catalog** — `ubuntu-cloud` (Ubuntu 24.04 minimal) and `alpine-cloud` (Alpine generic UEFI + cloud-init; SSH user `alpine`).
+- **Host egress proxy** — default-deny allowlist (`proxy up/down/allow/deny/ls/client`) with optional Authorization inject from host secrets; `new --proxy` for guest `HTTPS_PROXY`.
+- **Secrets store** — host-side `secret ls|set|rm|inject` under `~/.grain/secrets`; agent materialize into the guest.
+- **Guest stats** — `grain stats` / agent `GET /stats` (uptime, mem, load).
+- **Suspend / restore** — stop QEMU and free RAM for persistent VMs; restore from disk or savevm snapshot when available.
+- **Pause / resume** — QMP freeze/unfreeze guest vCPUs without tearing down the process.
+- **Live port forwards** — `fwd ls|add|rm` plus create-time `--publish`.
+- **Virtio-9p mounts** — `-v HOST:GUEST` (and virtiofs on Linux when virtiofsd is available).
+- **Profiles & presets** — named create profiles in config; embedded `docker` and `k3s` userdata presets.
+- **OpenAPI + Go client SDK** — `api/openapi.yaml`, optional Bearer `api_token` / `GRAIN_TOKEN`, public `github.com/cxdy/grain/client`.
+- **Experimental Firecracker** backend on Linux (raw rootfs, vsock agent, known limits documented).
+- **Boot benchmark** — `scripts/bench-create.sh` times N creates and prints p50/p95/avg.
+- Install script, recipes (coding-agent, k3s, docker-socket, ci-ephemeral), and feature docs (agent, images, proxy, firecracker, mounts, networking, profiles).
+
+### Changed
+
+- Default image selection prefers local **`grain-ubuntu`** when Ready (`image: auto`).
+- Create readiness auto-selects **agent wait** for golden / HasAgent images.
+- Release binaries can ship the guest agent for multi-arch deploys.
+
+### Notes
+
+- v0.1.0-dev journey: control plane → cloud images & SSH → guest agent → golden bake/publish → proxy/secrets → Firecracker spike → multi-distro catalog polish.

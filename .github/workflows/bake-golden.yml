@@ -13,7 +13,10 @@
 #
 # Arch notes:
 #   - ubuntu-latest is amd64 only → produces grain-ubuntu-amd64.qcow2
-#   - arm64 bake needs a self-hosted runner with QEMU/KVM (not matrixed here yet)
+#   - arm64 bake needs a self-hosted runner with QEMU/KVM (not matrixed here yet).
+#     Future: matrix include { runs-on: [self-hosted, linux, arm64], arch: arm64 }
+#     with labels matching your runner; publish grain-ubuntu-arm64.qcow2(+.sha256)
+#     alongside amd64 on the same golden-latest tag (softprops overwrites assets).
 #
 # KVM: GitHub-hosted runners often lack /dev/kvm. grain QEMU uses -cpu host, so
 # the job may fail without nested virt. Prefer self-hosted + KVM, or bake locally
@@ -28,6 +31,14 @@ on:
         required: false
         type: string
         default: ""
+      # Future: when arm64 self-hosted runners are available, dispatch may select
+      # target arch or matrix both. Today this job is amd64-only on ubuntu-latest.
+      # arch:
+      #   description: "Target arch (amd64 now; arm64 needs self-hosted KVM runner)"
+      #   required: false
+      #   type: choice
+      #   options: [amd64, arm64]
+      #   default: amd64
   schedule:
     # Weekly Monday 06:00 UTC
     - cron: "0 6 * * 1"
@@ -97,7 +108,10 @@ jobs:
 
       # Always publish/update the movable golden-latest release so catalog pull works.
       # make_latest: false keeps code tags (v*) as the repo "latest" release.
+      # fail_on_unmatched_files: true ensures we never publish a partial/empty release.
+      # Re-running this step replaces existing assets with the same names on the tag.
       - name: Publish golden-latest release
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: golden-latest
@@ -112,7 +126,7 @@ jobs:
 
             | Asset | Arch |
             |-------|------|
-            | `grain-ubuntu-amd64.qcow2` | x86_64 (this workflow) |
+            | `grain-ubuntu-amd64.qcow2` | x86_64 (this workflow on `ubuntu-latest`) |
             | `grain-ubuntu-arm64.qcow2` | aarch64 (self-hosted bake; not yet matrixed) |
 
             Companion `.sha256` sidecars are verified by `grain image pull` when present.

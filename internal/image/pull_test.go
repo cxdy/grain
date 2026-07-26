@@ -103,11 +103,54 @@ func TestCatalogUnknown(t *testing.T) {
 	}
 }
 
-func TestCatalogNoAlpinePlaceholder(t *testing.T) {
+func TestCatalogAlpineCloud(t *testing.T) {
 	t.Parallel()
-	cat := image.Catalog()
-	if _, ok := cat["alpine-cloud"]; ok {
-		t.Fatal("alpine-cloud placeholder should be removed from catalog")
+	s, err := image.Get(image.IDAlpineCloud)
+	if err != nil {
+		// alpine-cloud is only registered on arm64/amd64
+		switch runtime.GOARCH {
+		case "arm64", "amd64":
+			t.Fatal(err)
+		default:
+			return
+		}
+	}
+	if s.ID != image.IDAlpineCloud {
+		t.Fatalf("id %q want %q", s.ID, image.IDAlpineCloud)
+	}
+	if s.HasAgent {
+		t.Fatal("alpine-cloud should not have HasAgent")
+	}
+	if s.SSHUser != "alpine" {
+		t.Fatalf("ssh user %q want alpine", s.SSHUser)
+	}
+	if s.Format != "qcow2" {
+		t.Fatalf("format %q want qcow2", s.Format)
+	}
+	if s.URL == "" {
+		t.Fatal("expected URL for alpine-cloud on this arch")
+	}
+	if !strings.Contains(s.URL, "dl-cdn.alpinelinux.org") {
+		t.Fatalf("URL %q should use Alpine CDN", s.URL)
+	}
+	if !strings.Contains(s.URL, "uefi-cloudinit") {
+		t.Fatalf("URL %q should be UEFI cloud-init image", s.URL)
+	}
+	if !strings.HasSuffix(s.URL, ".qcow2") {
+		t.Fatalf("URL %q should end with .qcow2", s.URL)
+	}
+	switch runtime.GOARCH {
+	case "arm64":
+		if !strings.Contains(s.URL, "aarch64") {
+			t.Fatalf("arm64 URL %q should use aarch64", s.URL)
+		}
+	case "amd64":
+		if !strings.Contains(s.URL, "x86_64") {
+			t.Fatalf("amd64 URL %q should use x86_64", s.URL)
+		}
+	}
+	if !strings.Contains(s.Description, "Alpine") {
+		t.Fatalf("description should mention Alpine: %q", s.Description)
 	}
 }
 

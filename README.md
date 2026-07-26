@@ -8,8 +8,10 @@ Ephemeral by default. Persistent when you want. Short commands. Local-first.
 # 1) start daemon (once per session)
 grain up
 
-# 2) download base image (once)
-grain image pull
+# 2) download base image (once) — prefer golden for faster agent-ready creates
+grain image pull grain-ubuntu   # agent baked in (from golden-latest)
+# or: grain image pull ubuntu-cloud   # Ubuntu cloud (~300MB, SSH-deploy agent)
+# or: grain image pull alpine-cloud   # Alpine cloud (SSH user alpine)
 
 # 3) shell in — auto-creates a VM if none exist
 grain sh
@@ -51,7 +53,7 @@ make test && make build
 # Real VMs need QEMU:
 brew install qemu
 ./bin/grain doctor
-./bin/grain image pull    # Ubuntu cloud (~300MB)
+./bin/grain image pull grain-ubuntu   # preferred golden; or ubuntu-cloud / alpine-cloud
 ```
 
 After install:
@@ -68,30 +70,33 @@ grain up
 |-----|---------|
 | `up` / `down` | start/stop daemon |
 | `new` | launch sandbox (`-p` persist, `-n` name, `-c` cpus, `-m` mem, `-d` disk, `-i` image) |
-| `new --wait` | readiness: `ssh` (default), `agent`, or `userdata` |
+| `new --wait` | readiness: `auto` (default — agent if golden/HasAgent, else ssh), `ssh`, `agent`, or `userdata` |
 | `new -P` / `--publish` | host→guest ports (`HOST:GUEST` or `GUEST`; repeatable) |
 | `new -v` / `--volume` | share host dir `HOST:GUEST` via virtio-9p (repeatable) |
 | `new --profile NAME` | named profile from config (flags override profile fields) |
 | `new --preset docker\|k3s` | embedded cloud-init userdata preset |
 | `new --userdata-file` | cloud-init userdata or shell script |
+| `new --proxy` | inject `HTTPS_PROXY` via cloud-init (guest → `10.0.2.2:3128`) |
 | `profile ls` | list named create profiles |
 | `stop` / `start` | stop VM (ephemeral deleted; persistent kept) / start stopped persistent |
+| `suspend` / `restore` | stop QEMU (free RAM); restore from disk/snapshot |
 | `pause` / `resume` | QMP freeze / unfreeze guest vCPUs |
 | `ls` / `rm` | list / delete |
 | `sh` / `x` | shell / exec (`x` prefers guest agent with live streaming, SSH fallback; `--agent` / `--ssh`) |
 | `agent health` | guest agent readiness (`GET /health` — version, uptime, userdata) |
+| `stats` | guest resource stats via agent (uptime/mem/load) |
 | `logs` | guest serial (default) or `--qemu` hypervisor log; `-f` follow |
 | `fwd ls` | list SSH + published port forwards |
 | `fwd add` / `fwd rm` | live-add / remove host→guest forwards on a running VM |
 | `cp` | `host path` or `NAME:path` (prefers agent Put/Get; scp fallback; `--agent` / `--ssh`) |
 | `fs ls` / `stat` / `mkdir` / `rm` | guest filesystem via agent (no SSH) |
-| `image ls` / `image pull` / `image import` | base images (pull ubuntu-cloud or grain-ubuntu golden; import offline) |
+| `secret ls` / `set` / `rm` / `inject` | host secrets store; inject into a running VM |
+| `image ls` / `image pull` / `image import` | base images (`grain-ubuntu`, `ubuntu-cloud`, `alpine-cloud`; import offline) |
 | `proxy up` / `down` / `allow` / `deny` / `ls` / `client` | host egress proxy (default-deny allowlist + secret inject) |
-| `new --proxy` | inject `HTTPS_PROXY` via cloud-init (guest → `10.0.2.2:3128`) |
 | `doctor` | dependency check (QEMU, image, optional agent binary + QMP) |
 | `version` | print version |
 
-**Also in the surface area:** guest **stats** (`GET` agent `/stats` — uptime/mem/load), **secrets** (host store under `~/.grain/secrets`, agent `POST /secrets/materialize`), daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), **TypeScript client SDK** ([`sdk/ts`](sdk/ts) — `@cxdy/grain`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
+**Also:** daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), **TypeScript client SDK** ([`sdk/ts`](sdk/ts) — `@cxdy/grain`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
 
 **Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh). Full overview: [docs/agent.md](docs/agent.md).
 
@@ -112,10 +117,12 @@ grain fwd add sbox-1 8080:80
 | Guide | Topics |
 |-------|--------|
 | [docs/agent.md](docs/agent.md) | guest agent: health, exec, cp, fs, deploy, wait modes |
+| [docs/images.md](docs/images.md) | `grain-ubuntu` / `ubuntu-cloud` / `alpine-cloud`, pull, bake, SHA, bench |
+| [docs/proxy.md](docs/proxy.md) | host egress proxy, allowlist, secret inject, `new --proxy` |
+| [docs/firecracker.md](docs/firecracker.md) | experimental Firecracker backend, kernel/rootfs, vsock |
 | [docs/networking.md](docs/networking.md) | SLIRP, SSH, `--publish`, `fwd ls/add/rm`, privileged ports |
 | [docs/mounts.md](docs/mounts.md) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
 | [docs/profiles.md](docs/profiles.md) | named profiles, docker/k3s presets |
-| [docs/images.md](docs/images.md) | `ubuntu-cloud`, `grain-ubuntu` golden pull/import/bake, SHA verify |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
 
 ### Recipes
@@ -130,16 +137,16 @@ grain fwd add sbox-1 8080:80
 ## How it works
 
 1. **Daemon** (`grain up`) — unix socket API + optional TCP `/metrics`
-2. **Image** — download once (`ubuntu-cloud` default, or `grain-ubuntu` golden with agent baked in)
+2. **Image** — download once (`grain-ubuntu` golden preferred when local; else `ubuntu-cloud`; also `alpine-cloud`)
 3. **Disk** — qcow2 overlay or APFS CoW clone per VM
 4. **Boot** — QEMU (HVF on Apple Silicon) + cloud-init seed (SSH key)
 5. **Access** — SSH via host-forwarded port; grain manages the key in `~/.grain/ssh/`
 
-**Golden image (optional):** pull the published golden so creates skip SSH agent deploy:
+**Golden image (recommended):** pull the published golden so creates skip SSH agent deploy and default to `--wait agent`:
 
 ```bash
 grain image pull grain-ubuntu   # from GitHub Releases tag golden-latest
-grain new -i grain-ubuntu
+grain new -i grain-ubuntu       # or: grain new  (auto if grain-ubuntu is local)
 # offline: make agent-linux && ./scripts/bake-golden.sh
 # or: grain image import ./my-golden.qcow2 --id grain-ubuntu
 ```

@@ -36,6 +36,17 @@ const (
 const (
 	IDUbuntuCloud = "ubuntu-cloud"
 	IDGrainUbuntu = "grain-ubuntu"
+	IDAlpineCloud = "alpine-cloud"
+)
+
+// Alpine cloud image release pin (generic UEFI + cloud-init qcow2).
+// Alpine no longer publishes separate nocloud_* assets; generic auto-detects
+// NoCloud. Login user is "alpine" per https://alpinelinux.org/cloud/
+// Refresh version/paths when Alpine rolls a new cloud release.
+const (
+	alpineCloudVersion = "3.24.1"
+	alpineCloudSeries  = "v3.24"
+	alpineCloudRev     = "r0"
 )
 
 // grainUbuntuReleaseBase is the dedicated GitHub Release tag that the bake
@@ -98,6 +109,41 @@ func Catalog() map[string]Spec {
 		SizeHint:    400 * 1024 * 1024,
 		HasAgent:    true,
 		LocalOnly:   grainURL == "", // pullable when arch URL is known
+	}
+
+	// Alpine Linux cloud — generic UEFI + cloud-init (NoCloud auto-detected).
+	// Agent is deployed over SSH after boot (HasAgent: false). SSH user: alpine.
+	// Alpine uses aarch64/x86_64 in filenames (not arm64/amd64).
+	// SHA256 left empty: Alpine publishes GPG (.asc) not sha256sum sidecars.
+	switch arch {
+	case "arm64":
+		c[IDAlpineCloud] = Spec{
+			ID:          IDAlpineCloud,
+			Description: "Alpine Linux " + alpineCloudVersion + " cloud (arm64, UEFI, cloud-init)",
+			URL: fmt.Sprintf(
+				"https://dl-cdn.alpinelinux.org/alpine/%s/releases/cloud/generic_alpine-%s-aarch64-uefi-cloudinit-%s.qcow2",
+				alpineCloudSeries, alpineCloudVersion, alpineCloudRev,
+			),
+			SHA256:   "",
+			Format:   "qcow2",
+			SSHUser:  "alpine",
+			SizeHint: 240 * 1024 * 1024,
+			HasAgent: false,
+		}
+	case "amd64":
+		c[IDAlpineCloud] = Spec{
+			ID:          IDAlpineCloud,
+			Description: "Alpine Linux " + alpineCloudVersion + " cloud (amd64, UEFI, cloud-init)",
+			URL: fmt.Sprintf(
+				"https://dl-cdn.alpinelinux.org/alpine/%s/releases/cloud/generic_alpine-%s-x86_64-uefi-cloudinit-%s.qcow2",
+				alpineCloudSeries, alpineCloudVersion, alpineCloudRev,
+			),
+			SHA256:   "",
+			Format:   "qcow2",
+			SSHUser:  "alpine",
+			SizeHint: 200 * 1024 * 1024,
+			HasAgent: false,
+		}
 	}
 
 	return c
