@@ -86,6 +86,8 @@ grain up
 | `cp` | `host path` or `NAME:path` (prefers agent Put/Get; scp fallback; `--agent` / `--ssh`) |
 | `fs ls` / `stat` / `mkdir` / `rm` | guest filesystem via agent (no SSH) |
 | `image ls` / `image pull` / `image import` | base images (pull ubuntu-cloud or grain-ubuntu golden; import offline) |
+| `proxy up` / `down` / `allow` / `deny` / `ls` / `client` | host egress proxy (default-deny allowlist + secret inject) |
+| `new --proxy` | inject `HTTPS_PROXY` via cloud-init (guest → `10.0.2.2:3128`) |
 | `doctor` | dependency check (QEMU, image, optional agent binary + QMP) |
 | `version` | print version |
 

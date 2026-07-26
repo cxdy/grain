@@ -24,6 +24,9 @@ func TestDefaults(t *testing.T) {
 	if c.AgentTransport != "auto" {
 		t.Fatalf("agent_transport %s", c.AgentTransport)
 	}
+	if c.ProxyListen != "0.0.0.0:3128" {
+		t.Fatalf("proxy_listen %s", c.ProxyListen)
+	}
 	// finite resource caps so hosts cannot thrash by default
 	if c.MaxVMs != 8 {
 		t.Fatalf("max_vms %d", c.MaxVMs)

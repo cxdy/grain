@@ -64,6 +64,11 @@ type Config struct {
 	// TCP hostfwd is always configured as a fallback even when vsock is selected.
 	AgentTransport string `yaml:"agent_transport"`
 
+	// ProxyListen is the host bind address for `grain proxy up` (default 0.0.0.0:3128).
+	// Guests reach the proxy via SLIRP gateway 10.0.2.2 on the same port.
+	// Binding only 127.0.0.1 is not reachable from VMs — use 0.0.0.0 (firewall carefully).
+	ProxyListen string `yaml:"proxy_listen"`
+
 	// Resource caps (0 = unlimited). Stopped VMs do not count toward running caps.
 	// MaxVMs is the maximum number of concurrently running/creating VMs.
 	MaxVMs int `yaml:"max_vms"`
@@ -267,6 +272,7 @@ func Defaults() Config {
 		LogLevel:         "info",
 		MountDriver:      "9p",
 		AgentTransport:   "auto",
+		ProxyListen:      "0.0.0.0:3128",
 		MaxVMs:           8,
 		MaxCPUsTotal:     16,
 		MaxMemoryMBTotal: 32768,
@@ -345,6 +351,9 @@ func (c *Config) applyDefaults() {
 		c.AgentTransport = strings.ToLower(strings.TrimSpace(c.AgentTransport))
 	default:
 		c.AgentTransport = "auto"
+	}
+	if c.ProxyListen == "" {
+		c.ProxyListen = d.ProxyListen
 	}
 }
 

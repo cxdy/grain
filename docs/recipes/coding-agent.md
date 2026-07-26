@@ -110,9 +110,26 @@ grain stop agent
 grain start agent       # later
 ```
 
+## 6. Optional: allowlisted egress proxy
+
+Keep API tokens on the host and deny other outbound HTTP(S) via the proxy:
+
+```bash
+grain proxy up
+grain proxy client create agent
+grain secret set model-key --value '…'
+grain proxy allow --host api.example.com --secret model-key
+
+grain new --proxy -n agent -v "$(pwd):/work" --wait agent
+```
+
+Guests use `HTTPS_PROXY=http://TOKEN@10.0.2.2:3128` (SLIRP gateway). See
+[proxy.md](../proxy.md) for default-deny rules, listen address, and security notes.
+
 ## Tips
 
 - **9p mounts** are great for source; heavy I/O (node_modules, caches) is happier on the guest disk under `/home/ubuntu` or `/var/tmp`.
 - First boot with package installs can take a few minutes — `grain logs -f agent`.
 - Golden image with agent baked in skips SSH deploy: see [images.md](../images.md) and `scripts/bake-golden.sh`.
 - For CI-style one-shot create/exec/rm, see [ci-ephemeral.md](ci-ephemeral.md).
+- For host-side default-deny HTTP(S) egress, see [proxy.md](../proxy.md).

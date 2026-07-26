@@ -88,7 +88,15 @@ Shows the built-in SSH row plus any `--publish` entries.
 - No inbound connections from other machines on your network (loopback hostfwd only).
 - Guest outbound internet works through SLIRP (typical QEMU user-net behavior).
 
+## Egress proxy (optional)
+
+From the guest, the host is **`10.0.2.2`**. Run `grain proxy up` on the host
+(default listen `0.0.0.0:3128`) and point `HTTPS_PROXY` at
+`http://TOKEN@10.0.2.2:3128` for default-deny allowlisted HTTP(S) and optional
+secret injection. Details: [proxy.md](proxy.md).
+
 ## Related
 
 - [Mounts](mounts.md) — share host directories into the guest
+- [Egress proxy](proxy.md) — allowlist + secret injection
 - [Troubleshooting](troubleshooting.md) — SSH wait, serial logs, resource caps

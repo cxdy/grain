@@ -17,11 +17,13 @@ import (
 
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/api"
+	"github.com/cxdy/grain/internal/cloudinit"
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/daemon"
 	"github.com/cxdy/grain/internal/guest"
 	"github.com/cxdy/grain/internal/image"
 	"github.com/cxdy/grain/internal/observability"
+	"github.com/cxdy/grain/internal/proxy"
 	"github.com/cxdy/grain/internal/vm"
 	"github.com/spf13/cobra"
 )
@@ -55,6 +57,8 @@ func Root(version string) *cobra.Command {
   grain fwd ls/add/rm   list or live-add/remove port forwards
   grain stats [name]    guest resource stats (agent)
   grain secret ls|set|rm|inject  host secrets store
+  grain proxy up|down|allow|deny|ls|client  egress allowlist proxy
+  grain new --proxy     inject HTTPS_PROXY via cloud-init (SLIRP 10.0.2.2)
   grain new --publish-socket H:G  SSH streamlocal socket forward
   grain logs            guest serial / qemu logs
   grain doctor          check dependencies
@@ -83,6 +87,7 @@ func Root(version string) *cobra.Command {
 		cmdFwd(&cfgPath),
 		cmdStats(&cfgPath),
 		cmdSecret(&cfgPath),
+		cmdProxy(&cfgPath),
 		cmdProfile(&cfgPath),
 		cmdImage(&cfgPath),
 		cmdAgent(&cfgPath),
@@ -219,6 +224,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var publishSockets []string
 	var volumes []string
 	var waitMode string
+	var useProxy bool
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Launch a sandbox (ephemeral by default)",
@@ -241,6 +247,20 @@ func cmdNew(cfgPath *string) *cobra.Command {
 					return fmt.Errorf("userdata-file: %w", err)
 				}
 				userdata = string(b)
+			}
+			if useProxy {
+				proxyUD, err := buildProxyUserdata(cfg)
+				if err != nil {
+					return err
+				}
+				if strings.TrimSpace(userdata) == "" {
+					userdata = proxyUD
+				} else {
+					userdata, err = cloudinit.MergeUserData(proxyUD, userdata)
+					if err != nil {
+						return fmt.Errorf("merge --proxy userdata: %w", err)
+					}
+				}
 			}
 			fwds, err := parsePublishFlags(publish)
 			if err != nil {
@@ -359,7 +379,31 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
 	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")
 	cmd.Flags().StringArrayVar(&publishSockets, "publish-socket", nil, "SSH streamlocal socket forward HOSTPATH:GUESTPATH (repeatable; docker-style)")
+	cmd.Flags().BoolVar(&useProxy, "proxy", false, "inject HTTP(S)_PROXY via cloud-init (guest → 10.0.2.2; requires grain proxy up)")
 	return cmd
+}
+
+// buildProxyUserdata creates cloud-init that sets HTTP(S)_PROXY for SLIRP guests.
+// Uses the first proxy client token if any; otherwise creates a "default" client.
+func buildProxyUserdata(cfg config.Config) (string, error) {
+	st, err := proxy.NewStore(cfg.DataDir)
+	if err != nil {
+		return "", err
+	}
+	token, err := st.FirstClientToken()
+	if err != nil {
+		return "", err
+	}
+	if token == "" {
+		c, err := st.CreateClient("default")
+		if err != nil {
+			return "", err
+		}
+		token = c.Token
+		fmt.Fprintf(os.Stderr, "proxy: created client default  token=%s\n", token)
+	}
+	listen := proxy.ListenFromConfig(cfg.ProxyListen)
+	return proxy.GuestProxyCloudConfig(token, listen), nil
 }
 
 func cmdLs(cfgPath *string) *cobra.Command {
