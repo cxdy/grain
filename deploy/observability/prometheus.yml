@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: grain
+    static_configs:
+      # Docker Desktop / Linux: host.docker.internal reaches the host
+      - targets: ["host.docker.internal:7474"]
+    metrics_path: /metrics

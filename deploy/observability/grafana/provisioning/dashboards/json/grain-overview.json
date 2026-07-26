@@ -1,0 +1,48 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "VMs running",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "grain_vms_running", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "type": "stat",
+      "title": "VMs created (total)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "grain_vms_created_total", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "type": "stat",
+      "title": "Create errors",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "grain_create_errors_total", "refId": "A" }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "type": "timeseries",
+      "title": "VM activity",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "grain_vms_running", "legendFormat": "running", "refId": "A" },
+        { "expr": "rate(grain_vms_created_total[1m])", "legendFormat": "create/s", "refId": "B" }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["grain"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "grain overview",
+  "uid": "grain-overview",
+  "version": 1
+}

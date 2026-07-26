@@ -1,0 +1,12 @@
+/bin/
+/dist/
+/out/
+*.test
+coverage.out
+coverage.html
+.DS_Store
+.idea/
+.vscode/
+*.log
+# local daemon state (default under ~/.grain is outside repo)
+/tmp/

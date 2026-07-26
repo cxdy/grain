@@ -1,0 +1,43 @@
+# Optional local observability stack for grain.
+# Usage: make obs-up
+# Point Prometheus at the grain daemon metrics endpoint (default 127.0.0.1:7474).
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/provisioning/dashboards/json:/etc/grafana/provisioning/dashboards/json:ro
+    depends_on:
+      - prometheus
+      - loki
+
+  loki:
+    image: grafana/loki:3.2.1
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  # Optional: ship JSON logs from a file with promtail (example)
+  # promtail:
+  #   image: grafana/promtail:3.2.1
+  #   volumes:
+  #     - ./promtail.yml:/etc/promtail/config.yml:ro
+  #     - ${HOME}/.grain/logs:/var/log/grain:ro
