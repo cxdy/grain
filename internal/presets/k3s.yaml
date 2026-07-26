@@ -1,0 +1,9 @@
+#cloud-config
+# grain preset: k3s — single-node k3s lab (API on :6443)
+package_update: true
+packages:
+  - curl
+  - ca-certificates
+runcmd:
+  - [ sh, -c, "curl -sfL https://get.k3s.io | sh -" ]
+  - [ sh, -c, "mkdir -p /home/ubuntu/.kube; cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config 2>/dev/null || true; chown -R ubuntu:ubuntu /home/ubuntu/.kube 2>/dev/null || true" ]

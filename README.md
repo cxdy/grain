@@ -52,7 +52,10 @@ brew install qemu
 | `new` | launch sandbox (`-p` persist, `-n` name, `-c` cpus, `-m` mem, `-d` disk, `-i` image) |
 | `new -P` / `--publish` | host→guest ports (`HOST:GUEST` or `GUEST`; repeatable) |
 | `new -v` / `--volume` | share host dir `HOST:GUEST` via virtio-9p (repeatable) |
+| `new --profile NAME` | named profile from config (flags override profile fields) |
+| `new --preset docker\|k3s` | embedded cloud-init userdata preset |
 | `new --userdata-file` | cloud-init userdata or shell script |
+| `profile ls` | list named create profiles |
 | `stop` / `start` | stop VM (ephemeral deleted; persistent kept) / start stopped persistent |
 | `ls` / `rm` | list / delete |
 | `sh` / `x` | shell / exec |
@@ -62,6 +65,15 @@ brew install qemu
 | `image ls` / `image pull` | base images |
 | `doctor` | dependency check |
 | `version` | print version |
+
+**Profiles** (`~/.grain/config.yaml` → `profiles:`) set create defaults; resolve order is CLI flags → profile → global defaults. Instances get `Tags["profile"]=name`. **Presets** (`docker`, `k3s`) merge into userdata; `k3s` also suggests 2 CPU / 4096 MiB when unset and auto-publishes guest 6443.
+
+```bash
+grain new --profile agent
+grain new --preset docker
+grain new --preset k3s -n lab -p
+grain profile ls
+```
 
 ## Docs
 
@@ -122,6 +134,26 @@ max_cpus_total: 16
 max_memory_mb_total: 32768
 max_cpus_per_vm: 8
 max_memory_mb_per_vm: 16384
+
+# Named profiles for `grain new --profile NAME`
+profiles:
+  agent:
+    cpus: 4
+    memory_mb: 4096
+    disk_gb: 20
+    image: ubuntu-cloud
+    persistent: false
+    preset: ""            # optional: docker | k3s
+    mounts:
+      - {host: ".", guest: "/work"}
+    forwards:
+      - {guest_port: 3000}  # host port auto
+  k3s-lab:
+    cpus: 2
+    memory_mb: 4096
+    disk_gb: 20
+    persistent: true
+    preset: k3s
 ```
 
 ## API

@@ -1,0 +1,11 @@
+#cloud-config
+# grain preset: docker — install Docker Engine and enable the service
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - docker.io
+runcmd:
+  - [ systemctl, enable, --now, docker ]
+  - [ sh, -c, "usermod -aG docker ubuntu 2>/dev/null || true" ]
+  - [ sh, -c, "usermod -aG docker grain 2>/dev/null || true" ]

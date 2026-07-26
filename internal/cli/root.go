@@ -38,8 +38,11 @@ func Root(version string) *cobra.Command {
   grain new -p          persistent sandbox
   grain new -P 8080:80  publish host:guest ports
   grain new -v HOST:GUEST  share host dir via virtio-9p
+  grain new --profile agent   named profile from config
+  grain new --preset docker   userdata preset (docker|k3s)
   grain stop / start    stop or restart a persistent VM
   grain ls / rm / sh / x / cp
+  grain profile ls      list named profiles
   grain fwd ls          list port forwards
   grain logs            guest serial / qemu logs
   grain doctor          check dependencies
@@ -176,6 +179,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var image string
 	var userdataFile string
 	var profileName string
+	var presetName string
 	var publish []string
 	var volumes []string
 	cmd := &cobra.Command{
@@ -222,6 +226,8 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				ImageSet:      cmd.Flags().Changed("image"),
 				Persistent:    persistent,
 				PersistentSet: cmd.Flags().Changed("persist"),
+				Preset:        presetName,
+				PresetSet:     cmd.Flags().Changed("preset"),
 				ForwardsSet:   cmd.Flags().Changed("publish"),
 				MountsSet:     cmd.Flags().Changed("volume"),
 			}
@@ -235,6 +241,18 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			if !o.MountsSet {
 				mounts = profileMountsToVM(resolved.Mounts)
 			}
+
+			// Expand userdata presets (CLI --preset or profile.preset) before create.
+			// k3s also gets default resources (when unset) and auto-forward :6443.
+			cpusSet := o.CPUsSet || resolved.CPUs > 0
+			memSet := o.MemoryMBSet || resolved.MemoryMB > 0
+			userdata, resolved.CPUs, resolved.MemoryMB, fwds, err = applyPreset(
+				resolved.Preset, userdata, resolved.CPUs, resolved.MemoryMB, cpusSet, memSet, fwds,
+			)
+			if err != nil {
+				return err
+			}
+
 			var tags map[string]string
 			if resolved.ProfileName != "" {
 				tags = map[string]string{"profile": resolved.ProfileName}
@@ -286,6 +304,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringVarP(&image, "image", "i", "", "base image id (default from config)")
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
 	cmd.Flags().StringVar(&profileName, "profile", "", "named profile from config (flags override profile)")
+	cmd.Flags().StringVar(&presetName, "preset", "", "userdata preset: docker, k3s (merged into cloud-init)")
 	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
 	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")
 	return cmd
