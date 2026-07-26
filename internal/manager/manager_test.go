@@ -574,3 +574,243 @@ func TestResourceCapTotalCPUs(t *testing.T) {
 		t.Fatalf("error %v", err)
 	}
 }
+
+func TestNormalizeWaitMode(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in      string
+		want    string
+		wantErr bool
+	}{
+		{"", vm.WaitSSH, false},
+		{"ssh", vm.WaitSSH, false},
+		{"agent", vm.WaitAgent, false},
+		{"userdata", vm.WaitUserdata, false},
+		{"nope", "", true},
+		{"SSH", "", true},
+	}
+	for _, tc := range cases {
+		got, err := manager.NormalizeWaitMode(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("NormalizeWaitMode(%q) want error", tc.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("NormalizeWaitMode(%q): %v", tc.in, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("NormalizeWaitMode(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestCreateWaitAgentMock(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	var phases []string
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:     "agent-wait",
+		WaitMode: vm.WaitAgent,
+		OnEvent: func(ev vm.CreateEvent) {
+			phases = append(phases, ev.Phase)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Status != vm.StatusRunning {
+		t.Fatalf("status %s", inst.Status)
+	}
+	joined := strings.Join(phases, ",")
+	if !strings.Contains(joined, vm.PhaseWaitAgent) {
+		t.Fatalf("want wait_agent phase in %v", phases)
+	}
+	if !strings.Contains(joined, vm.PhaseReady) {
+		t.Fatalf("want ready in %v", phases)
+	}
+	if strings.Contains(joined, vm.PhaseWaitSSH) {
+		t.Fatalf("unexpected wait_ssh in agent mock path: %v", phases)
+	}
+}
+
+func TestCreateWaitUserdataMock(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	var phases []string
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:     "ud-wait",
+		WaitMode: vm.WaitUserdata,
+		OnEvent: func(ev vm.CreateEvent) {
+			phases = append(phases, ev.Phase)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst == nil {
+		t.Fatal("nil instance")
+	}
+	joined := strings.Join(phases, ",")
+	for _, p := range []string{vm.PhaseWaitAgent, vm.PhaseUserdata, vm.PhaseReady} {
+		if !strings.Contains(joined, p) {
+			t.Fatalf("missing phase %s in %v", p, phases)
+		}
+	}
+}
+
+func TestCreateRejectsInvalidWaitMode(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	_, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:     "bad-wait",
+		WaitMode: "nope",
+	})
+	if err == nil {
+		t.Fatal("expected invalid wait mode error")
+	}
+	if !strings.Contains(err.Error(), "invalid wait mode") {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestCreateWaitSSHDefaultPhases(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	var phases []string
+	_, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:     "ssh-wait",
+		WaitMode: vm.WaitSSH,
+		OnEvent: func(ev vm.CreateEvent) {
+			phases = append(phases, ev.Phase)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(phases, ",")
+	if !strings.Contains(joined, vm.PhaseWaitSSH) {
+		t.Fatalf("want wait_ssh in %v", phases)
+	}
+}
+
+
+func TestPauseResumeMock(t *testing.T) {
+	t.Parallel()
+	m, rt, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Pause(context.Background(), inst.Name); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Get("lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != vm.StatusPaused {
+		t.Fatalf("status %s want paused", got.Status)
+	}
+	if !rt.Paused("lab") {
+		t.Fatal("runtime should track paused")
+	}
+	if !rt.Running(got) {
+		t.Fatal("process should still be alive while paused")
+	}
+	if err := m.Pause(context.Background(), "lab"); err == nil {
+		t.Fatal("expected already paused")
+	}
+	if _, err := m.Start(context.Background(), "lab"); err == nil {
+		t.Fatal("expected start fail while paused")
+	}
+	if err := m.Resume(context.Background(), "lab"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = m.Get("lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != vm.StatusRunning {
+		t.Fatalf("status %s want running", got.Status)
+	}
+	if rt.Paused("lab") {
+		t.Fatal("runtime should not be paused after resume")
+	}
+	if err := m.Resume(context.Background(), "lab"); err == nil {
+		t.Fatal("expected not paused error")
+	}
+}
+
+func TestAddRemoveLiveForwardMock(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "svc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err := m.AddForward(context.Background(), inst.Name, 18080, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lf.HostPort != 18080 || lf.GuestPort != 80 {
+		t.Fatalf("forward %+v", lf)
+	}
+	got, err := m.Get("svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.LiveForwards) != 1 {
+		t.Fatalf("live forwards %v", got.LiveForwards)
+	}
+	if _, err := m.AddForward(context.Background(), "svc", 18080, 443); err == nil {
+		t.Fatal("expected duplicate host port error")
+	}
+	lf2, err := m.AddForward(context.Background(), "svc", 0, 443)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lf2.HostPort < 1024 {
+		t.Fatalf("auto host port %d", lf2.HostPort)
+	}
+	if err := m.RemoveForward(context.Background(), "svc", 18080); err != nil {
+		t.Fatal(err)
+	}
+	got, err = m.Get("svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.LiveForwards) != 1 || got.LiveForwards[0].HostPort != lf2.HostPort {
+		t.Fatalf("after rm %+v", got.LiveForwards)
+	}
+	if err := m.Shutdown(context.Background(), "svc"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = m.Get("svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.LiveForwards) != 0 {
+		t.Fatalf("expected cleared live forwards, got %+v", got.LiveForwards)
+	}
+}
+
+func TestResourceCapPausedCounts(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.MaxVMs = 1
+	cfg.MaxCPUsTotal = 0
+	cfg.MaxMemoryMBTotal = 0
+	m, _, _ := testManagerCfg(t, cfg)
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Pause(context.Background(), "lab"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "other"}); err == nil {
+		t.Fatal("expected max_vms while first is paused")
+	}
+}

@@ -27,7 +27,6 @@ func parsePublishFlag(s string) (vm.PortForward, error) {
 	}
 
 	proto := "tcp"
-	// optional proto/ prefix: tcp/8080:80 or udp/53:53
 	if i := strings.Index(s, "/"); i > 0 {
 		maybe := strings.ToLower(s[:i])
 		if maybe == "tcp" || maybe == "udp" {
@@ -41,7 +40,6 @@ func parsePublishFlag(s string) (vm.PortForward, error) {
 	if strings.Contains(s, ":") {
 		parts := strings.SplitN(s, ":", 2)
 		if parts[0] == "" {
-			// ":80" same as "80" (auto host)
 			hostPort = 0
 		} else {
 			hostPort, err = strconv.Atoi(parts[0])
@@ -78,7 +76,6 @@ func parsePublishFlag(s string) (vm.PortForward, error) {
 	}, nil
 }
 
-// parsePublishFlags parses all --publish / -P values.
 func parsePublishFlags(vals []string) ([]vm.PortForward, error) {
 	if len(vals) == 0 {
 		return nil, nil
@@ -97,21 +94,26 @@ func parsePublishFlags(vals []string) ([]vm.PortForward, error) {
 func cmdFwd(cfgPath *string) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "fwd",
-		Short: "Inspect port forwards",
-		Long: `Inspect SLIRP hostfwd port mappings for grain VMs.
+		Short: "Inspect and manage port forwards",
+		Long: `Inspect SLIRP hostfwd and live SSH port mappings for grain VMs.
 
-Port forwards are set at create time with:
+Create-time SLIRP forwards:
 
   grain new --publish 8080:80 -P 4430:443
 
-Host ports with value 0 (or omitted: -P 80) are allocated free ports and
-persisted. Forwards apply on create and again on start (from stored meta).
+Live SSH local forwards (running VM only):
 
-Note: changing forwards after create is not supported yet — recreate the
-VM or re-create with the desired --publish flags. A restart re-applies
-the stored forwards but does not hot-add new ones.`,
+  grain fwd add [name] 8080:80
+  grain fwd add [name] 80
+  grain fwd rm  [name] 8080
+  grain fwd ls  [name]
+
+Live forwards use managed "ssh -N -L" tunnels via the grain identity.
+They are cleared on stop/delete and are not re-applied on start.`,
 	}
 	c.AddCommand(cmdFwdLs(cfgPath))
+	c.AddCommand(cmdFwdAdd(cfgPath))
+	c.AddCommand(cmdFwdRm(cfgPath))
 	return c
 }
 
@@ -153,7 +155,6 @@ func cmdFwdLs(cfgPath *string) *cobra.Command {
 			fmt.Printf("%-12s %-6s %-10s %-10s %s\n", "NAME", "PROTO", "HOST", "GUEST", "NOTE")
 			any := false
 			for _, inst := range list {
-				// Always show SSH as the built-in forward
 				if inst.SSHPort > 0 {
 					fmt.Printf("%-12s %-6s %-10s %-10s %s\n",
 						inst.Name, "tcp", fmt.Sprintf(":%d", inst.SSHPort), "22", "ssh")
@@ -169,17 +170,115 @@ func cmdFwdLs(cfgPath *string) *cobra.Command {
 						host = fmt.Sprintf(":%d", f.HostPort)
 					}
 					fmt.Printf("%-12s %-6s %-10s %-10d %s\n",
-						inst.Name, proto, host, f.GuestPort, "")
+						inst.Name, proto, host, f.GuestPort, "slirp")
 					any = true
 				}
-				if inst.SSHPort == 0 && len(inst.Forwards) == 0 {
+				for _, f := range inst.LiveForwards {
+					host := fmt.Sprintf(":%d", f.HostPort)
+					note := "live"
+					if f.PID > 0 {
+						note = fmt.Sprintf("live pid=%d", f.PID)
+					}
+					fmt.Printf("%-12s %-6s %-10s %-10d %s\n",
+						inst.Name, "tcp", host, f.GuestPort, note)
+					any = true
+				}
+				if inst.SSHPort == 0 && len(inst.Forwards) == 0 && len(inst.LiveForwards) == 0 {
 					fmt.Printf("%-12s %-6s %-10s %-10s %s\n",
 						inst.Name, "-", "-", "-", "(none)")
 				}
 			}
-			if !any {
-				return nil
+			_ = any
+			return nil
+		},
+	}
+}
+
+func cmdFwdAdd(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "add [name] HOST:GUEST",
+		Short: "Add a live SSH local port forward on a running VM",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
 			}
+			c := clientFrom(cfg)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := c.Health(ctx); err != nil {
+				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+			}
+
+			var name, spec string
+			if len(args) == 1 {
+				spec = args[0]
+				name, err = resolveVMName(c, nil, false)
+				if err != nil {
+					return err
+				}
+			} else {
+				name = args[0]
+				spec = args[1]
+			}
+
+			fwd, err := parsePublishFlag(spec)
+			if err != nil {
+				return err
+			}
+			lf, err := c.AddForward(ctx, name, fwd.HostPort, fwd.GuestPort)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("forward %s  host=:%d → guest=%d  pid=%d\n", name, lf.HostPort, lf.GuestPort, lf.PID)
+			return nil
+		},
+	}
+}
+
+func cmdFwdRm(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rm [name] HOST_PORT",
+		Short: "Remove a live SSH local port forward",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c := clientFrom(cfg)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := c.Health(ctx); err != nil {
+				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+			}
+
+			var name string
+			var hostPort int
+			if len(args) == 1 {
+				hostPort, err = strconv.Atoi(args[0])
+				if err != nil {
+					return fmt.Errorf("host port: %w", err)
+				}
+				name, err = resolveVMName(c, nil, false)
+				if err != nil {
+					return err
+				}
+			} else {
+				name = args[0]
+				hostPort, err = strconv.Atoi(args[1])
+				if err != nil {
+					return fmt.Errorf("host port: %w", err)
+				}
+			}
+			if hostPort <= 0 {
+				return fmt.Errorf("host port must be positive")
+			}
+			if err := c.RemoveForward(ctx, name, hostPort); err != nil {
+				return err
+			}
+			fmt.Printf("removed forward %s host=:%d\n", name, hostPort)
 			return nil
 		},
 	}

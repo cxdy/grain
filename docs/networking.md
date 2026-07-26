@@ -58,7 +58,20 @@ Forwards are stored in the VM metadata and **re-applied on `grain start`**. Host
 - Guest ports must be in `1–65535`.
 - Protocols: `tcp` or `udp` only.
 - All hostfwds bind to **loopback only** (`127.0.0.1`), not `0.0.0.0`.
-- Forwards are set **at create only**. There is no hot-add: change mappings by recreating the VM with the desired `-P` flags. `grain start` re-applies stored forwards but does not add new ones.
+- Create-time SLIRP hostfwds are fixed for the life of the process; change them by recreating the VM. `grain start` re-applies stored SLIRP forwards.
+- **Live forwards** can be added while a VM is running via `grain fwd add` (SSH local tunnels).
+
+## Live forwards (running VM)
+
+Hot-add a host→guest mapping without recreating the VM:
+
+```bash
+grain fwd add sbox-1 8080:80
+grain fwd rm  sbox-1 8080
+```
+
+API: `POST /vms/{name}/forwards`, `DELETE /vms/{name}/forwards/{hostPort}`.
+Live forwards are cleared on stop/delete.
 
 ## Inspect forwards
 

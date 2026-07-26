@@ -17,6 +17,7 @@ import (
 )
 
 // CreateRequest is the JSON body for POST /vms.
+// Wait and Timeout are sent as query parameters (not JSON body).
 type CreateRequest struct {
 	Name       string            `json:"name,omitempty"`
 	Persistent bool              `json:"persistent"`
@@ -28,6 +29,30 @@ type CreateRequest struct {
 	Userdata   string            `json:"userdata,omitempty"`
 	Forwards   []vm.PortForward  `json:"forwards,omitempty"`
 	Mounts     []vm.Mount        `json:"mounts,omitempty"`
+	// Wait is ssh|agent|userdata (default ssh on the server).
+	Wait string `json:"-"`
+	// Timeout is an optional Go duration string for create readiness (e.g. "30s").
+	Timeout string `json:"-"`
+}
+
+// createVMsURL builds POST /vms with stream, wait, and timeout query params.
+func createVMsURL(base string, stream bool, req CreateRequest) (string, error) {
+	u, err := url.Parse(base + "/vms")
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	if stream {
+		q.Set("stream", "1")
+	}
+	if req.Wait != "" {
+		q.Set("wait", req.Wait)
+	}
+	if req.Timeout != "" {
+		q.Set("timeout", req.Timeout)
+	}
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 // Create launches a VM via the daemon API (blocking JSON response).
@@ -36,7 +61,11 @@ func (c *Client) Create(ctx context.Context, req CreateRequest) (*vm.Instance, e
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms", bytes.NewReader(b))
+	endpoint, err := createVMsURL(c.Base, false, req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +92,11 @@ func (c *Client) CreateStream(ctx context.Context, req CreateRequest, onEvent fu
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms?stream=1", bytes.NewReader(b))
+	endpoint, err := createVMsURL(c.Base, true, req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +203,91 @@ func (c *Client) Start(ctx context.Context, name string) (*vm.Instance, error) {
 // Shutdown stops a VM (ephemeral is deleted; persistent is left stopped).
 func (c *Client) Shutdown(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+name+"/shutdown", nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+
+// Pause freezes guest vCPUs (QMP stop).
+func (c *Client) Pause(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+url.PathEscape(name)+"/pause", nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// Resume continues a paused VM (QMP cont).
+func (c *Client) Resume(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+url.PathEscape(name)+"/resume", nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// AddForwardRequest is the JSON body for POST /vms/{name}/forwards.
+type AddForwardRequest struct {
+	HostPort  int `json:"host_port"`
+	GuestPort int `json:"guest_port"`
+}
+
+// AddForward starts a live SSH local port forward on a running VM.
+func (c *Client) AddForward(ctx context.Context, name string, hostPort, guestPort int) (*vm.LiveForward, error) {
+	b, err := json.Marshal(AddForwardRequest{HostPort: hostPort, GuestPort: guestPort})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+url.PathEscape(name)+"/forwards", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var lf vm.LiveForward
+	if err := json.NewDecoder(res.Body).Decode(&lf); err != nil {
+		return nil, err
+	}
+	return &lf, nil
+}
+
+// RemoveForward stops a live SSH local forward by host port.
+func (c *Client) RemoveForward(ctx context.Context, name string, hostPort int) error {
+	u := fmt.Sprintf("%s/vms/%s/forwards/%d", c.Base, url.PathEscape(name), hostPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
 	if err != nil {
 		return err
 	}

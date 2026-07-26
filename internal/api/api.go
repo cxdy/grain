@@ -55,6 +55,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /vms/{name}", s.deleteVM)
 	mux.HandleFunc("POST /vms/{name}/shutdown", s.shutdownVM)
 	mux.HandleFunc("POST /vms/{name}/start", s.startVM)
+	mux.HandleFunc("POST /vms/{name}/pause", s.pauseVM)
+	mux.HandleFunc("POST /vms/{name}/resume", s.resumeVM)
+	mux.HandleFunc("POST /vms/{name}/forwards", s.addForward)
+	mux.HandleFunc("DELETE /vms/{name}/forwards/{hostPort}", s.removeForward)
 	mux.HandleFunc("POST /vms/{name}/exec", s.execVM)
 	mux.HandleFunc("GET /vms/{name}/agent/health", s.agentHealth)
 	mux.HandleFunc("PUT /vms/{name}/cp", s.putCP)
@@ -125,36 +129,54 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 	}
+
+	q := r.URL.Query()
+	// wait=ssh|agent|userdata (default ssh). Legacy wait=1/true accepted as ssh.
+	// wait=false/0 is not supported.
+	waitRaw := q.Get("wait")
+	var waitMode string
+	var waitTimeout time.Duration
+	switch {
+	case waitRaw == "" || waitRaw == "1" || strings.EqualFold(waitRaw, "true"):
+		waitMode = vm.WaitSSH
+	case strings.EqualFold(waitRaw, "false") || waitRaw == "0":
+		writeErr(w, http.StatusBadRequest, errors.New("wait=false is not supported; use stream=1 for progress events"))
+		return
+	default:
+		mode, err := manager.NormalizeWaitMode(waitRaw)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		waitMode = mode
+	}
+
 	timeout := s.mgr.CreateTimeout()
-	if t := r.URL.Query().Get("timeout"); t != "" {
+	if t := q.Get("timeout"); t != "" {
 		d, err := time.ParseDuration(t)
 		if err != nil || d <= 0 {
-			writeErr(w, http.StatusBadRequest, errors.New("invalid timeout"))
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid timeout %q (want Go duration e.g. 30s)", t))
 			return
 		}
 		timeout = d
-	}
-	// wait=false is reserved; only stream or blocking wait are supported today.
-	if wq := r.URL.Query().Get("wait"); wq != "" && wq != "1" && !strings.EqualFold(wq, "true") {
-		if strings.EqualFold(wq, "false") || wq == "0" {
-			writeErr(w, http.StatusBadRequest, errors.New("wait=false is not supported; use stream=1 for progress events"))
-			return
-		}
+		waitTimeout = d
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
 	opts := vm.CreateOpts{
-		Name:       body.Name,
-		Persistent: body.Persistent,
-		CPUs:       body.CPUs,
-		MemoryMB:   body.MemoryMB,
-		DiskGB:     body.DiskGB,
-		Image:      body.Image,
-		Tags:       body.Tags,
-		Userdata:   body.Userdata,
-		Forwards:   body.Forwards,
-		Mounts:     body.Mounts,
+		Name:        body.Name,
+		Persistent:  body.Persistent,
+		CPUs:        body.CPUs,
+		MemoryMB:    body.MemoryMB,
+		DiskGB:      body.DiskGB,
+		Image:       body.Image,
+		Tags:        body.Tags,
+		Userdata:    body.Userdata,
+		Forwards:    body.Forwards,
+		Mounts:      body.Mounts,
+		WaitMode:    waitMode,
+		WaitTimeout: waitTimeout,
 	}
 
 	if wantsCreateStream(r) {
@@ -282,6 +304,70 @@ func (s *Server) startVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, inst)
+}
+
+
+func (s *Server) pauseVM(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := s.mgr.Pause(r.Context(), name); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "paused", "name": name})
+}
+
+func (s *Server) resumeVM(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := s.mgr.Resume(r.Context(), name); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "resumed", "name": name})
+}
+
+type forwardBody struct {
+	HostPort  int `json:"host_port"`
+	GuestPort int `json:"guest_port"`
+}
+
+func (s *Server) addForward(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body forwardBody
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
+			return
+		}
+	}
+	if body.GuestPort == 0 {
+		writeErr(w, http.StatusBadRequest, errors.New("guest_port is required"))
+		return
+	}
+	lf, err := s.mgr.AddForward(r.Context(), name, body.HostPort, body.GuestPort)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, lf)
+}
+
+func (s *Server) removeForward(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	hostPort, err := strconv.Atoi(r.PathValue("hostPort"))
+	if err != nil || hostPort <= 0 {
+		writeErr(w, http.StatusBadRequest, errors.New("invalid hostPort"))
+		return
+	}
+	if err := s.mgr.RemoveForward(r.Context(), name, hostPort); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message":   "forward removed",
+		"name":      name,
+		"host_port": hostPort,
+	})
 }
 
 // agentClient returns a host-side agent client for the VM, or an HTTP status + error.

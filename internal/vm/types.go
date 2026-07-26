@@ -10,6 +10,7 @@ type Status string
 const (
 	StatusCreating Status = "creating"
 	StatusRunning  Status = "running"
+	StatusPaused   Status = "paused"
 	StatusStopped  Status = "stopped"
 	StatusError    Status = "error"
 )
@@ -20,6 +21,14 @@ type PortForward struct {
 	HostPort  int    `json:"host_port"`       // 0 = allocate free
 	GuestPort int    `json:"guest_port"`
 	Proto     string `json:"proto,omitempty"` // default tcp
+}
+
+// LiveForward is a runtime SSH local port forward for a running VM
+// (ssh -N -L hostPort:127.0.0.1:guestPort). Not a SLIRP hostfwd.
+type LiveForward struct {
+	HostPort  int `json:"host_port"`
+	GuestPort int `json:"guest_port"`
+	PID       int `json:"pid,omitempty"` // ssh -N process
 }
 
 // Mount shares a host directory into the guest via virtio-9p.
@@ -46,6 +55,9 @@ type Instance struct {
 	// Forwards are extra hostfwd entries (beyond SSH :22). Host ports with 0
 	// are allocated before start and persisted so restarts reuse them.
 	Forwards []PortForward `json:"forwards,omitempty"`
+	// LiveForwards are SSH -L forwards managed while the VM is running.
+	// Cleared on stop/delete; not re-applied automatically on start.
+	LiveForwards []LiveForward `json:"live_forwards,omitempty"`
 	// Mounts are host directories shared into the guest via virtio-9p.
 	Mounts    []Mount           `json:"mounts,omitempty"`
 	Tags      map[string]string `json:"tags,omitempty"`
@@ -55,7 +67,16 @@ type Instance struct {
 	DiskPath string `json:"disk_path,omitempty"`
 	// PID of hypervisor process when running.
 	PID int `json:"pid,omitempty"`
+	// QMPPath is the QEMU monitor unix socket (vmDir/qmp.sock when using QEMU).
+	QMPPath string `json:"qmp_path,omitempty"`
 }
+
+// Wait mode constants for CreateOpts.WaitMode.
+const (
+	WaitSSH      = "ssh"
+	WaitAgent    = "agent"
+	WaitUserdata = "userdata"
+)
 
 // CreateOpts for launching a VM.
 type CreateOpts struct {
@@ -73,6 +94,10 @@ type CreateOpts struct {
 	Forwards []PortForward
 	// Mounts are optional host directory shares (virtio-9p) at create time.
 	Mounts []Mount
+	// WaitMode selects readiness: ssh (default), agent, or userdata.
+	WaitMode string
+	// WaitTimeout overrides ReadyTimeout when > 0.
+	WaitTimeout time.Duration
 	// OnEvent receives progress phases during Create (optional; not serialized).
 	OnEvent func(CreateEvent)
 }

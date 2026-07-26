@@ -43,11 +43,13 @@ func Root(version string) *cobra.Command {
   grain new -v HOST:GUEST  share host dir via virtio-9p
   grain new --profile agent   named profile from config
   grain new --preset docker   userdata preset (docker|k3s)
+  grain new --wait agent      wait for agent (ssh|agent|userdata)
   grain stop / start    stop or restart a persistent VM
+  grain pause / resume  QMP freeze/unfreeze guest vCPUs
   grain ls / rm / sh / x / cp
   grain fs              guest readdir/stat/mkdir/rm via agent
   grain profile ls      list named profiles
-  grain fwd ls          list port forwards
+  grain fwd ls/add/rm   list or live-add/remove port forwards
   grain logs            guest serial / qemu logs
   grain doctor          check dependencies
   grain down            stop daemon`,
@@ -61,6 +63,8 @@ func Root(version string) *cobra.Command {
 		cmdNew(&cfgPath),
 		cmdStop(&cfgPath),
 		cmdStart(&cfgPath),
+		cmdPause(&cfgPath),
+		cmdResume(&cfgPath),
 		cmdLs(&cfgPath),
 		cmdRm(&cfgPath),
 		cmdSh(&cfgPath),
@@ -203,6 +207,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var presetName string
 	var publish []string
 	var volumes []string
+	var waitMode string
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Launch a sandbox (ephemeral by default)",
@@ -292,6 +297,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				Userdata:   userdata,
 				Forwards:   fwds,
 				Mounts:     mounts,
+				Wait:       waitMode,
 			}, onEvent)
 			stop()
 			if err != nil {
@@ -326,6 +332,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
 	cmd.Flags().StringVar(&profileName, "profile", "", "named profile from config (flags override profile)")
 	cmd.Flags().StringVar(&presetName, "preset", "", "userdata preset: docker, k3s (merged into cloud-init)")
+	cmd.Flags().StringVar(&waitMode, "wait", "ssh", "readiness: ssh (default), agent, or userdata")
 	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
 	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")
 	return cmd
@@ -395,7 +402,7 @@ func cmdRm(cfgPath *string) *cobra.Command {
 func cmdStop(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop [name]",
-		Short: "Stop a VM (ephemeral is deleted; persistent stays on disk)",
+		Short: "Stop a VM gracefully (QMP powerdown, then kill; ephemeral is deleted)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
@@ -407,7 +414,7 @@ func cmdStop(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 			if err := c.Shutdown(ctx, name); err != nil {
 				return err
@@ -450,6 +457,65 @@ func cmdStart(cfgPath *string) *cobra.Command {
 				fmt.Printf("  ssh=:%d", inst.SSHPort)
 			}
 			fmt.Printf("  (%s)\n", time.Since(start).Round(time.Second))
+			return nil
+		},
+	}
+}
+
+
+func cmdPause(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "pause [name]",
+		Short: "Pause a running VM (QMP stop — freezes guest vCPUs)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c := clientFrom(cfg)
+			name, err := resolveVMName(c, args, false)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := c.Health(ctx); err != nil {
+				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+			}
+			if err := c.Pause(ctx, name); err != nil {
+				return err
+			}
+			fmt.Println("paused", name)
+			return nil
+		},
+	}
+}
+
+func cmdResume(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "resume [name]",
+		Short: "Resume a paused VM (QMP cont)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c := clientFrom(cfg)
+			name, err := resolveVMName(c, args, false)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := c.Health(ctx); err != nil {
+				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+			}
+			if err := c.Resume(ctx, name); err != nil {
+				return err
+			}
+			fmt.Println("resumed", name)
 			return nil
 		},
 	}

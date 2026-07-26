@@ -73,6 +73,10 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	pidFile := filepath.Join(vmDir, "qemu.pid")
 	_ = os.Remove(pidFile)
 
+	qmpPath := filepath.Join(vmDir, QMPSocketName)
+	_ = os.Remove(qmpPath)
+	inst.QMPPath = qmpPath
+
 	driveFmt := "raw"
 	if strings.HasSuffix(diskPath, ".qcow2") {
 		driveFmt = "qcow2"
@@ -91,6 +95,7 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		"-display", "none",
 		"-serial", "file:" + filepath.Join(vmDir, "serial.log"),
 		"-pidfile", pidFile,
+		"-qmp", "unix:"+qmpPath+",server,nowait",
 		"-daemonize",
 	}
 
@@ -178,21 +183,36 @@ func resolveDisk(diskPath string) string {
 	return diskPath
 }
 
-func (q *QEMURuntime) Stop(_ context.Context, inst *vm.Instance) error {
-	pids := []int{}
-	if inst.PID > 0 {
-		pids = append(pids, inst.PID)
-	}
-	if inst.DiskPath != "" {
-		pidFile := filepath.Join(filepath.Dir(inst.DiskPath), "qemu.pid")
-		if b, err := os.ReadFile(pidFile); err == nil {
-			var pid int
-			if _, err := fmt.Sscanf(strings.TrimSpace(string(b)), "%d", &pid); err == nil && pid > 0 {
-				pids = append(pids, pid)
+
+// powerdownWait is how long to wait after QMP system_powerdown before SIGTERM/SIGKILL.
+const powerdownWait = 15 * time.Second
+
+func (q *QEMURuntime) Stop(ctx context.Context, inst *vm.Instance) error {
+	pids := collectQEMUPIDs(inst)
+	qmpPath := QMPPathFor(inst)
+	if qmpPath != "" {
+		qmpCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := qmpCommand(qmpCtx, qmpPath, "system_powerdown")
+		cancel()
+		if err == nil {
+			deadline := time.Now().Add(powerdownWait)
+			for time.Now().Before(deadline) {
+				if !anyPIDAlive(pids) {
+					cleanupQEMUFiles(inst)
+					inst.PID = 0
+					inst.QMPPath = ""
+					inst.Status = vm.StatusStopped
+					return nil
+				}
+				select {
+				case <-ctx.Done():
+					goto hardKill
+				case <-time.After(200 * time.Millisecond):
+				}
 			}
-			_ = os.Remove(pidFile)
 		}
 	}
+hardKill:
 	for _, pid := range pids {
 		if p, err := os.FindProcess(pid); err == nil {
 			_ = p.Signal(syscall.SIGTERM)
@@ -200,9 +220,33 @@ func (q *QEMURuntime) Stop(_ context.Context, inst *vm.Instance) error {
 			_ = p.Signal(syscall.SIGKILL)
 		}
 	}
+	cleanupQEMUFiles(inst)
 	inst.PID = 0
+	inst.QMPPath = ""
 	inst.Status = vm.StatusStopped
 	return nil
+}
+
+func (q *QEMURuntime) Pause(ctx context.Context, inst *vm.Instance) error {
+	if !q.Running(inst) {
+		return fmt.Errorf("vm %q is not running", inst.Name)
+	}
+	qmpPath := QMPPathFor(inst)
+	if qmpPath == "" {
+		return fmt.Errorf("vm %q has no QMP socket", inst.Name)
+	}
+	return qmpCommand(ctx, qmpPath, "stop")
+}
+
+func (q *QEMURuntime) Resume(ctx context.Context, inst *vm.Instance) error {
+	if !q.Running(inst) {
+		return fmt.Errorf("vm %q is not running", inst.Name)
+	}
+	qmpPath := QMPPathFor(inst)
+	if qmpPath == "" {
+		return fmt.Errorf("vm %q has no QMP socket", inst.Name)
+	}
+	return qmpCommand(ctx, qmpPath, "cont")
 }
 
 func (q *QEMURuntime) Running(inst *vm.Instance) bool {
@@ -215,6 +259,58 @@ func (q *QEMURuntime) Running(inst *vm.Instance) bool {
 	}
 	return proc.Signal(syscall.Signal(0)) == nil
 }
+
+func collectQEMUPIDs(inst *vm.Instance) []int {
+	seen := map[int]struct{}{}
+	var pids []int
+	add := func(pid int) {
+		if pid <= 0 {
+			return
+		}
+		if _, ok := seen[pid]; ok {
+			return
+		}
+		seen[pid] = struct{}{}
+		pids = append(pids, pid)
+	}
+	add(inst.PID)
+	if inst.DiskPath != "" {
+		pidFile := filepath.Join(filepath.Dir(inst.DiskPath), "qemu.pid")
+		if b, err := os.ReadFile(pidFile); err == nil {
+			var pid int
+			if _, err := fmt.Sscanf(strings.TrimSpace(string(b)), "%d", &pid); err == nil {
+				add(pid)
+			}
+		}
+	}
+	return pids
+}
+
+func anyPIDAlive(pids []int) bool {
+	for _, pid := range pids {
+		if p, err := os.FindProcess(pid); err == nil {
+			if p.Signal(syscall.Signal(0)) == nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func cleanupQEMUFiles(inst *vm.Instance) {
+	if inst.DiskPath == "" {
+		return
+	}
+	dir := filepath.Dir(inst.DiskPath)
+	_ = os.Remove(filepath.Join(dir, "qemu.pid"))
+	_ = os.Remove(filepath.Join(dir, QMPSocketName))
+	if inst.QMPPath != "" && inst.QMPPath != filepath.Join(dir, QMPSocketName) {
+		_ = os.Remove(inst.QMPPath)
+	}
+}
+
+
+
 
 func machineType() string {
 	if runtime.GOARCH == "arm64" {

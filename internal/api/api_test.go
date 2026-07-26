@@ -761,3 +761,182 @@ func TestAPIClientStreamCPAndFS(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 }
+
+func TestCreateWaitQueryModes(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+
+	for _, mode := range []string{"ssh", "agent", "userdata"} {
+		t.Run(mode, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"name":"w-%s","persistent":false}`, mode))
+			rr := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/vms?wait="+mode+"&stream=1", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Accept", "application/x-ndjson")
+			h.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status %d %s", rr.Code, rr.Body.String())
+			}
+			var phases []string
+			sc := bufio.NewScanner(bytes.NewReader(rr.Body.Bytes()))
+			for sc.Scan() {
+				line := strings.TrimSpace(sc.Text())
+				if line == "" {
+					continue
+				}
+				var ev vm.CreateEvent
+				if err := json.Unmarshal([]byte(line), &ev); err != nil {
+					t.Fatalf("line %q: %v", line, err)
+				}
+				phases = append(phases, ev.Phase)
+			}
+			if len(phases) == 0 || phases[len(phases)-1] != vm.PhaseReady {
+				t.Fatalf("phases %v", phases)
+			}
+			joined := strings.Join(phases, ",")
+			switch mode {
+			case "ssh":
+				if !strings.Contains(joined, vm.PhaseWaitSSH) {
+					t.Fatalf("want wait_ssh in %v", phases)
+				}
+			case "agent":
+				if !strings.Contains(joined, vm.PhaseWaitAgent) {
+					t.Fatalf("want wait_agent in %v", phases)
+				}
+			case "userdata":
+				if !strings.Contains(joined, vm.PhaseUserdata) {
+					t.Fatalf("want userdata in %v", phases)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateWaitInvalid(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms?wait=nope", bytes.NewReader([]byte(`{"name":"bad"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "invalid wait mode") {
+		t.Fatalf("body %s", rr.Body.String())
+	}
+}
+
+func TestCreateTimeoutInvalid(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms?timeout=notaduration", bytes.NewReader([]byte(`{"name":"t"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateClientWaitQuery(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go http.Serve(ln, s.Handler()) //nolint:errcheck
+
+	c := &api.Client{Base: "http://" + ln.Addr().String()}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var phases []string
+	inst, err := c.CreateStream(ctx, api.CreateRequest{
+		Name: "cli-wait",
+		Wait: vm.WaitAgent,
+	}, func(ev vm.CreateEvent) {
+		phases = append(phases, ev.Phase)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Name != "cli-wait" {
+		t.Fatalf("name %s", inst.Name)
+	}
+	if !strings.Contains(strings.Join(phases, ","), vm.PhaseWaitAgent) {
+		t.Fatalf("phases %v", phases)
+	}
+}
+
+
+func TestPauseResumeAPI(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	createMockVM(t, h, "lab")
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/lab/pause", nil))
+	if rr.Code != 200 {
+		t.Fatalf("pause %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/lab", nil))
+	var inst map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &inst); err != nil {
+		t.Fatal(err)
+	}
+	if inst["status"] != "paused" {
+		t.Fatalf("status %v", inst["status"])
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/lab/resume", nil))
+	if rr.Code != 200 {
+		t.Fatalf("resume %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/lab", nil))
+	if err := json.Unmarshal(rr.Body.Bytes(), &inst); err != nil {
+		t.Fatal(err)
+	}
+	if inst["status"] != "running" {
+		t.Fatalf("status %v", inst["status"])
+	}
+}
+
+func TestLiveForwardAPI(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	createMockVM(t, h, "svc")
+
+	body := []byte(`{"host_port":18080,"guest_port":80}`)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms/svc/forwards", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("add forward %d %s", rr.Code, rr.Body.String())
+	}
+	var lf map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &lf); err != nil {
+		t.Fatal(err)
+	}
+	if lf["host_port"] != float64(18080) || lf["guest_port"] != float64(80) {
+		t.Fatalf("lf %+v", lf)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/vms/svc/forwards/18080", nil))
+	if rr.Code != 200 {
+		t.Fatalf("rm forward %d %s", rr.Code, rr.Body.String())
+	}
+}

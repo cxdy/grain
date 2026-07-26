@@ -11,16 +11,15 @@ import (
 	"github.com/cxdy/grain/internal/vm"
 )
 
-// MockRuntime is an in-process hypervisor for tests (no real VMs).
 type MockRuntime struct {
-	mu    sync.Mutex
-	alive map[string]bool
-	// FailStart forces Start to error.
+	mu     sync.Mutex
+	alive  map[string]bool
+	paused map[string]bool
 	FailStart bool
 }
 
 func NewMockRuntime() *MockRuntime {
-	return &MockRuntime{alive: map[string]bool{}}
+	return &MockRuntime{alive: map[string]bool{}, paused: map[string]bool{}}
 }
 
 func (m *MockRuntime) Start(_ context.Context, inst *vm.Instance, _ string) error {
@@ -30,12 +29,15 @@ func (m *MockRuntime) Start(_ context.Context, inst *vm.Instance, _ string) erro
 		return fmt.Errorf("mock start failed")
 	}
 	m.alive[inst.Name] = true
+	delete(m.paused, inst.Name)
 	inst.PID = 1
 	inst.IP = "127.0.0.1"
-	// allocate fake ssh / agent ports starting at 2200 / 7475
 	n := len(m.alive)
 	inst.SSHPort = 2200 + n
 	inst.AgentPort = 7475 + n
+	if inst.DiskPath != "" {
+		inst.QMPPath = filepath.Join(filepath.Dir(inst.DiskPath), QMPSocketName)
+	}
 	inst.Status = vm.StatusRunning
 	return nil
 }
@@ -44,9 +46,43 @@ func (m *MockRuntime) Stop(_ context.Context, inst *vm.Instance) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.alive, inst.Name)
+	delete(m.paused, inst.Name)
 	inst.PID = 0
+	inst.QMPPath = ""
 	inst.Status = vm.StatusStopped
 	return nil
+}
+
+func (m *MockRuntime) Pause(_ context.Context, inst *vm.Instance) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.alive[inst.Name] {
+		return fmt.Errorf("vm %q is not running", inst.Name)
+	}
+	if m.paused[inst.Name] {
+		return fmt.Errorf("vm %q is already paused", inst.Name)
+	}
+	m.paused[inst.Name] = true
+	return nil
+}
+
+func (m *MockRuntime) Resume(_ context.Context, inst *vm.Instance) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.alive[inst.Name] {
+		return fmt.Errorf("vm %q is not running", inst.Name)
+	}
+	if !m.paused[inst.Name] {
+		return fmt.Errorf("vm %q is not paused", inst.Name)
+	}
+	delete(m.paused, inst.Name)
+	return nil
+}
+
+func (m *MockRuntime) Paused(name string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.paused[name]
 }
 
 func (m *MockRuntime) Running(inst *vm.Instance) bool {
@@ -55,14 +91,13 @@ func (m *MockRuntime) Running(inst *vm.Instance) bool {
 	return m.alive[inst.Name]
 }
 
-// ForceDead marks a VM as not running without going through Stop (crash sim).
 func (m *MockRuntime) ForceDead(name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.alive, name)
+	delete(m.paused, name)
 }
 
-// MockDisk writes tiny placeholder disk files.
 type MockDisk struct {
 	clones atomic.Int32
 }
@@ -70,7 +105,6 @@ type MockDisk struct {
 func NewMockDisk() *MockDisk { return &MockDisk{} }
 
 func (d *MockDisk) EnsureBase(_ context.Context, imageID string) (string, error) {
-	// synthetic base for tests (no download)
 	return "base:" + imageID, nil
 }
 

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/cxdy/grain/internal/agent"
@@ -15,6 +17,7 @@ import (
 	"github.com/cxdy/grain/internal/hypervisor"
 	"github.com/cxdy/grain/internal/image"
 	"github.com/cxdy/grain/internal/names"
+	"github.com/cxdy/grain/internal/netutil"
 	"github.com/cxdy/grain/internal/sshkey"
 	"github.com/cxdy/grain/internal/store"
 	"github.com/cxdy/grain/internal/vm"
@@ -69,8 +72,12 @@ func emitCreate(opts vm.CreateOpts, ev vm.CreateEvent) {
 
 // Create launches a sandbox. Ephemeral by default (opts.Persistent=false).
 // When opts.OnEvent is set, progress phases are emitted:
-// image, disk, seed, qemu, wait_ssh, wait_agent (non-mock), ready|error.
-// Agent readiness is a soft dependency: failure is logged, Create still succeeds.
+// image, disk, seed, qemu, wait_ssh, wait_agent, userdata, ready|error.
+//
+// WaitMode controls readiness after start (default "ssh"):
+//   - ssh: WaitSSH + soft agent deploy/wait (failure does not fail Create)
+//   - agent: require guest agent health (hard fail); try agent first, SSH deploy fallback
+//   - userdata: require agent, then poll until Health.UserdataRan
 func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance, error) {
 	existing, err := m.st.Names()
 	if err != nil {
@@ -85,6 +92,11 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	}
 	if _, taken := existing[name]; taken {
 		return nil, fmt.Errorf("vm %q already exists", name)
+	}
+
+	waitMode, err := NormalizeWaitMode(opts.WaitMode)
+	if err != nil {
+		return nil, err
 	}
 
 	cpus := opts.CPUs
@@ -168,8 +180,7 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	if err != nil {
 		return m.fail(inst, fmt.Errorf("ssh key: %w", err), opts)
 	}
-	_ = priv
-	// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
+		// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
 	// Mount runcmds are injected from prepared mounts.
 	if _, err := cloudinit.WriteNoCloud(vmDir, name, pub, opts.Userdata, mountSpecs(mounts)...); err != nil {
 		// mock / missing iso tools: log and continue (SSH inject won't work)
@@ -185,35 +196,15 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		return nil, err
 	}
 
-	// Wait for SSH — always emit wait_ssh (mock path skips the actual wait).
-	emitCreate(opts, vm.CreateEvent{
-		Phase:   vm.PhaseWaitSSH,
-		Name:    name,
-		Message: "waiting for ssh",
-		SSHPort: inst.SSHPort,
-	})
-	readyDeadline := time.Now().Add(m.cfg.ReadyTimeout)
-	if m.cfg.Hypervisor != "mock" && inst.SSHPort > 0 {
-		user := m.resolveSSHUser(img)
-		waitCtx, cancel := context.WithDeadline(ctx, readyDeadline)
-		sshUser := user
-		if err := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, user, priv); err != nil {
-			// try grain user from cloud-init
-			if err2 := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, "grain", priv); err2 != nil {
-				m.log.Warn("ssh not ready yet", "name", name, "err", err)
-				sshUser = ""
-			} else {
-				sshUser = "grain"
-			}
-		}
-		cancel()
+	readyTimeout := m.cfg.ReadyTimeout
+	if opts.WaitTimeout > 0 {
+		readyTimeout = opts.WaitTimeout
+	}
+	readyDeadline := time.Now().Add(readyTimeout)
+	emit := func(ev vm.CreateEvent) { emitCreate(opts, ev) }
 
-		// Soft-depend on guest agent: probe, optionally deploy over SSH, then wait.
-		if sshUser != "" && inst.AgentPort > 0 {
-			m.waitOrDeployAgent(ctx, inst, sshUser, priv, readyDeadline, func(ev vm.CreateEvent) {
-				emitCreate(opts, ev)
-			})
-		}
+	if err := m.waitReady(ctx, inst, img, priv, waitMode, readyDeadline, emit); err != nil {
+		return m.fail(inst, err, opts)
 	}
 
 	m.log.Info("vm created",
@@ -223,6 +214,7 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		"memory_mb", inst.MemoryMB,
 		"ssh_port", inst.SSHPort,
 		"agent_port", inst.AgentPort,
+		"wait", waitMode,
 	)
 	emitCreate(opts, vm.CreateEvent{
 		Phase:    vm.PhaseReady,
@@ -232,6 +224,211 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		Instance: inst,
 	})
 	return inst, nil
+}
+
+
+// NormalizeWaitMode validates and defaults WaitMode. Empty → "ssh".
+func NormalizeWaitMode(mode string) (string, error) {
+	switch mode {
+	case "", vm.WaitSSH:
+		return vm.WaitSSH, nil
+	case vm.WaitAgent:
+		return vm.WaitAgent, nil
+	case vm.WaitUserdata:
+		return vm.WaitUserdata, nil
+	default:
+		return "", fmt.Errorf("invalid wait mode %q (want ssh, agent, or userdata)", mode)
+	}
+}
+
+// waitReady runs the post-start readiness sequence based on waitMode.
+func (m *Manager) waitReady(
+	ctx context.Context,
+	inst *vm.Instance,
+	img, priv, waitMode string,
+	readyDeadline time.Time,
+	emit func(vm.CreateEvent),
+) error {
+	isMock := m.cfg.Hypervisor == "mock"
+
+	switch waitMode {
+	case vm.WaitAgent:
+		return m.waitAgentMode(ctx, inst, img, priv, readyDeadline, emit, isMock)
+	case vm.WaitUserdata:
+		if err := m.waitAgentMode(ctx, inst, img, priv, readyDeadline, emit, isMock); err != nil {
+			return err
+		}
+		return m.waitUserdata(ctx, inst, readyDeadline, emit, isMock)
+	default: // ssh
+		return m.waitSSHMode(ctx, inst, img, priv, readyDeadline, emit, isMock)
+	}
+}
+
+// waitSSHMode is the default: WaitSSH + soft agent deploy/wait.
+func (m *Manager) waitSSHMode(
+	ctx context.Context,
+	inst *vm.Instance,
+	img, priv string,
+	readyDeadline time.Time,
+	emit func(vm.CreateEvent),
+	isMock bool,
+) error {
+	if emit != nil {
+		emit(vm.CreateEvent{
+			Phase:   vm.PhaseWaitSSH,
+			Name:    inst.Name,
+			Message: "waiting for ssh",
+			SSHPort: inst.SSHPort,
+		})
+	}
+	if isMock || inst.SSHPort <= 0 {
+		return nil
+	}
+	sshUser := m.waitSSH(ctx, inst, img, priv, readyDeadline)
+	if sshUser != "" && inst.AgentPort > 0 {
+		_ = m.waitOrDeployAgent(ctx, inst, sshUser, priv, readyDeadline, emit, false)
+	}
+	return nil
+}
+
+// waitAgentMode requires agent health. Tries agent first (golden images), then
+// SSH deploy fallback. Hard-fails when the agent is not ready in time.
+// Mock hypervisor treats agent wait as success after start.
+func (m *Manager) waitAgentMode(
+	ctx context.Context,
+	inst *vm.Instance,
+	img, priv string,
+	readyDeadline time.Time,
+	emit func(vm.CreateEvent),
+	isMock bool,
+) error {
+	if emit != nil {
+		emit(vm.CreateEvent{
+			Phase:   vm.PhaseWaitAgent,
+			Name:    inst.Name,
+			Message: "waiting for guest agent",
+			SSHPort: inst.SSHPort,
+		})
+	}
+	if isMock {
+		return nil
+	}
+	if inst.AgentPort <= 0 {
+		return fmt.Errorf("wait agent: no agent port allocated")
+	}
+
+	client := &agent.Client{BaseURL: fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort)}
+
+	waitFor := time.Until(readyDeadline)
+	if waitFor <= 0 {
+		waitFor = agentWaitFallback
+	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, waitFor)
+	probeErr := agent.Wait(probeCtx, client)
+	probeCancel()
+	if probeErr == nil {
+		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort)
+		return nil
+	}
+
+	if inst.SSHPort > 0 {
+		if emit != nil {
+			emit(vm.CreateEvent{
+				Phase:   vm.PhaseWaitSSH,
+				Name:    inst.Name,
+				Message: "waiting for ssh (agent deploy)",
+				SSHPort: inst.SSHPort,
+			})
+		}
+		sshDeadline := readyDeadline
+		if time.Until(sshDeadline) < agentWaitFallback {
+			sshDeadline = time.Now().Add(agentWaitFallback)
+		}
+		sshUser := m.waitSSH(ctx, inst, img, priv, sshDeadline)
+		if sshUser != "" {
+			if err := m.waitOrDeployAgent(ctx, inst, sshUser, priv, sshDeadline, emit, true); err != nil {
+				return fmt.Errorf("wait agent: %w", err)
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("wait agent: guest agent not ready: %w", probeErr)
+}
+
+// waitUserdata polls agent Health until UserdataRan is true.
+func (m *Manager) waitUserdata(
+	ctx context.Context,
+	inst *vm.Instance,
+	readyDeadline time.Time,
+	emit func(vm.CreateEvent),
+	isMock bool,
+) error {
+	if emit != nil {
+		emit(vm.CreateEvent{
+			Phase:   vm.PhaseUserdata,
+			Name:    inst.Name,
+			Message: "waiting for userdata",
+			SSHPort: inst.SSHPort,
+		})
+	}
+	if isMock {
+		return nil
+	}
+	if inst.AgentPort <= 0 {
+		return fmt.Errorf("wait userdata: no agent port allocated")
+	}
+
+	client := &agent.Client{BaseURL: fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort)}
+	waitFor := time.Until(readyDeadline)
+	if waitFor <= 0 {
+		waitFor = agentWaitFallback
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, waitFor)
+	defer cancel()
+
+	if h, err := client.Health(waitCtx); err == nil && h.UserdataRan {
+		return nil
+	}
+
+	ticker := time.NewTicker(agent.WaitPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("wait userdata: %w", waitCtx.Err())
+		case <-ticker.C:
+			h, err := client.Health(waitCtx)
+			if err != nil {
+				continue
+			}
+			if h.UserdataRan {
+				m.log.Info("userdata complete", "name", inst.Name)
+				return nil
+			}
+		}
+	}
+}
+
+// waitSSH blocks until SSH accepts connections. Returns the working username,
+// or "" if SSH never became ready (warnings logged).
+func (m *Manager) waitSSH(
+	ctx context.Context,
+	inst *vm.Instance,
+	img, priv string,
+	readyDeadline time.Time,
+) string {
+	user := m.resolveSSHUser(img)
+	waitCtx, cancel := context.WithDeadline(ctx, readyDeadline)
+	defer cancel()
+	if err := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, user, priv); err != nil {
+		if err2 := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, "grain", priv); err2 != nil {
+			m.log.Warn("ssh not ready yet", "name", inst.Name, "err", err)
+			return ""
+		}
+		return "grain"
+	}
+	return user
 }
 
 func (m *Manager) fail(inst *vm.Instance, err error, opts ...vm.CreateOpts) (*vm.Instance, error) {
@@ -255,9 +452,12 @@ func (m *Manager) List() ([]*vm.Instance, error) {
 		return nil, err
 	}
 	for _, inst := range list {
-		if inst.Status == vm.StatusRunning && !m.rt.Running(inst) {
+		if (inst.Status == vm.StatusRunning || inst.Status == vm.StatusPaused) && !m.rt.Running(inst) {
+			m.killLiveForwards(inst)
 			inst.Status = vm.StatusStopped
 			inst.PID = 0
+			inst.QMPPath = ""
+			inst.LiveForwards = nil
 			_ = m.st.Put(inst)
 		}
 	}
@@ -286,11 +486,13 @@ func (m *Manager) Delete(ctx context.Context, name string) error {
 }
 
 // Shutdown stops a VM. Ephemeral VMs are deleted; persistent VMs remain stopped.
+// Uses QMP system_powerdown when available, then SIGTERM/SIGKILL.
 func (m *Manager) Shutdown(ctx context.Context, name string) error {
 	inst, err := m.st.Get(name)
 	if err != nil {
 		return err
 	}
+	m.killLiveForwards(inst)
 	if err := m.rt.Stop(ctx, inst); err != nil {
 		return err
 	}
@@ -299,6 +501,8 @@ func (m *Manager) Shutdown(ctx context.Context, name string) error {
 	}
 	inst.Status = vm.StatusStopped
 	inst.PID = 0
+	inst.QMPPath = ""
+	inst.LiveForwards = nil
 	return m.st.Put(inst)
 }
 
@@ -307,11 +511,199 @@ func (m *Manager) Stop(ctx context.Context, name string) error {
 	return m.Shutdown(ctx, name)
 }
 
+
+// Pause freezes guest vCPUs via QMP stop (mock tracks paused state).
+func (m *Manager) Pause(ctx context.Context, name string) error {
+	inst, err := m.st.Get(name)
+	if err != nil {
+		return err
+	}
+	if inst.Status == vm.StatusPaused {
+		return fmt.Errorf("vm %q is already paused", name)
+	}
+	if inst.Status != vm.StatusRunning || !m.rt.Running(inst) {
+		return fmt.Errorf("vm %q is not running", name)
+	}
+	if err := m.rt.Pause(ctx, inst); err != nil {
+		return err
+	}
+	inst.Status = vm.StatusPaused
+	if err := m.st.Put(inst); err != nil {
+		return err
+	}
+	m.log.Info("vm paused", "name", name)
+	return nil
+}
+
+// Resume continues a paused VM via QMP cont.
+func (m *Manager) Resume(ctx context.Context, name string) error {
+	inst, err := m.st.Get(name)
+	if err != nil {
+		return err
+	}
+	if inst.Status != vm.StatusPaused {
+		return fmt.Errorf("vm %q is not paused (status=%s)", name, inst.Status)
+	}
+	if !m.rt.Running(inst) {
+		return fmt.Errorf("vm %q process is not running", name)
+	}
+	if err := m.rt.Resume(ctx, inst); err != nil {
+		return err
+	}
+	inst.Status = vm.StatusRunning
+	if err := m.st.Put(inst); err != nil {
+		return err
+	}
+	m.log.Info("vm resumed", "name", name)
+	return nil
+}
+
+// AddForward starts an SSH local port forward (ssh -N -L) for a running VM
+// and records it in inst.LiveForwards. hostPort 0 allocates a free port.
+func (m *Manager) AddForward(ctx context.Context, name string, hostPort, guestPort int) (*vm.LiveForward, error) {
+	inst, err := m.st.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if inst.Status != vm.StatusRunning && inst.Status != vm.StatusPaused {
+		return nil, fmt.Errorf("vm %q is not running (status=%s)", name, inst.Status)
+	}
+	if !m.rt.Running(inst) {
+		return nil, fmt.Errorf("vm %q process is not running", name)
+	}
+	if guestPort <= 0 || guestPort > 65535 {
+		return nil, fmt.Errorf("guest port %d out of range", guestPort)
+	}
+	if hostPort < 0 || hostPort > 65535 {
+		return nil, fmt.Errorf("host port %d out of range", hostPort)
+	}
+	if hostPort > 0 && hostPort < 1024 {
+		return nil, fmt.Errorf("host port %d is privileged (< 1024)", hostPort)
+	}
+	if hostPort == 0 {
+		p, err := netutil.FreeTCPPort()
+		if err != nil {
+			return nil, fmt.Errorf("allocate host port: %w", err)
+		}
+		hostPort = p
+	}
+	for _, f := range inst.LiveForwards {
+		if f.HostPort == hostPort {
+			return nil, fmt.Errorf("host port %d already forwarded on %q", hostPort, name)
+		}
+	}
+	if inst.SSHPort <= 0 {
+		return nil, fmt.Errorf("vm %q has no SSH port", name)
+	}
+
+	lf := vm.LiveForward{HostPort: hostPort, GuestPort: guestPort}
+
+	if m.cfg.Hypervisor == "mock" {
+		lf.PID = 1
+		inst.LiveForwards = append(inst.LiveForwards, lf)
+		if err := m.st.Put(inst); err != nil {
+			return nil, err
+		}
+		return &lf, nil
+	}
+
+	priv, _, err := sshkey.Ensure(m.cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("ssh key: %w", err)
+	}
+	user := m.resolveSSHUser(inst.Image)
+	host := inst.IP
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	args := guest.SSHArgs(user, host, inst.SSHPort, priv)
+	if len(args) == 0 {
+		return nil, fmt.Errorf("ssh args empty")
+	}
+	userHost := args[len(args)-1]
+	base := args[:len(args)-1]
+	fwdSpec := fmt.Sprintf("%d:127.0.0.1:%d", hostPort, guestPort)
+	full := append([]string{}, base...)
+	full = append(full, "-N", "-L", fwdSpec, "-o", "ExitOnForwardFailure=yes", "-o", "BatchMode=yes", userHost)
+	_ = ctx
+	cmd := exec.Command("ssh", full...)
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start ssh forward: %w", err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if cmd.Process == nil {
+		return nil, fmt.Errorf("ssh forward process missing")
+	}
+	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		_ = cmd.Wait()
+		return nil, fmt.Errorf("ssh forward died: %w", err)
+	}
+	go func() { _ = cmd.Wait() }()
+	lf.PID = cmd.Process.Pid
+	inst.LiveForwards = append(inst.LiveForwards, lf)
+	if err := m.st.Put(inst); err != nil {
+		_ = killPID(lf.PID)
+		return nil, err
+	}
+	m.log.Info("live forward added", "name", name, "host_port", hostPort, "guest_port", guestPort, "pid", lf.PID)
+	return &lf, nil
+}
+
+// RemoveForward stops the SSH local forward bound to hostPort on the named VM.
+func (m *Manager) RemoveForward(_ context.Context, name string, hostPort int) error {
+	inst, err := m.st.Get(name)
+	if err != nil {
+		return err
+	}
+	idx := -1
+	for i, f := range inst.LiveForwards {
+		if f.HostPort == hostPort {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("no live forward on host port %d for %q", hostPort, name)
+	}
+	f := inst.LiveForwards[idx]
+	_ = killPID(f.PID)
+	inst.LiveForwards = append(inst.LiveForwards[:idx], inst.LiveForwards[idx+1:]...)
+	if err := m.st.Put(inst); err != nil {
+		return err
+	}
+	m.log.Info("live forward removed", "name", name, "host_port", hostPort)
+	return nil
+}
+
+func (m *Manager) killLiveForwards(inst *vm.Instance) {
+	for _, f := range inst.LiveForwards {
+		_ = killPID(f.PID)
+	}
+	inst.LiveForwards = nil
+}
+
+func killPID(pid int) error {
+	if pid <= 0 {
+		return nil
+	}
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	_ = p.Signal(syscall.SIGTERM)
+	time.Sleep(50 * time.Millisecond)
+	_ = p.Signal(syscall.SIGKILL)
+	return nil
+}
+
 // Start boots a stopped persistent (or any stored) VM using its existing disk.
 func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) {
 	inst, err := m.st.Get(name)
 	if err != nil {
 		return nil, err
+	}
+	if inst.Status == vm.StatusPaused && m.rt.Running(inst) {
+		return nil, fmt.Errorf("vm %q is paused; use resume", name)
 	}
 	if inst.Status == vm.StatusRunning && m.rt.Running(inst) {
 		return nil, fmt.Errorf("vm %q already running", name)
@@ -362,21 +754,9 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 
 	readyDeadline := time.Now().Add(m.cfg.ReadyTimeout)
 	if m.cfg.Hypervisor != "mock" && inst.SSHPort > 0 {
-		user := m.resolveSSHUser(inst.Image)
-		waitCtx, cancel := context.WithDeadline(ctx, readyDeadline)
-		sshUser := user
-		if err := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, user, priv); err != nil {
-			if err2 := guest.WaitSSH(waitCtx, inst.IP, inst.SSHPort, "grain", priv); err2 != nil {
-				m.log.Warn("ssh not ready yet", "name", name, "err", err)
-				sshUser = ""
-			} else {
-				sshUser = "grain"
-			}
-		}
-		cancel()
-
+		sshUser := m.waitSSH(ctx, inst, inst.Image, priv, readyDeadline)
 		if sshUser != "" && inst.AgentPort > 0 {
-			m.waitOrDeployAgent(ctx, inst, sshUser, priv, readyDeadline, nil)
+			_ = m.waitOrDeployAgent(ctx, inst, sshUser, priv, readyDeadline, nil, false)
 		}
 	}
 
@@ -414,7 +794,8 @@ func (m *Manager) waitOrDeployAgent(
 	sshUser, privKey string,
 	readyDeadline time.Time,
 	emit func(vm.CreateEvent),
-) {
+	hard bool,
+) error {
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort)
 	client := &agent.Client{BaseURL: baseURL}
 	baked := m.imageHasAgent(inst.Image)
@@ -445,7 +826,7 @@ func (m *Manager) waitOrDeployAgent(
 	probeCancel()
 	if probeErr == nil {
 		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "baked", baked)
-		return
+		return nil
 	}
 
 	// Deploy if we have a linux binary (golden images usually skip this path).
@@ -481,9 +862,13 @@ func (m *Manager) waitOrDeployAgent(
 	defer waitCancel()
 	if err := agent.Wait(waitCtx, client); err != nil {
 		m.log.Warn("guest agent not ready", "name", inst.Name, "agent_port", inst.AgentPort, "err", err)
-		return
+		if hard {
+			return err
+		}
+		return nil
 	}
 	m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort)
+	return nil
 }
 
 // imageHasAgent reports whether the base image ships grain-agent (catalog or local meta).
@@ -598,7 +983,7 @@ func mountSpecs(mounts []vm.Mount) []cloudinit.MountSpec {
 // activeStatus is true for VMs that consume host resources toward caps.
 // Stopped and error VMs do not count; creating does (in-flight create).
 func activeStatus(s vm.Status) bool {
-	return s == vm.StatusRunning || s == vm.StatusCreating
+	return s == vm.StatusRunning || s == vm.StatusCreating || s == vm.StatusPaused
 }
 
 // checkResourceCaps rejects Create/Start when per-VM or host totals would exceed config.
