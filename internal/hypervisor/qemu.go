@@ -59,6 +59,11 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	inst.SSHPort = sshPort
 	inst.IP = "127.0.0.1"
 
+	// Allocate any HostPort 0 entries left on the instance (manager usually does this first).
+	if err := AllocateForwardPorts(inst.Forwards); err != nil {
+		return err
+	}
+
 	pidFile := filepath.Join(vmDir, "qemu.pid")
 	_ = os.Remove(pidFile)
 
@@ -75,7 +80,7 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		"-smp", strconv.Itoa(inst.CPUs),
 		"-m", strconv.Itoa(inst.MemoryMB),
 		"-drive", fmt.Sprintf("file=%s,if=virtio,format=%s,cache=writeback", diskPath, driveFmt),
-		"-netdev", fmt.Sprintf("user,id=net0,hostfwd=tcp:127.0.0.1:%d-:22", sshPort),
+		"-netdev", buildUserNetdev(sshPort, inst.Forwards),
 		"-device", "virtio-net-pci,netdev=net0",
 		"-display", "none",
 		"-serial", "file:" + filepath.Join(vmDir, "serial.log"),

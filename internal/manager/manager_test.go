@@ -249,6 +249,91 @@ func TestCreateEmitsEvents(t *testing.T) {
 	}
 }
 
+func TestCreateWithForwardsPersistsHostPorts(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name: "web",
+		Forwards: []vm.PortForward{
+			{HostPort: 0, GuestPort: 80},
+			{HostPort: 8443, GuestPort: 443, Proto: "tcp"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inst.Forwards) != 2 {
+		t.Fatalf("forwards %v", inst.Forwards)
+	}
+	if inst.Forwards[0].HostPort < 1024 {
+		t.Fatalf("auto host port not allocated: %d", inst.Forwards[0].HostPort)
+	}
+	if inst.Forwards[0].GuestPort != 80 {
+		t.Fatalf("guest %d", inst.Forwards[0].GuestPort)
+	}
+	if inst.Forwards[1].HostPort != 8443 || inst.Forwards[1].GuestPort != 443 {
+		t.Fatalf("fixed forward %+v", inst.Forwards[1])
+	}
+
+	// reloaded from store should keep allocated ports
+	got, err := m.Get("web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Forwards) != 2 {
+		t.Fatalf("persisted forwards %v", got.Forwards)
+	}
+	if got.Forwards[0].HostPort != inst.Forwards[0].HostPort {
+		t.Fatalf("persisted host port %d want %d", got.Forwards[0].HostPort, inst.Forwards[0].HostPort)
+	}
+	if got.Forwards[1].HostPort != 8443 {
+		t.Fatalf("persisted fixed %d", got.Forwards[1].HostPort)
+	}
+}
+
+func TestCreateRejectsPrivilegedHostPort(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	_, err := m.Create(context.Background(), vm.CreateOpts{
+		Name: "bad",
+		Forwards: []vm.PortForward{
+			{HostPort: 80, GuestPort: 80},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected privileged host port error")
+	}
+}
+
+func TestStartReappliesForwards(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Persistent: true,
+		Name:       "svc",
+		Forwards: []vm.PortForward{
+			{HostPort: 18080, GuestPort: 8080},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := inst.Forwards[0].HostPort
+	if err := m.Shutdown(context.Background(), "svc"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Start(context.Background(), "svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Forwards) != 1 || got.Forwards[0].HostPort != host {
+		t.Fatalf("forwards after start %+v want host %d", got.Forwards, host)
+	}
+	if got.Forwards[0].GuestPort != 8080 {
+		t.Fatalf("guest %d", got.Forwards[0].GuestPort)
+	}
+}
+
 func TestResourceCapMaxVMs(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()

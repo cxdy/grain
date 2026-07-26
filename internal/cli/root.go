@@ -36,8 +36,10 @@ func Root(version string) *cobra.Command {
   grain image pull      download base OS image
   grain new             ephemeral sandbox
   grain new -p          persistent sandbox
+  grain new -P 8080:80  publish host:guest ports
   grain stop / start    stop or restart a persistent VM
   grain ls / rm / sh / x / cp
+  grain fwd ls          list port forwards
   grain logs            guest serial / qemu logs
   grain doctor          check dependencies
   grain down            stop daemon`,
@@ -57,6 +59,7 @@ func Root(version string) *cobra.Command {
 		cmdX(&cfgPath),
 		cmdCp(&cfgPath),
 		cmdLogs(&cfgPath),
+		cmdFwd(&cfgPath),
 		cmdImage(&cfgPath),
 		cmdDoctor(&cfgPath),
 		cmdVersion(version),
@@ -170,6 +173,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var cpus, mem, disk int
 	var image string
 	var userdataFile string
+	var publish []string
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Launch a sandbox (ephemeral by default)",
@@ -193,6 +197,10 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				}
 				userdata = string(b)
 			}
+			fwds, err := parsePublishFlags(publish)
+			if err != nil {
+				return err
+			}
 			onEvent, stop := createProgressEvents("creating")
 			start := time.Now()
 			inst, err := c.CreateStream(ctx, api.CreateRequest{
@@ -203,6 +211,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				DiskGB:     disk,
 				Image:      image,
 				Userdata:   userdata,
+				Forwards:   fwds,
 			}, onEvent)
 			stop()
 			if err != nil {
@@ -211,6 +220,13 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			fmt.Printf("created %s  status=%s  persist=%v", inst.Name, inst.Status, inst.Persistent)
 			if inst.SSHPort > 0 {
 				fmt.Printf("  ssh=:%d", inst.SSHPort)
+			}
+			for _, f := range inst.Forwards {
+				proto := f.Proto
+				if proto == "" {
+					proto = "tcp"
+				}
+				fmt.Printf("  %s=:%d→%d", proto, f.HostPort, f.GuestPort)
 			}
 			fmt.Printf("  (%s)\n", time.Since(start).Round(time.Second))
 			fmt.Printf("next:  grain sh %s\n", inst.Name)
@@ -225,6 +241,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().IntVarP(&disk, "disk", "d", 0, "disk GiB")
 	cmd.Flags().StringVarP(&image, "image", "i", "", "base image id (default from config)")
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
+	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
 	return cmd
 }
 

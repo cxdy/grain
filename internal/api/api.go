@@ -83,6 +83,7 @@ type createBody struct {
 	Image      string            `json:"image"`
 	Tags       map[string]string `json:"tags"`
 	Userdata   string            `json:"userdata"`
+	Forwards   []vm.PortForward  `json:"forwards"`
 }
 
 func wantsCreateStream(r *http.Request) bool {
@@ -112,6 +113,7 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		Image:      body.Image,
 		Tags:       body.Tags,
 		Userdata:   body.Userdata,
+		Forwards:   body.Forwards,
 	}
 
 	if wantsCreateStream(r) {

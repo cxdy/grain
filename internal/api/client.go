@@ -24,6 +24,7 @@ type CreateRequest struct {
 	Image      string            `json:"image,omitempty"`
 	Tags       map[string]string `json:"tags,omitempty"`
 	Userdata   string            `json:"userdata,omitempty"`
+	Forwards   []vm.PortForward  `json:"forwards,omitempty"`
 }
 
 // Create launches a VM via the daemon API (blocking JSON response).

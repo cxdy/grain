@@ -97,6 +97,11 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		return nil, err
 	}
 
+	fwds, err := copyAndPrepareForwards(opts.Forwards)
+	if err != nil {
+		return nil, err
+	}
+
 	inst := &vm.Instance{
 		Name:       name,
 		Status:     vm.StatusCreating,
@@ -106,6 +111,7 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		DiskGB:     diskGB,
 		Image:      img,
 		Tags:       opts.Tags,
+		Forwards:   fwds,
 		CreatedAt:  time.Now().UTC(),
 	}
 	if err := m.st.Put(inst); err != nil {
@@ -295,6 +301,14 @@ func (m *Manager) Start(ctx context.Context, name string) (*vm.Instance, error) 
 		return nil, err
 	}
 
+	// Re-apply forwards from meta: allocate any HostPort 0, validate others.
+	if err := hypervisor.ValidateForwards(inst.Forwards); err != nil {
+		return nil, err
+	}
+	if err := hypervisor.AllocateForwardPorts(inst.Forwards); err != nil {
+		return nil, err
+	}
+
 	priv, pub, err := sshkey.Ensure(m.cfg.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("ssh key: %w", err)
@@ -358,6 +372,23 @@ func (m *Manager) CleanupEphemeral(ctx context.Context) error {
 func DiskExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// copyAndPrepareForwards validates opts.Forwards, deep-copies them, and
+// allocates free host ports where HostPort is 0.
+func copyAndPrepareForwards(in []vm.PortForward) ([]vm.PortForward, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	if err := hypervisor.ValidateForwards(in); err != nil {
+		return nil, err
+	}
+	out := make([]vm.PortForward, len(in))
+	copy(out, in)
+	if err := hypervisor.AllocateForwardPorts(out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // activeStatus is true for VMs that consume host resources toward caps.
