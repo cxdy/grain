@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -66,11 +67,22 @@ func Root(version string) *cobra.Command {
 		cmdFwd(&cfgPath),
 		cmdProfile(&cfgPath),
 		cmdImage(&cfgPath),
+		cmdAgent(&cfgPath),
 		cmdDoctor(&cfgPath),
 		cmdVersion(version),
 	)
 	return root
 }
+
+// exitCodeError carries a remote process exit code for main to os.Exit with.
+type exitCodeError int
+
+func (e exitCodeError) Error() string {
+	return fmt.Sprintf("exit status %d", int(e))
+}
+
+// ExitCode implements the interface checked by cmd/grain.
+func (e exitCodeError) ExitCode() int { return int(e) }
 
 func loadCfg(path *string) (config.Config, error) {
 	return config.Load(*path)
@@ -558,12 +570,16 @@ func cmdSh(cfgPath *string) *cobra.Command {
 }
 
 func cmdX(cfgPath *string) *cobra.Command {
-	return &cobra.Command{
+	var forceSSH, forceAgent bool
+	cmd := &cobra.Command{
 		Use:   "x [name] -- [cmd...]",
-		Short: "Exec a command in a VM (name optional if only one)",
+		Short: "Exec a command in a VM (prefers guest agent; SSH fallback)",
 		// name optional: grain x -- uname -a   OR   grain x sbox-1 -- uname -a
 		DisableFlagParsing: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if forceSSH && forceAgent {
+				return fmt.Errorf("cannot use --ssh and --agent together")
+			}
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
 				return err
@@ -576,10 +592,9 @@ func cmdX(cfgPath *string) *cobra.Command {
 			if len(args) == 0 {
 				return fmt.Errorf("usage: grain x [name] -- cmd args\n  example: grain new && grain x -- uname -a")
 			}
-			// If first token looks like a flag remnant, error
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			list, err := c.List(ctx)
+			ctxList, cancelList := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancelList()
+			list, err := c.List(ctxList)
 			if err != nil {
 				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
 			}
@@ -609,6 +624,23 @@ func cmdX(cfgPath *string) *cobra.Command {
 				return fmt.Errorf("missing command after --")
 			}
 
+			// Prefer guest agent when available (unless --ssh).
+			if !forceSSH {
+				err := execViaAgent(c, name, remote, forceAgent)
+				if err == nil {
+					return nil
+				}
+				// Remote command completed via agent (possibly non-zero) — do not SSH-fallback.
+				var ec exitCodeError
+				if errors.As(err, &ec) {
+					return err
+				}
+				if forceAgent {
+					return err
+				}
+				// Agent unavailable or transport failure → fall through to SSH.
+			}
+
 			host, port, err := getVMSSH(c, name)
 			if err != nil {
 				return err
@@ -621,6 +653,100 @@ func cmdX(cfgPath *string) *cobra.Command {
 			return ssh.Run()
 		},
 	}
+	cmd.Flags().BoolVar(&forceSSH, "ssh", false, "force SSH exec (skip guest agent)")
+	cmd.Flags().BoolVar(&forceAgent, "agent", false, "force guest agent only (error if unavailable)")
+	return cmd
+}
+
+// errAgentSkip means the agent path was not usable (no port / unhealthy); fall back to SSH.
+var errAgentSkip = fmt.Errorf("agent skip")
+
+// execViaAgent tries daemon → grain-agent exec. On success prints stdout/stderr and
+// returns nil or exitCodeError. force requires agent; otherwise returns errAgentSkip
+// when the agent is not available so the caller can fall back to SSH.
+func execViaAgent(c *api.Client, name string, remote []string, force bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	inst, err := c.Get(ctx, name)
+	if err != nil {
+		if force {
+			return err
+		}
+		return errAgentSkip
+	}
+	if inst.AgentPort == 0 {
+		if force {
+			return fmt.Errorf("agent not available (no agent port for %s)", name)
+		}
+		return errAgentSkip
+	}
+
+	if !force {
+		if _, err := c.AgentHealth(ctx, name); err != nil {
+			return errAgentSkip
+		}
+	}
+
+	res, err := c.Exec(ctx, name, remote[0], remote[1:]...)
+	if err != nil {
+		if force {
+			return fmt.Errorf("agent exec: %w", err)
+		}
+		return err // non-skip failure → caller may still SSH-fallback
+	}
+	if res.Stdout != "" {
+		fmt.Print(res.Stdout)
+	}
+	if res.Stderr != "" {
+		fmt.Fprint(os.Stderr, res.Stderr)
+	}
+	if res.Error != "" && res.ExitCode != 0 {
+		// Soft error from agent (timeout, spawn failure) with non-zero code.
+		if res.Stdout == "" && res.Stderr == "" {
+			fmt.Fprintln(os.Stderr, res.Error)
+		}
+	}
+	if res.ExitCode != 0 {
+		return exitCodeError(res.ExitCode)
+	}
+	return nil
+}
+
+func cmdAgent(cfgPath *string) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "agent",
+		Short: "Guest grain-agent helpers",
+	}
+	root.AddCommand(&cobra.Command{
+		Use:   "health [name]",
+		Short: "Check guest grain-agent health",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c := clientFrom(cfg)
+			name, err := resolveVMName(c, args, false)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			h, err := c.AgentHealth(ctx, name)
+			if err != nil {
+				return err
+			}
+			b, err := json.MarshalIndent(h, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(b))
+			return nil
+		},
+	})
+	return root
 }
 
 func cmdCp(cfgPath *string) *cobra.Command {

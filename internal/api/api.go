@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/manager"
 	"github.com/cxdy/grain/internal/observability"
 	"github.com/cxdy/grain/internal/vm"
@@ -45,6 +46,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /vms/{name}", s.deleteVM)
 	mux.HandleFunc("POST /vms/{name}/shutdown", s.shutdownVM)
 	mux.HandleFunc("POST /vms/{name}/start", s.startVM)
+	mux.HandleFunc("POST /vms/{name}/exec", s.execVM)
+	mux.HandleFunc("GET /vms/{name}/agent/health", s.agentHealth)
 	return loggingMiddleware(s.log, mux)
 }
 
@@ -243,6 +246,69 @@ func (s *Server) startVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, inst)
+}
+
+// agentClient returns a host-side agent client for the VM, or an HTTP status + error.
+func (s *Server) agentClient(name string) (*agent.Client, int, error) {
+	inst, err := s.mgr.Get(name)
+	if err != nil {
+		return nil, http.StatusNotFound, err
+	}
+	if inst.AgentPort == 0 {
+		return nil, http.StatusServiceUnavailable, errors.New("agent not available")
+	}
+	return &agent.Client{
+		BaseURL: fmt.Sprintf("http://127.0.0.1:%d", inst.AgentPort),
+	}, 0, nil
+}
+
+// execVM proxies buffered command execution to the guest grain-agent.
+// Non-zero remote exit codes still return HTTP 200 with exit_code set.
+// Agent connection / transport failures return 502.
+func (s *Server) execVM(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+
+	q := r.URL.Query()
+	cmdName := q.Get("cmd")
+	if cmdName == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("cmd is required"))
+		return
+	}
+	args := q["args"]
+
+	// buffered defaults to true; explicit false is not supported via API yet.
+	if q.Get("buffered") == "false" {
+		writeErr(w, http.StatusNotImplemented, errors.New("streaming exec not implemented"))
+		return
+	}
+
+	result, err := ac.ExecBuffered(r.Context(), cmdName, args...)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// agentHealth proxies GET /health from the guest grain-agent.
+func (s *Server) agentHealth(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	h, err := ac.Health(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusServiceUnavailable, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, h)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

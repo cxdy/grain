@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
+	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/vm"
 )
 
@@ -180,6 +182,74 @@ func (c *Client) Shutdown(ctx context.Context, name string) error {
 		return decodeAPIError(res)
 	}
 	return nil
+}
+
+// Exec runs a command in the guest via the daemon → grain-agent path.
+// Non-zero remote exit codes are returned in *agent.ExecResult with a nil error.
+func (c *Client) Exec(ctx context.Context, name, cmd string, args ...string) (*agent.ExecResult, error) {
+	if cmd == "" {
+		return nil, errors.New("cmd is required")
+	}
+	u, err := url.Parse(c.Base + "/vms/" + url.PathEscape(name) + "/exec")
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	q.Set("cmd", cmd)
+	for _, a := range args {
+		q.Add("args", a)
+	}
+	q.Set("buffered", "true")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(res.Body, 32<<20))
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode >= 300 {
+		var e struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(body, &e) == nil && e.Error != "" {
+			return nil, errors.New(e.Error)
+		}
+		return nil, fmt.Errorf("status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result agent.ExecResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("exec decode: %w", err)
+	}
+	return &result, nil
+}
+
+// AgentHealth proxies guest grain-agent GET /health for the named VM.
+func (c *Client) AgentHealth(ctx context.Context, name string) (*agent.Health, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Base+"/vms/"+url.PathEscape(name)+"/agent/health", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var h agent.Health
+	if err := json.NewDecoder(res.Body).Decode(&h); err != nil {
+		return nil, err
+	}
+	return &h, nil
 }
 
 func decodeAPIError(res *http.Response) error {
