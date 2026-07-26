@@ -252,6 +252,345 @@ func (c *Client) AgentHealth(ctx context.Context, name string) (*agent.Health, e
 	return &h, nil
 }
 
+// ExecStream runs a command via the daemon with buffered=false and calls onFrame
+// for each NDJSON ExecFrame. Returns the final exit code from the exit frame.
+func (c *Client) ExecStream(ctx context.Context, name string, opts agent.ExecOpts, onFrame func(agent.ExecFrame) error) (exitCode int, err error) {
+	if opts.Cmd == "" {
+		return -1, errors.New("cmd is required")
+	}
+	if onFrame == nil {
+		return -1, errors.New("onFrame is required")
+	}
+	u, err := url.Parse(c.Base + "/vms/" + url.PathEscape(name) + "/exec")
+	if err != nil {
+		return -1, err
+	}
+	q := u.Query()
+	q.Set("cmd", opts.Cmd)
+	for _, a := range opts.Args {
+		q.Add("args", a)
+	}
+	q.Set("buffered", "false")
+	if opts.UID != nil {
+		q.Set("uid", fmt.Sprintf("%d", *opts.UID))
+	}
+	if opts.GID != nil {
+		q.Set("gid", fmt.Sprintf("%d", *opts.GID))
+	}
+	if opts.Cwd != "" {
+		q.Set("cwd", opts.Cwd)
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), nil)
+	if err != nil {
+		return -1, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return -1, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return -1, decodeAPIError(res)
+	}
+
+	sc := bufio.NewScanner(res.Body)
+	sc.Buffer(make([]byte, 64*1024), 16<<20)
+
+	gotExit := false
+	code := -1
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var frame agent.ExecFrame
+		if err := json.Unmarshal([]byte(line), &frame); err != nil {
+			return -1, fmt.Errorf("exec stream frame decode: %w: %s", err, line)
+		}
+		if err := onFrame(frame); err != nil {
+			return -1, err
+		}
+		switch frame.Type {
+		case "exit":
+			gotExit = true
+			if frame.ExitCode != nil {
+				code = *frame.ExitCode
+			}
+		case "error":
+			msg := frame.Error
+			if msg == "" {
+				msg = "exec stream error"
+			}
+			return -1, errors.New(msg)
+		}
+	}
+	if err := sc.Err(); err != nil && !errors.Is(err, io.EOF) {
+		return -1, err
+	}
+	if !gotExit {
+		return -1, errors.New("exec stream ended without exit frame")
+	}
+	return code, nil
+}
+
+// PutFile uploads raw bytes to guestPath on the named VM via PUT /vms/{name}/cp.
+func (c *Client) PutFile(ctx context.Context, name, guestPath string, r io.Reader, size int64, opts agent.CPOpts) error {
+	if guestPath == "" {
+		return errors.New("path is required")
+	}
+	u, err := url.Parse(c.Base + "/vms/" + url.PathEscape(name) + "/cp")
+	if err != nil {
+		return err
+	}
+	q := u.Query()
+	q.Set("path", guestPath)
+	q.Set("mode", "binary")
+	if opts.UID != nil {
+		q.Set("uid", fmt.Sprintf("%d", *opts.UID))
+	}
+	if opts.GID != nil {
+		q.Set("gid", fmt.Sprintf("%d", *opts.GID))
+	}
+	if opts.Mode != "" {
+		q.Set("permissions", opts.Mode)
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), r)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	if size >= 0 {
+		req.ContentLength = size
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// GetFile downloads guestPath from the named VM into w.
+func (c *Client) GetFile(ctx context.Context, name, guestPath string, w io.Writer) error {
+	if guestPath == "" {
+		return errors.New("path is required")
+	}
+	u, err := url.Parse(c.Base + "/vms/" + url.PathEscape(name) + "/cp")
+	if err != nil {
+		return err
+	}
+	q := u.Query()
+	q.Set("path", guestPath)
+	q.Set("mode", "binary")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	_, err = io.Copy(w, res.Body)
+	return err
+}
+
+// PutTar extracts a tar stream at guestPath on the named VM.
+func (c *Client) PutTar(ctx context.Context, name, guestPath string, r io.Reader) error {
+	if guestPath == "" {
+		return errors.New("path is required")
+	}
+	u, err := url.Parse(c.Base + "/vms/" + url.PathEscape(name) + "/cp")
+	if err != nil {
+		return err
+	}
+	q := u.Query()
+	q.Set("path", guestPath)
+	q.Set("mode", "tar")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), r)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-tar")
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// GetTar downloads guestPath as a tar stream from the named VM into w.
+func (c *Client) GetTar(ctx context.Context, name, guestPath string, w io.Writer) error {
+	if guestPath == "" {
+		return errors.New("path is required")
+	}
+	u, err := url.Parse(c.Base + "/vms/" + url.PathEscape(name) + "/cp")
+	if err != nil {
+		return err
+	}
+	q := u.Query()
+	q.Set("path", guestPath)
+	q.Set("mode", "tar")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	_, err = io.Copy(w, res.Body)
+	return err
+}
+
+// ReadDir lists directory entries at guestPath on the named VM.
+func (c *Client) ReadDir(ctx context.Context, name, guestPath string) ([]agent.FSInfo, error) {
+	if guestPath == "" {
+		return nil, errors.New("path is required")
+	}
+	u, err := url.Parse(c.Base + "/vms/" + url.PathEscape(name) + "/fs/readdir")
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	q.Set("path", guestPath)
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var out []agent.FSInfo
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("readdir decode: %w", err)
+	}
+	return out, nil
+}
+
+// Stat returns metadata for guestPath on the named VM.
+func (c *Client) Stat(ctx context.Context, name, guestPath string) (*agent.FSInfo, error) {
+	if guestPath == "" {
+		return nil, errors.New("path is required")
+	}
+	u, err := url.Parse(c.Base + "/vms/" + url.PathEscape(name) + "/fs/stat")
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	q.Set("path", guestPath)
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var info agent.FSInfo
+	if err := json.NewDecoder(res.Body).Decode(&info); err != nil {
+		return nil, fmt.Errorf("stat decode: %w", err)
+	}
+	return &info, nil
+}
+
+// Mkdir creates a directory on the named VM via POST /vms/{name}/fs/mkdir.
+func (c *Client) Mkdir(ctx context.Context, name, guestPath string, recursive bool, mode string) error {
+	if guestPath == "" {
+		return errors.New("path is required")
+	}
+	body, err := json.Marshal(agent.MkdirRequest{
+		Path:      guestPath,
+		Recursive: recursive,
+		Mode:      mode,
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+url.PathEscape(name)+"/fs/mkdir", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
+// Remove deletes guestPath on the named VM. If recursive, uses RemoveAll.
+func (c *Client) Remove(ctx context.Context, name, guestPath string, recursive bool) error {
+	if guestPath == "" {
+		return errors.New("path is required")
+	}
+	u, err := url.Parse(c.Base + "/vms/" + url.PathEscape(name) + "/fs/remove")
+	if err != nil {
+		return err
+	}
+	q := u.Query()
+	q.Set("path", guestPath)
+	if recursive {
+		q.Set("recursive", "true")
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u.String(), nil)
+	if err != nil {
+		return err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
 func decodeAPIError(res *http.Response) error {
 	var e struct {
 		Error string `json:"error"`

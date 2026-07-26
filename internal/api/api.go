@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +50,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /vms/{name}/start", s.startVM)
 	mux.HandleFunc("POST /vms/{name}/exec", s.execVM)
 	mux.HandleFunc("GET /vms/{name}/agent/health", s.agentHealth)
+	mux.HandleFunc("PUT /vms/{name}/cp", s.putCP)
+	mux.HandleFunc("GET /vms/{name}/cp", s.getCP)
+	mux.HandleFunc("GET /vms/{name}/fs/readdir", s.fsReadDir)
+	mux.HandleFunc("GET /vms/{name}/fs/stat", s.fsStat)
+	mux.HandleFunc("POST /vms/{name}/fs/mkdir", s.fsMkdir)
+	mux.HandleFunc("DELETE /vms/{name}/fs/remove", s.fsRemove)
 	return loggingMiddleware(s.log, mux)
 }
 
@@ -262,8 +270,9 @@ func (s *Server) agentClient(name string) (*agent.Client, int, error) {
 	}, 0, nil
 }
 
-// execVM proxies buffered command execution to the guest grain-agent.
-// Non-zero remote exit codes still return HTTP 200 with exit_code set.
+// execVM proxies command execution to the guest grain-agent.
+// buffered=true (default): JSON ExecResult. Non-zero remote exit still HTTP 200.
+// buffered=false: proxies NDJSON ExecFrame stream (application/x-ndjson).
 // Agent connection / transport failures return 502.
 func (s *Server) execVM(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -281,18 +290,355 @@ func (s *Server) execVM(w http.ResponseWriter, r *http.Request) {
 	}
 	args := q["args"]
 
-	// buffered defaults to true; explicit false is not supported via API yet.
 	if q.Get("buffered") == "false" {
-		writeErr(w, http.StatusNotImplemented, errors.New("streaming exec not implemented"))
+		s.execVMStream(w, r, ac, cmdName, args)
 		return
 	}
 
-	result, err := ac.ExecBuffered(r.Context(), cmdName, args...)
+	opts := agent.ExecOpts{Cmd: cmdName, Args: args}
+	if v := q.Get("uid"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid uid"))
+			return
+		}
+		u := uint32(n)
+		opts.UID = &u
+	}
+	if v := q.Get("gid"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid gid"))
+			return
+		}
+		g := uint32(n)
+		opts.GID = &g
+	}
+	opts.Cwd = q.Get("cwd")
+
+	result, err := ac.ExecBufferedOpts(r.Context(), opts)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// execVMStream proxies POST /exec?buffered=false NDJSON from the guest agent.
+func (s *Server) execVMStream(w http.ResponseWriter, r *http.Request, ac *agent.Client, cmd string, args []string) {
+	u, err := url.Parse(strings.TrimRight(ac.BaseURL, "/") + "/exec")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	q := u.Query()
+	q.Set("cmd", cmd)
+	for _, a := range args {
+		q.Add("args", a)
+	}
+	q.Set("buffered", "false")
+	orig := r.URL.Query()
+	for _, k := range []string{"uid", "gid", "cwd"} {
+		if v := orig.Get(k); v != "" {
+			q.Set(k, v)
+		}
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, u.String(), nil)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	httpClient := agentLongHTTP(ac)
+	res, err := httpClient.Do(req)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+		writeErr(w, http.StatusBadGateway, fmt.Errorf("agent exec stream: status %d: %s", res.StatusCode, strings.TrimSpace(string(body))))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+
+	if flusher, ok := w.(http.Flusher); ok {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := res.Body.Read(buf)
+			if n > 0 {
+				if _, werr := w.Write(buf[:n]); werr != nil {
+					return
+				}
+				flusher.Flush()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}
+	_, _ = io.Copy(w, res.Body)
+}
+
+// agentLongHTTP returns an HTTP client with no overall Timeout so streaming
+// and large copies are governed by the request context.
+func agentLongHTTP(ac *agent.Client) *http.Client {
+	if ac.HTTP != nil {
+		if ac.HTTP.Timeout == 0 {
+			return ac.HTTP
+		}
+		clone := *ac.HTTP
+		clone.Timeout = 0
+		return &clone
+	}
+	return &http.Client{}
+}
+
+// putCP proxies file/tar upload to the guest agent (agent POST /cp).
+// Query: path (required), mode=binary|tar, uid, gid, permissions.
+func (s *Server) putCP(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	if r.Body != nil {
+		defer r.Body.Close()
+	}
+
+	q := r.URL.Query()
+	path := q.Get("path")
+	if path == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("path is required"))
+		return
+	}
+	mode := q.Get("mode")
+	if mode == "" {
+		mode = "binary"
+	}
+
+	switch mode {
+	case "binary":
+		opts := agent.CPOpts{Mode: q.Get("permissions")}
+		if v := q.Get("uid"); v != "" {
+			n, err := strconv.ParseUint(v, 10, 32)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, errors.New("invalid uid"))
+				return
+			}
+			u := uint32(n)
+			opts.UID = &u
+		}
+		if v := q.Get("gid"); v != "" {
+			n, err := strconv.ParseUint(v, 10, 32)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, errors.New("invalid gid"))
+				return
+			}
+			g := uint32(n)
+			opts.GID = &g
+		}
+		size := r.ContentLength
+		if err := ac.PutFile(r.Context(), path, r.Body, size, opts); err != nil {
+			writeErr(w, http.StatusBadGateway, err)
+			return
+		}
+	case "tar":
+		if err := ac.PutTar(r.Context(), path, r.Body); err != nil {
+			writeErr(w, http.StatusBadGateway, err)
+			return
+		}
+	default:
+		writeErr(w, http.StatusBadRequest, errors.New("mode must be binary or tar"))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// getCP streams a file or tar from the guest agent (agent GET /cp).
+// Query: path (required), mode=binary|tar.
+func (s *Server) getCP(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+
+	q := r.URL.Query()
+	path := q.Get("path")
+	if path == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("path is required"))
+		return
+	}
+	mode := q.Get("mode")
+	if mode == "" {
+		mode = "binary"
+	}
+	if mode != "binary" && mode != "tar" {
+		writeErr(w, http.StatusBadRequest, errors.New("mode must be binary or tar"))
+		return
+	}
+
+	// Proxy raw response so large files stream without buffering.
+	u, err := url.Parse(strings.TrimRight(ac.BaseURL, "/") + "/cp")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	aq := u.Query()
+	aq.Set("path", path)
+	aq.Set("mode", mode)
+	u.RawQuery = aq.Encode()
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, u.String(), nil)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	res, err := agentLongHTTP(ac).Do(req)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == http.StatusNotFound {
+		writeErr(w, http.StatusNotFound, errors.New("not found"))
+		return
+	}
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+		writeErr(w, http.StatusBadGateway, fmt.Errorf("agent cp: status %d: %s", res.StatusCode, strings.TrimSpace(string(body))))
+		return
+	}
+
+	if ct := res.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	} else if mode == "tar" {
+		w.Header().Set("Content-Type", "application/x-tar")
+	} else {
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
+	if cl := res.Header.Get("Content-Length"); cl != "" {
+		w.Header().Set("Content-Length", cl)
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, res.Body)
+}
+
+// fsReadDir proxies GET /fs/readdir from the guest agent.
+func (s *Server) fsReadDir(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("path is required"))
+		return
+	}
+	entries, err := ac.ReadDir(r.Context(), path)
+	if err != nil {
+		writeAgentFSErr(w, err)
+		return
+	}
+	if entries == nil {
+		entries = []agent.FSInfo{}
+	}
+	writeJSON(w, http.StatusOK, entries)
+}
+
+// fsStat proxies GET /fs/stat from the guest agent.
+func (s *Server) fsStat(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("path is required"))
+		return
+	}
+	info, err := ac.Stat(r.Context(), path)
+	if err != nil {
+		writeAgentFSErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// fsMkdir proxies POST /fs/mkdir JSON body to the guest agent.
+func (s *Server) fsMkdir(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	var body agent.MkdirRequest
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
+			return
+		}
+	}
+	if body.Path == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("path is required"))
+		return
+	}
+	if err := ac.Mkdir(r.Context(), body.Path, body.Recursive, body.Mode); err != nil {
+		writeAgentFSErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// fsRemove proxies DELETE /fs/remove from the guest agent.
+// Query: path (required), recursive=true|false.
+func (s *Server) fsRemove(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	q := r.URL.Query()
+	path := q.Get("path")
+	if path == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("path is required"))
+		return
+	}
+	recursive := q.Get("recursive") == "true" || q.Get("recursive") == "1"
+	if err := ac.Remove(r.Context(), path, recursive); err != nil {
+		writeAgentFSErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// writeAgentFSErr maps agent client FS errors to HTTP status codes.
+func writeAgentFSErr(w http.ResponseWriter, err error) {
+	msg := err.Error()
+	if strings.Contains(msg, "not found") {
+		writeErr(w, http.StatusNotFound, errors.New("not found"))
+		return
+	}
+	writeErr(w, http.StatusBadGateway, err)
 }
 
 // agentHealth proxies GET /health from the guest grain-agent.

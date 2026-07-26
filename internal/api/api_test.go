@@ -9,6 +9,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -406,5 +409,355 @@ func TestAPIClientExecAndAgentHealth(t *testing.T) {
 	}
 	if res.ExitCode != 0 || strings.TrimSpace(res.Stdout) != "from-client" {
 		t.Fatalf("result %+v", res)
+	}
+}
+
+func TestExecStreamNDJSON(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	agentPort := startLocalAgent(t)
+
+	createMockVM(t, h, "stream-exec")
+	setAgentPort(t, st, "stream-exec", agentPort)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms/stream-exec/exec?cmd=echo&args=stream-hello&buffered=false", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stream exec %d %s", rr.Code, rr.Body.String())
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.Contains(ct, "ndjson") {
+		t.Fatalf("content-type %q want ndjson", ct)
+	}
+
+	var types []string
+	var stdout strings.Builder
+	var exitCode int
+	gotExit := false
+	sc := bufio.NewScanner(bytes.NewReader(rr.Body.Bytes()))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var frame agent.ExecFrame
+		if err := json.Unmarshal([]byte(line), &frame); err != nil {
+			t.Fatalf("frame %q: %v", line, err)
+		}
+		types = append(types, frame.Type)
+		if frame.Type == "stdout" {
+			stdout.WriteString(frame.Data)
+		}
+		if frame.Type == "exit" {
+			gotExit = true
+			if frame.ExitCode != nil {
+				exitCode = *frame.ExitCode
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !gotExit {
+		t.Fatalf("frames %v: missing exit", types)
+	}
+	if exitCode != 0 {
+		t.Fatalf("exit_code %d", exitCode)
+	}
+	if strings.TrimSpace(stdout.String()) != "stream-hello" {
+		t.Fatalf("stdout %q", stdout.String())
+	}
+	if len(types) < 2 || types[0] != "started" || types[len(types)-1] != "exit" {
+		t.Fatalf("frames %v", types)
+	}
+
+	// Non-zero exit still streams exit frame
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/stream-exec/exec?cmd=/bin/sh&args=-c&args=exit+7&buffered=false", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stream nonzero %d %s", rr.Code, rr.Body.String())
+	}
+	gotExit = false
+	exitCode = -1
+	sc = bufio.NewScanner(bytes.NewReader(rr.Body.Bytes()))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var frame agent.ExecFrame
+		if err := json.Unmarshal([]byte(line), &frame); err != nil {
+			t.Fatalf("frame: %v", err)
+		}
+		if frame.Type == "exit" && frame.ExitCode != nil {
+			gotExit = true
+			exitCode = *frame.ExitCode
+		}
+	}
+	if !gotExit || exitCode != 7 {
+		t.Fatalf("want exit 7, gotExit=%v code=%d body=%s", gotExit, exitCode, rr.Body.String())
+	}
+
+	// No agent → 503
+	setAgentPort(t, st, "stream-exec", 0)
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/stream-exec/exec?cmd=echo&args=x&buffered=false", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 got %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestPutGetFileViaAPI(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	agentPort := startLocalAgent(t)
+
+	createMockVM(t, h, "cp1")
+	setAgentPort(t, st, "cp1", agentPort)
+
+	dir := t.TempDir()
+	guestPath := filepath.Join(dir, "sub", "hello.txt")
+	payload := []byte("hello via daemon api\n")
+
+	// PUT binary
+	rr := httptest.NewRecorder()
+	u := "/vms/cp1/cp?path=" + url.QueryEscape(guestPath) + "&mode=binary&permissions=0644"
+	req := httptest.NewRequest(http.MethodPut, u, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.ContentLength = int64(len(payload))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("put %d %s", rr.Code, rr.Body.String())
+	}
+
+	got, err := os.ReadFile(guestPath)
+	if err != nil {
+		t.Fatalf("disk read: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("disk %q want %q", got, payload)
+	}
+
+	// GET binary
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/vms/cp1/cp?path="+url.QueryEscape(guestPath)+"&mode=binary", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get %d %s", rr.Code, rr.Body.String())
+	}
+	if !bytes.Equal(rr.Body.Bytes(), payload) {
+		t.Fatalf("get body %q want %q", rr.Body.Bytes(), payload)
+	}
+
+	// Missing path → 400
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/vms/cp1/cp?mode=binary", bytes.NewReader(payload))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("missing path want 400 got %d", rr.Code)
+	}
+
+	// Not found → 404
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/vms/cp1/cp?path="+url.QueryEscape(filepath.Join(dir, "missing"))+"&mode=binary", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("want 404 got %d %s", rr.Code, rr.Body.String())
+	}
+
+	// No agent → 503
+	setAgentPort(t, st, "cp1", 0)
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/vms/cp1/cp?path="+url.QueryEscape(guestPath), nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 got %d", rr.Code)
+	}
+}
+
+func TestFSReadDirStatMkdirRemoveViaAPI(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	agentPort := startLocalAgent(t)
+
+	createMockVM(t, h, "fs1")
+	setAgentPort(t, st, "fs1", agentPort)
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "seed.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mkdir nested
+	nested := filepath.Join(root, "a", "b")
+	body, _ := json.Marshal(agent.MkdirRequest{Path: nested, Recursive: true, Mode: "0755"})
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms/fs1/fs/mkdir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("mkdir %d %s", rr.Code, rr.Body.String())
+	}
+
+	// Stat dir
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/vms/fs1/fs/stat?path="+url.QueryEscape(nested), nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stat %d %s", rr.Code, rr.Body.String())
+	}
+	var info agent.FSInfo
+	if err := json.Unmarshal(rr.Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.Type != "directory" {
+		t.Fatalf("stat type %q", info.Type)
+	}
+	if info.Name != "b" {
+		t.Fatalf("stat name %q", info.Name)
+	}
+
+	// Put a file under nested via cp, then readdir
+	child := filepath.Join(nested, "c.txt")
+	rr = httptest.NewRecorder()
+	putURL := "/vms/fs1/cp?path=" + url.QueryEscape(child) + "&mode=binary"
+	req = httptest.NewRequest(http.MethodPut, putURL, strings.NewReader("data"))
+	req.ContentLength = 4
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("put child %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/vms/fs1/fs/readdir?path="+url.QueryEscape(nested), nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("readdir %d %s", rr.Code, rr.Body.String())
+	}
+	var entries []agent.FSInfo
+	if err := json.Unmarshal(rr.Body.Bytes(), &entries); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Name == "c.txt" {
+			found = true
+			if e.Type != "file" {
+				t.Fatalf("c.txt type %q", e.Type)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("readdir missing c.txt: %+v", entries)
+	}
+
+	// Remove recursive tree
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/vms/fs1/fs/remove?path="+url.QueryEscape(filepath.Join(root, "a"))+"&recursive=true", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("remove %d %s", rr.Code, rr.Body.String())
+	}
+	if _, err := os.Stat(nested); !os.IsNotExist(err) {
+		t.Fatalf("nested still exists: %v", err)
+	}
+
+	// Stat missing → 404
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/vms/fs1/fs/stat?path="+url.QueryEscape(nested), nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("want 404 got %d %s", rr.Code, rr.Body.String())
+	}
+
+	// Missing path → 400
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/vms/fs1/fs/readdir", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 got %d", rr.Code)
+	}
+
+	// No agent → 503
+	setAgentPort(t, st, "fs1", 0)
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/vms/fs1/fs/stat?path="+url.QueryEscape(root), nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 got %d", rr.Code)
+	}
+}
+
+func TestAPIClientStreamCPAndFS(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	agentPort := startLocalAgent(t)
+
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(ts.Close)
+
+	createMockVM(t, s.Handler(), "cli2")
+	setAgentPort(t, st, "cli2", agentPort)
+
+	c := &api.Client{Base: ts.URL, HTTP: ts.Client()}
+	ctx := context.Background()
+
+	// ExecStream
+	var stdout strings.Builder
+	code, err := c.ExecStream(ctx, "cli2", agent.ExecOpts{Cmd: "echo", Args: []string{"cli-stream"}}, func(f agent.ExecFrame) error {
+		if f.Type == "stdout" {
+			stdout.WriteString(f.Data)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ExecStream: %v", err)
+	}
+	if code != 0 || strings.TrimSpace(stdout.String()) != "cli-stream" {
+		t.Fatalf("code=%d stdout=%q", code, stdout.String())
+	}
+
+	// PutFile + GetFile
+	dir := t.TempDir()
+	guestPath := filepath.Join(dir, "f.txt")
+	payload := []byte("client-cp")
+	if err := c.PutFile(ctx, "cli2", guestPath, bytes.NewReader(payload), int64(len(payload)), agent.CPOpts{Mode: "0644"}); err != nil {
+		t.Fatalf("PutFile: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := c.GetFile(ctx, "cli2", guestPath, &buf); err != nil {
+		t.Fatalf("GetFile: %v", err)
+	}
+	if !bytes.Equal(buf.Bytes(), payload) {
+		t.Fatalf("GetFile %q", buf.Bytes())
+	}
+
+	// Mkdir / Stat / ReadDir / Remove
+	nested := filepath.Join(dir, "n1", "n2")
+	if err := c.Mkdir(ctx, "cli2", nested, true, "0755"); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	stInfo, err := c.Stat(ctx, "cli2", nested)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if stInfo.Type != "directory" {
+		t.Fatalf("type %q", stInfo.Type)
+	}
+	entries, err := c.ReadDir(ctx, "cli2", dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("empty readdir")
+	}
+	if err := c.Remove(ctx, "cli2", filepath.Join(dir, "n1"), true); err != nil {
+		t.Fatalf("Remove: %v", err)
 	}
 }
