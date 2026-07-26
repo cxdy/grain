@@ -14,3 +14,8 @@ bin/
 # TypeScript SDK (sdk/ts)
 sdk/ts/node_modules/
 sdk/ts/dist/
+
+# Jekyll local preview
+docs/vendor/
+docs/.bundle/
+docs/_site/

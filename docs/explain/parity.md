@@ -1,4 +1,8 @@
-# Feature surface checklist
+---
+title: "Product surface"
+description: "What grain implements and what is intentionally deferred."
+---
+
 
 This documents grain’s local microVM product surface as of the Unreleased / v0.1 line. Competitor product names are intentionally omitted.
 

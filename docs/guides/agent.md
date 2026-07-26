@@ -1,4 +1,8 @@
-# Guest agent (`grain-agent`)
+---
+title: "Guest agent"
+description: "Use grain-agent for exec, shell, files, and health."
+---
+
 
 The guest agent is a small HTTP server that runs **inside** each Linux VM. The host CLI and daemon talk to it over either **virtio-vsock** (when the host supports it) or a QEMU SLIRP hostfwd to guest port **7475**, so common operations work without opening an interactive SSH session.
 
@@ -32,7 +36,7 @@ grain new / start
 | `--wait agent` | create fails if agent never becomes healthy |
 | `--wait userdata` | agent healthy **and** userdata marker present |
 
-Golden images (`grain-ubuntu` via `grain image import` / bake) set `has_agent` so create prefers probing the agent before SSH deploy. See [images.md](images.md).
+Golden images (`grain-ubuntu` via `grain image import` / bake) set `has_agent` so create prefers probing the agent before SSH deploy. See [images.md](/guides/images/).
 
 ## Deploy (host → guest)
 
@@ -180,7 +184,7 @@ c, err := client.DialUnix(filepath.Join(home, ".grain", "grain.sock"))
 
 ## Related
 
-- [images.md](images.md) — golden agent-baked images  
-- [recipes/coding-agent.md](recipes/coding-agent.md) — mount repo, run agent, cp results  
-- [recipes/ci-ephemeral.md](recipes/ci-ephemeral.md) — create → x → rm  
-- [troubleshooting.md](troubleshooting.md) — doctor, logs, timeouts  
+- [images.md](/guides/images/) — golden agent-baked images  
+- [recipes/coding-agent.md](/guides/recipes/coding-agent/) — mount repo, run agent, cp results  
+- [recipes/ci-ephemeral.md](/guides/recipes/ci-ephemeral/) — create → x → rm  
+- [troubleshooting.md](/guides/troubleshooting/) — doctor, logs, timeouts  

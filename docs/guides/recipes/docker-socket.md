@@ -1,4 +1,8 @@
-# Recipe: Docker in the VM + socket forward pattern
+---
+title: "Recipe: Docker in the VM + socket forward pattern"
+description: How-to recipe from the grain documentation set.
+---
+
 
 Install Docker inside a grain VM (via the `docker` preset), then either use Docker only from the guest or expose the daemon socket to the host for local clients.
 

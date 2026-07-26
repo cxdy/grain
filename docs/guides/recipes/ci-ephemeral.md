@@ -1,4 +1,8 @@
-# Recipe: ephemeral CI — create → exec tests → rm
+---
+title: "Recipe: ephemeral CI — create → exec tests → rm"
+description: How-to recipe from the grain documentation set.
+---
+
 
 Use grain as a disposable Linux runner: one VM per job, no leftover state.
 

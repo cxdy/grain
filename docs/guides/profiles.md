@@ -1,4 +1,8 @@
-# Profiles and presets
+---
+title: "Profiles and presets"
+description: "Named create defaults and docker/k3s presets."
+---
+
 
 ## Named profiles
 

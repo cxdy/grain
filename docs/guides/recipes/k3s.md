@@ -1,4 +1,8 @@
-# Recipe: single-node k3s lab
+---
+title: "Recipe: single-node k3s lab"
+description: How-to recipe from the grain documentation set.
+---
+
 
 Spin up a disposable (or persistent) k3s node with grain’s embedded `k3s` preset, forward the API port, and pull `kubeconfig` onto the host.
 

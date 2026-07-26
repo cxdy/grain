@@ -1,4 +1,8 @@
-# Egress proxy
+---
+title: "Egress proxy"
+description: "Default-deny HTTP(S) proxy with allow rules and secrets."
+---
+
 
 grain can run a **host-side HTTP(S) forward proxy** that guest VMs use via
 `HTTPS_PROXY` / `HTTP_PROXY`. Outbound traffic is **default-deny**: only
@@ -150,7 +154,7 @@ write_files:
 
 ### Coding agents
 
-See [recipes/coding-agent.md](recipes/coding-agent.md) for a sandbox with a
+See [recipes/coding-agent.md](/guides/recipes/coding-agent/) for a sandbox with a
 mounted repo; add `grain proxy up` + allow rules for model/API hosts and
 `grain new --proxy` so the agent cannot reach the open internet.
 
@@ -178,5 +182,5 @@ mounted repo; add `grain proxy up` + allow rules for model/API hosts and
 
 ## Related
 
-- [Networking](networking.md) — SLIRP, hostfwd, ports
-- [Recipes: coding agent](recipes/coding-agent.md)
+- [Networking](/guides/networking/) — SLIRP, hostfwd, ports
+- [Recipes: coding agent](/guides/recipes/coding-agent/)

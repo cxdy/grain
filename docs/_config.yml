@@ -1,0 +1,134 @@
+title: grain
+description: Fast Linux microVM sandboxes on your own hardware
+url: https://grainvm.com
+baseurl: ""
+
+# Set true and fill domain to enable Plausible (privacy-friendly, no cookies)
+plausible: false
+plausible_domain: grainvm.com
+
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  syntax_highlighter_opts:
+    css_class: highlight
+
+permalink: pretty
+# Keep CNAME in the site root for grainvm.com custom domain.
+exclude: []
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+  - scope:
+      path: "get-started"
+    values:
+      layout: docs
+      section: get-started
+  - scope:
+      path: "guides"
+    values:
+      layout: docs
+      section: guides
+  - scope:
+      path: "reference"
+    values:
+      layout: docs
+      section: reference
+  - scope:
+      path: "explain"
+    values:
+      layout: docs
+      section: explain
+
+nav:
+  - title: Get started
+    url: /get-started/install/
+  - title: Guides
+    url: /guides/
+  - title: Reference
+    url: /reference/cli/
+  - title: Explain
+    url: /explain/architecture/
+  - title: GitHub
+    url: https://github.com/cxdy/grain
+    external: true
+
+docs_nav:
+  get-started:
+    title: Get started
+    links:
+      - title: Install grain
+        url: /get-started/install/
+      - title: Your first sandbox
+        url: /get-started/first-sandbox/
+      - title: Core concepts
+        url: /get-started/concepts/
+  guides:
+    title: Guides
+    links:
+      - title: Overview
+        url: /guides/
+      - title: Images & golden boots
+        url: /guides/images/
+      - title: Guest agent
+        url: /guides/agent/
+      - title: Networking & ports
+        url: /guides/networking/
+      - title: Mounts & shares
+        url: /guides/mounts/
+      - title: Profiles & presets
+        url: /guides/profiles/
+      - title: Egress proxy
+        url: /guides/proxy/
+      - title: Secrets
+        url: /guides/secrets/
+      - title: Pause, suspend, restore
+        url: /guides/lifecycle/
+      - title: Firecracker (Linux)
+        url: /guides/firecracker/
+      - title: Troubleshooting
+        url: /guides/troubleshooting/
+      - title: "Recipe: coding agent"
+        url: /guides/recipes/coding-agent/
+      - title: "Recipe: k3s"
+        url: /guides/recipes/k3s/
+      - title: "Recipe: Docker socket"
+        url: /guides/recipes/docker-socket/
+      - title: "Recipe: CI ephemeral"
+        url: /guides/recipes/ci-ephemeral/
+  reference:
+    title: Reference
+    links:
+      - title: CLI
+        url: /reference/cli/
+      - title: Configuration
+        url: /reference/config/
+      - title: HTTP API
+        url: /reference/api/
+      - title: Agent protocol
+        url: /reference/agent-protocol/
+      - title: Go SDK
+        url: /reference/go-sdk/
+      - title: TypeScript SDK
+        url: /reference/typescript-sdk/
+      - title: Metrics
+        url: /reference/metrics/
+  explain:
+    title: Explain
+    links:
+      - title: Architecture
+        url: /explain/architecture/
+      - title: Agent vs SSH
+        url: /explain/agent-vs-ssh/
+      - title: Security model
+        url: /explain/security/
+      - title: Images and boot
+        url: /explain/images-and-boot/
+      - title: Product surface
+        url: /explain/parity/
+      - title: Site analytics
+        url: /explain/site-analytics/

@@ -1,4 +1,8 @@
-# Base images
+---
+title: "Images and golden boots"
+description: "Pull, import, bake, and choose base images."
+---
+
 
 ## Default image selection (`auto`)
 
@@ -265,11 +269,11 @@ A smaller rootfs can be added later as another catalog id; the default stays a k
 
 When `hypervisor: firecracker`, guests need a **raw** root disk and a separate **vmlinux** kernel. Catalog qcow2 cloud images are converted with `qemu-img convert -O raw` at Start when possible; otherwise Start asks for a raw golden.
 
-Firecracker does not use UEFI the same way as QEMU aarch64 cloud boots. Prefer a FC-oriented kernel + rootfs pair. See [firecracker.md](firecracker.md) for layout, vsock agent, and limits.
+Firecracker does not use UEFI the same way as QEMU aarch64 cloud boots. Prefer a FC-oriented kernel + rootfs pair. See [firecracker.md](/guides/firecracker/) for layout, vsock agent, and limits.
 
 ## Related
 
-- [Troubleshooting](troubleshooting.md) — pull failures, doctor image check
-- [Firecracker](firecracker.md) — experimental FC backend, kernel/rootfs, vsock
-- [Agent](agent.md) — wait modes, deploy, golden HasAgent path
-- [Mounts](mounts.md) — 9p shares into the guest
+- [Troubleshooting](/guides/troubleshooting/) — pull failures, doctor image check
+- [Firecracker](/guides/firecracker/) — experimental FC backend, kernel/rootfs, vsock
+- [Agent](/guides/agent/) — wait modes, deploy, golden HasAgent path
+- [Mounts](/guides/mounts/) — 9p shares into the guest

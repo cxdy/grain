@@ -1,0 +1,24 @@
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="{{ '/' | relative_url }}">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">grain</span>
+    </a>
+    <nav class="nav-main" aria-label="Primary">
+      {% for item in site.nav %}
+        {% if item.external %}
+          <a href="{{ item.url }}" {% if item.external %}rel="noopener" target="_blank"{% endif %}>{{ item.title }}</a>
+        {% else %}
+          <a href="{{ item.url | relative_url }}" {% if page.url contains item.url %}aria-current="page"{% endif %}>{{ item.title }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+    <div class="header-actions">
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme" title="Toggle theme">
+        <span class="theme-icon theme-icon-moon" aria-hidden="true">☾</span>
+        <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>
+      </button>
+      <a class="btn btn-sm btn-primary" href="{{ '/get-started/install/' | relative_url }}">Install</a>
+    </div>
+  </div>
+</header>

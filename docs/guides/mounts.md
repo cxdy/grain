@@ -1,4 +1,8 @@
-# Mounts (host directories)
+---
+title: "Mounts and host shares"
+description: "virtio-9p and virtiofs directory sharing."
+---
+
 
 Share a host directory into a guest with virtio-9p (default) or virtiofs (Linux) at create time:
 
@@ -102,9 +106,9 @@ mkdir -p /opt/cache
 grain new --userdata-file ./userdata.sh
 ```
 
-Or a `#cloud-config` document with `runcmd` / `mounts` keys—grain merges list keys (`runcmd`, `packages`, …) with its base config. See [Images](images.md) for the default cloud image and SSH user.
+Or a `#cloud-config` document with `runcmd` / `mounts` keys—grain merges list keys (`runcmd`, `packages`, …) with its base config. See [Images](/guides/images/) for the default cloud image and SSH user.
 
 ## Related
 
-- [Networking](networking.md) — SLIRP and `--publish`
-- [Troubleshooting](troubleshooting.md) — cloud-init and serial logs
+- [Networking](/guides/networking/) — SLIRP and `--publish`
+- [Troubleshooting](/guides/troubleshooting/) — cloud-init and serial logs

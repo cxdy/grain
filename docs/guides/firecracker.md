@@ -1,4 +1,8 @@
-# Firecracker hypervisor (experimental)
+---
+title: "Firecracker on Linux"
+description: "Experimental Firecracker hypervisor backend."
+---
+
 
 grain can launch sandboxes with [Firecracker](https://firecracker-microvm.github.io/) instead of QEMU.
 
@@ -36,7 +40,7 @@ grain’s catalog images (`ubuntu-cloud`, `grain-ubuntu`) are **qcow2 cloud imag
 2. If the VM disk is still **qcow2**, Start runs `qemu-img convert -O raw` into `disk.raw` under the VM dir (when `qemu-img` is available). Otherwise Start refuses with a conversion hint.
 3. Standard Ubuntu cloud images need a **matching Firecracker-capable kernel**; they are not drop-in FC guests without extra work (kernel + init + virtio drivers).
 
-See also [images.md](images.md) for QEMU/golden workflow; FC is a separate experimental path.
+See also [images.md](/guides/images/) for QEMU/golden workflow; FC is a separate experimental path.
 
 ### Suggested layout
 
@@ -109,7 +113,7 @@ grain stop <name>
 
 ## Related
 
-- [images.md](images.md) — base images, golden bake (QEMU-oriented)
-- [networking.md](networking.md) — QEMU SLIRP / hostfwd (not used by FC yet)
-- [agent.md](agent.md) — guest agent HTTP API
-- [troubleshooting.md](troubleshooting.md) — doctor and logs
+- [images.md](/guides/images/) — base images, golden bake (QEMU-oriented)
+- [networking.md](/guides/networking/) — QEMU SLIRP / hostfwd (not used by FC yet)
+- [agent.md](/guides/agent/) — guest agent HTTP API
+- [troubleshooting.md](/guides/troubleshooting/) — doctor and logs

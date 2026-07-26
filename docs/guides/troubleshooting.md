@@ -1,4 +1,8 @@
-# Troubleshooting
+---
+title: "Troubleshooting"
+description: "Diagnose boot, agent, and QEMU issues."
+---
+
 
 ## `grain doctor`
 
@@ -139,10 +143,10 @@ grain doctor   # should show socket OK
 host port 80 is privileged (< 1024)
 ```
 
-Use `-P 8080:80` or `-P 80` (auto high host port). See [Networking](networking.md).
+Use `-P 8080:80` or `-P 80` (auto high host port). See [Networking](/guides/networking/).
 
 ## Related
 
-- [Networking](networking.md)
-- [Mounts](mounts.md)
-- [Images](images.md)
+- [Networking](/guides/networking/)
+- [Mounts](/guides/mounts/)
+- [Images](/guides/images/)

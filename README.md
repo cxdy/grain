@@ -2,6 +2,8 @@
 
 **Fast Linux microVM sandboxes on your own hardware.** Free and open source (Apache-2.0).
 
+**Documentation:** [grainvm.com](https://grainvm.com) · Install, guides, API, and SDKs.
+
 Ephemeral by default. Persistent when you want. Short commands. Local-first.
 
 ```text
