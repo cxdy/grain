@@ -7,9 +7,10 @@ description: Local Linux microVMs for GitHub Actions (grain act) and throwaway k
 <section class="hero">
   <div class="wrap hero-grid">
     <div>
-      <h1>Real Linux sandboxes.<br>On your machine.</h1>
+      <p class="eyebrow">Open source · local-first · Apache-2.0</p>
+      <h1>Real Linux sandboxes.<br><span class="hero-line2">On your machine.</span></h1>
       <p class="hero-lead">
-        grain is a local microVM control plane — small like a grain of sand, complete like a real Linux box.
+        A local microVM control plane — small like a grain of sand, complete like a real Linux box.
         Ephemeral by default, persistent when you need it, with a guest agent for exec, files, and shell.
       </p>
       <p class="hero-wedges">
