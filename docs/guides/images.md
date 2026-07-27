@@ -189,10 +189,11 @@ make agent-linux
 grain up
 grain image pull ubuntu-cloud
 grain new -p -n bake-vm -i ubuntu-cloud
-grain x bake-vm -- sudo systemctl enable grain-agent
-grain x bake-vm -- sudo cloud-init clean --logs
-grain x bake-vm -- sudo mkdir -p /var/lib/grain && sudo touch /var/lib/grain/userdata-ran
-grain x bake-vm -- sudo truncate -s 0 /etc/machine-id   # unique id regenerated on clone boot
+# Agent runs as root — use one remote sh -c so && does not run on the host.
+grain x bake-vm -- sh -c 'systemctl enable grain-agent'
+grain x bake-vm -- sh -c 'cloud-init clean --logs'
+grain x bake-vm -- sh -c 'mkdir -p /var/lib/grain && touch /var/lib/grain/userdata-ran'
+grain x bake-vm -- sh -c 'truncate -s 0 /etc/machine-id'   # unique id regenerated on clone boot
 grain stop bake-vm
 qemu-img convert -O qcow2 ~/.grain/vms/bake-vm/disk.img.qcow2 /tmp/grain-ubuntu.qcow2
 grain image import /tmp/grain-ubuntu.qcow2 --id grain-ubuntu
