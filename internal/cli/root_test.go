@@ -1556,7 +1556,7 @@ func TestBuildProxyUserdataCreatesDefaultClient(t *testing.T) {
 func TestLifecycleRemoteErrorsTable(t *testing.T) {
 	// Health fail
 	srvDown := mockDaemon(t, func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "down", 503)
+		http.Error(w, "down", http.StatusServiceUnavailable)
 	})
 	// Resolve multi-VM
 	srvMulti := mockDaemon(t, func(w http.ResponseWriter, r *http.Request) {

@@ -56,7 +56,7 @@ func TestCatalogArchVariants(t *testing.T) {
 		if u.URL == "" || u.SHA256 == "" || u.SSHUser != "ubuntu" {
 			t.Fatalf("%+v", u)
 		}
-		if !strings.Contains(u.URL, arch) && !(arch == "arm64" && strings.Contains(u.URL, "arm64")) {
+		if !strings.Contains(u.URL, arch) && (arch != "arm64" || !strings.Contains(u.URL, "arm64")) {
 			// URL uses arm64/amd64 in path
 			if arch == "amd64" && !strings.Contains(u.URL, "amd64") {
 				t.Fatalf("ubuntu URL arch: %s", u.URL)

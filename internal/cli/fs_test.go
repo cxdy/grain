@@ -137,7 +137,7 @@ func TestCmdFsLocalAgentPaths(t *testing.T) {
 	mux.HandleFunc("/vms/v", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(&vm.Instance{Name: "v", Status: "running", AgentPort: port, IP: "127.0.0.1"})
 	})
-	hs := &http.Server{Handler: mux}
+	hs := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = hs.Serve(ln) }()
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -208,8 +208,8 @@ func TestCmdFsRemoteErrorPaths(t *testing.T) {
 
 func TestCmdFsRemoteAPIErrors(t *testing.T) {
 	srv := mockDaemon(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/vms":
+		switch r.URL.Path {
+		case "/vms":
 			_ = json.NewEncoder(w).Encode([]*vm.Instance{{Name: "sbox-1", Status: "running"}})
 		default:
 			http.Error(w, "nope", 500)

@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cxdy/grain/internal/config"
-	"github.com/cxdy/grain/internal/daemon"
-	"github.com/cxdy/grain/internal/netutil"
 	"io"
 	"log/slog"
 	"net"
@@ -16,6 +13,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cxdy/grain/internal/config"
+	"github.com/cxdy/grain/internal/daemon"
+	"github.com/cxdy/grain/internal/netutil"
 )
 
 func TestRunMockHypervisorCancel(t *testing.T) {

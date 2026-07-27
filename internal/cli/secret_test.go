@@ -291,7 +291,7 @@ func TestCmdSecretDaemonBranches(t *testing.T) {
 
 func TestCmdSecretHealthDown(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "down", 503)
+		http.Error(w, "down", http.StatusServiceUnavailable)
 	}))
 	defer srv.Close()
 	apiURLFlag = srv.URL

@@ -1,12 +1,13 @@
 package config_test
 
 import (
-	"github.com/cxdy/grain/internal/config"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cxdy/grain/internal/config"
 )
 
 func TestDefaults(t *testing.T) {

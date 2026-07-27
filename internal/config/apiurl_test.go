@@ -1,11 +1,12 @@
 package config_test
 
 import (
-	"github.com/cxdy/grain/internal/config"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/cxdy/grain/internal/config"
 )
 
 func TestNormalizeAPIURL(t *testing.T) {
