@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-27
+
+### Added
+
+- **`grain uninstall`** — stop the local daemon, remove the CLI binary, and optionally purge the data directory with `--purge` (`-y` skips the prompt). Default keeps VMs and images; always drops the installer agent cache and runtime socket/pid files.
+
+### Fixed
+
+- **`grain up`** — detects a healthy existing daemon (`already up`) instead of spawning a second process that races a leftover foreground instance. Dead pid / orphan socket are cleaned before start; background start waits for healthz or child exit. Setsid so shell Ctrl+C does not signal the daemon.
+- **`grain down`** — cleans stale runtime files and SIGKILLs a stuck daemon when needed.
+- **Coverage comment workflow** — runs only for fork PRs (same-repo PRs already post coverage from `ci.yml`).
+
+### Changed
+
+- Broader unit-test coverage and consolidated `*_test.go` names (CI Cobertura threshold unchanged).
+
 ## [0.2.1] - 2026-07-27
 
 ### Fixed
@@ -131,7 +147,8 @@ First public release: local Linux microVM control plane for macOS and Linux.
 - Platforms: **macOS and Linux** only (amd64 / arm64). Golden images: `golden-latest` on GitHub Releases.
 - Install: `curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash` (or release assets for `v0.1.0`).
 
-[Unreleased]: https://github.com/cxdy/grain/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/cxdy/grain/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/cxdy/grain/releases/tag/v0.2.2
 [0.2.1]: https://github.com/cxdy/grain/releases/tag/v0.2.1
 [0.2.0]: https://github.com/cxdy/grain/releases/tag/v0.2.0
 [0.1.4]: https://github.com/cxdy/grain/releases/tag/v0.1.4

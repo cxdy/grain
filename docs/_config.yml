@@ -3,7 +3,7 @@ description: Linux microVM sandboxes on your own hardware — shells, GitHub Act
 url: https://grainvm.com
 baseurl: ""
 # Site / product version shown in the footer and docs chrome.
-version: "0.2.1"
+version: "0.2.2"
 
 
 markdown: kramdown

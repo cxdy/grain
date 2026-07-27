@@ -7,7 +7,7 @@ info:
 
     When `api_token` (or `auth_token`) is set in daemon config, all routes except
     `GET /healthz` require `Authorization: Bearer <token>`.
-  version: 0.2.1
+  version: 0.2.2
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
@@ -66,7 +66,7 @@ paths:
                     example: grain
                   version:
                     type: string
-                    example: 0.2.1
+                    example: 0.2.2
         "401":
           $ref: "#/components/responses/Unauthorized"
 
