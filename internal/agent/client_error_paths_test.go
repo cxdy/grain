@@ -185,4 +185,3 @@ func TestAgentClientBadJSON(t *testing.T) {
 		t.Fatal("stat")
 	}
 }
-
