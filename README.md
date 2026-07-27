@@ -4,110 +4,130 @@
   <img src="logo.png" alt="grain logo" width="200">
 </p>
 
-**Fast Linux microVM sandboxes on your own hardware.** Apache-2.0.
+<p align="center">
+  <strong>Linux microVM sandboxes on your own hardware.</strong><br>
+  <a href="https://grainvm.com">Documentation</a>
+  ·
+  <a href="https://grainvm.com/get-started/quickstart/">Quick start</a>
+  ·
+  <a href="https://github.com/cxdy/grain/releases">Releases</a>
+</p>
 
-Run **GitHub Actions** (`grain act`) and **throwaway k3s** labs in isolated microVMs — plus everyday sandboxes with mounts, ports, and a guest agent.
+<p align="center">
+  Apache-2.0
+  · macOS &amp; Linux
+  · not Windows / WSL
+</p>
 
-Ephemeral by default · persistent when you want · local-first · macOS & Linux (not Windows/WSL).
+grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Actions](https://grainvm.com/guides/recipes/act/) (`grain act`), or for a [throwaway k3s](https://grainvm.com/guides/recipes/k3s/) lab. Ephemeral by default; persistent when you want it.
 
-**Documentation:** [https://grainvm.com](https://grainvm.com) · **Quick start:** [https://grainvm.com/get-started/quickstart/](https://grainvm.com/get-started/quickstart/)
+---
 
-## Quick start
+## Install
 
 ```bash
-# Install CLI + QEMU
 curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
-brew install qemu          # macOS; on Linux: qemu-system + qemu-img
+```
+
+Install QEMU, then check dependencies:
+
+```bash
+# macOS
+brew install qemu
+
+# Debian / Ubuntu
+# sudo apt-get install -y qemu-system qemu-utils
+
 grain doctor
+```
 
-# Optional starter config
-mkdir -p ~/.grain
-cat > ~/.grain/config.yaml <<'EOF'
-api: 127.0.0.1:7474
-image: grain-ubuntu
-cpus: 2
-memory_mb: 2048
-disk_gb: 8
-profiles:
-  work:
-    cpus: 4
-    memory_mb: 4096
-    mounts:
-      - {host: ".", guest: "/work"}
-EOF
+---
 
-# First sandbox
+## First sandbox
+
+```bash
 grain up
 grain image pull grain-ubuntu
-grain new                    # or: grain new --profile work
+grain new
 grain sh
-grain rm && grain down
 ```
 
-More detail: **[Quick start](https://grainvm.com/get-started/quickstart/)**.
-
-## Try a real workload
-
-### GitHub Actions (`grain act`)
-
-Run [nektos/act](https://github.com/nektos/act) inside a disposable microVM so host Docker stays clean:
+When you’re done:
 
 ```bash
-grain up
-grain image pull grain-ubuntu
+grain rm
+grain down
+```
+
+Optional starter config and more flags: **[quick start](https://grainvm.com/get-started/quickstart/)**.
+
+---
+
+## Workloads
+
+### GitHub Actions
+
+Run [nektos/act](https://github.com/nektos/act) inside an isolated microVM so host Docker stays clean.
+
+```bash
 cd /path/to/your/repo
-grain act -- -l              # list workflows / jobs
-grain act -- -j test         # run a job
+grain act -- -l          # list workflows
+grain act -- -j test     # run a job
 ```
 
-Guide: [GitHub Actions with act](https://grainvm.com/guides/recipes/act/).
+→ [act guide](https://grainvm.com/guides/recipes/act/)
 
-### Throwaway k3s lab
+### k3s lab
+
+Single-node Kubernetes with the API published to the host.
 
 ```bash
-grain up
-grain image pull grain-ubuntu
 grain new --preset k3s -n lab -p --wait userdata
-grain fwd ls lab             # API server host port → guest 6443
+grain fwd ls lab         # host port → guest 6443
 ```
 
-Guide: [k3s recipe](https://grainvm.com/guides/recipes/k3s/) (kubeconfig pull-down and `kubectl`).
+→ [k3s guide](https://grainvm.com/guides/recipes/k3s/)
 
-## What you get
+---
 
-| | |
-|--|--|
-| **Workloads** | `grain act` · `--preset k3s` · `--preset docker` |
-| **CLI** | `up` / `new` / `sh` / `x` / `rm` · mounts · port forwards · profiles |
-| **Guest agent** | Fast exec, file copy, fs ops without SSH when healthy |
+## Features
+
+| Area | What you get |
+|------|----------------|
+| **CLI** | `up` · `new` · `sh` · `x` · `rm` · mounts · port forwards · profiles |
+| **Presets** | `act` · `k3s` · `docker` |
+| **Guest agent** | Exec, shell, file copy, and fs ops without living in SSH |
 | **API** | Unix socket + optional TCP · [OpenAPI](api/openapi.yaml) |
 | **SDKs** | [Go](https://pkg.go.dev/github.com/cxdy/grain/client) · [TypeScript](https://www.npmjs.com/package/@cxdy/grain) · [Python](https://pypi.org/project/cxdy-grain/) |
 
-## Documentation
+---
 
-| | |
-|--|--|
-| [Install](https://grainvm.com/get-started/install/) | Platforms, script, binaries, from source |
-| [Quick start](https://grainvm.com/get-started/quickstart/) | Install + config + first VM |
-| [GitHub Actions (act)](https://grainvm.com/guides/recipes/act/) | Isolated `act` in a microVM |
-| [k3s lab](https://grainvm.com/guides/recipes/k3s/) | Single-node cluster preset |
+## Docs
+
+| Page | |
+|------|--|
+| [Install](https://grainvm.com/get-started/install/) | Platforms and install options |
+| [Quick start](https://grainvm.com/get-started/quickstart/) | Config + first VM |
 | [First sandbox](https://grainvm.com/get-started/first-sandbox/) | Tutorial + interactive demo |
-| [Guides](https://grainvm.com/guides/) | Images, agent, networking, mounts, proxy, remote host |
+| [act](https://grainvm.com/guides/recipes/act/) | GitHub Actions in a microVM |
+| [k3s](https://grainvm.com/guides/recipes/k3s/) | Single-node cluster preset |
+| [Guides](https://grainvm.com/guides/) | Images, agent, networking, mounts, proxy |
 | [Reference](https://grainvm.com/reference/cli/) | CLI, config, API, SDKs |
-| [Architecture](https://grainvm.com/explain/architecture/) | How the daemon, images, and VMs fit together |
 
-This repo’s `docs/` directory is the [grainvm.com](https://grainvm.com) Jekyll site.
+The site is built from this repo’s `docs/` directory.
+
+---
 
 ## Develop
 
 ```bash
-just test          # unit tests (mock hypervisor)
-just smoke-api     # CLI + daemon e2e without QEMU
+just test        # unit tests (mock hypervisor)
+just smoke-api   # CLI + daemon e2e without QEMU
 just build
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Security: [SECURITY.md](SECURITY.md). Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Releases: [docs/developer/releasing.md](docs/developer/releasing.md).
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Releasing](docs/developer/releasing.md)
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+[Apache-2.0](LICENSE)
