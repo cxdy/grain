@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -119,7 +120,7 @@ func createProgressEvents(label string) (onEvent func(vm.CreateEvent), stop func
 
 	onEvent = func(ev vm.CreateEvent) {
 		mu.Lock()
-		stage = phaseLabel(ev.Phase)
+		stage = phaseLabel(ev.Phase, ev.Message)
 		mu.Unlock()
 	}
 
@@ -145,7 +146,7 @@ func printCreateProgress(tty bool, frame, label, stage string, elapsed time.Dura
 }
 
 // phaseLabel maps CreateEvent phases to short spinner labels.
-func phaseLabel(phase string) string {
+func phaseLabel(phase, message string) string {
 	switch phase {
 	case vm.PhaseImage:
 		return "image"
@@ -156,6 +157,10 @@ func phaseLabel(phase string) string {
 	case vm.PhaseQEMU:
 		return "boot"
 	case vm.PhaseWaitSSH:
+		// Soft agent-deploy fallback after baked-agent probe (not pure SSH wait).
+		if strings.Contains(strings.ToLower(message), "agent deploy") {
+			return "waiting agent via ssh"
+		}
 		return "waiting ssh"
 	case vm.PhaseWaitAgent:
 		return "waiting agent"
