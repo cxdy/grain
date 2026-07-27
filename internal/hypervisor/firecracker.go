@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cxdy/grain/internal/hostbin"
 	"github.com/cxdy/grain/internal/vm"
 )
 
@@ -407,7 +408,7 @@ func ensureRawRootfs(ctx context.Context, diskPath string) (string, error) {
 		return rawPath, nil
 	}
 
-	qemuImg, err := exec.LookPath("qemu-img")
+	qemuImg, err := hostbin.LookPath("qemu-img")
 	if err != nil {
 		return "", fmt.Errorf("firecracker requires a raw rootfs (got qcow2 %s); install qemu-img to convert, or use a raw golden: qemu-img convert -O raw %s %s",
 			diskPath, diskPath, rawPath)

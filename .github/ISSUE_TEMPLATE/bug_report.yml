@@ -1,0 +1,55 @@
+name: Bug report
+description: Something is broken or unexpected
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing. Include enough detail to reproduce on a clean machine when you can.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Expected vs actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands and context (OS, arch, install method).
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: grain version
+      description: Output of `grain version`
+      placeholder: "0.1.2"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: grain doctor
+      description: Paste `grain doctor` output (redact secrets).
+      render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: os
+    attributes:
+      label: Host OS
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux amd64
+        - Linux arm64
+        - Other
+    validations:
+      required: true

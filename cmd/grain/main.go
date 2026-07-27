@@ -10,7 +10,7 @@ import (
 )
 
 // Set via -ldflags "-X main.version=..."
-var version = "0.1.0"
+var version = "0.1.2"
 
 // exitCoder is implemented by *exec.ExitError and cli exitCodeError.
 type exitCoder interface {

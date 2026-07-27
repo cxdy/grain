@@ -353,7 +353,11 @@ print_next_steps() {
   printf '%s\n' "${BOLD}Next steps${RESET}"
   printf '  1. Install QEMU (required for real VMs):\n'
   case "$(detect_os)" in
-    darwin) printf '       brew install qemu\n' ;;
+    darwin)
+      printf '       brew install qemu\n'
+      printf '       # ensure Homebrew is on PATH (Apple Silicon often needs):\n'
+      printf '       #   eval "$(/opt/homebrew/bin/brew shellenv)"\n'
+      ;;
     linux)
       if command -v apt-get >/dev/null 2>&1; then
         printf '       sudo apt-get install -y qemu-system qemu-utils\n'
@@ -368,14 +372,16 @@ print_next_steps() {
   printf '       grain doctor\n'
   printf '  3. Start the daemon and create a sandbox:\n'
   printf '       grain up\n'
-  printf '       grain image pull grain-ubuntu   # fast path (agent baked in)\n'
-  printf '       # or: grain image pull          # ubuntu-cloud, then SSH agent deploy\n'
-  printf '       grain new                       # auto-picks grain-ubuntu if present\n'
-  printf '       grain sh\n'
+  printf '       grain image pull grain-ubuntu   # agent-ready golden image\n'
+  printf '       grain new && grain sh\n'
+  printf '  4. Optional workloads:\n'
+  printf '       grain act -- -l                 # GitHub Actions via act in a microVM\n'
+  printf '       grain new --preset k3s -n lab -p\n'
   printf '\n'
   printf 'Guest agent for non-golden images is under ~/.grain/agent/\n'
-  printf 'Docs: https://github.com/%s#readme\n' "$REPO"
-  printf 'Recipes: https://github.com/%s/tree/main/docs/recipes\n' "$REPO"
+  printf 'Docs:    https://grainvm.com\n'
+  printf 'act:     https://grainvm.com/guides/recipes/act/\n'
+  printf 'k3s:     https://grainvm.com/guides/recipes/k3s/\n'
 }
 
 # --- main ---------------------------------------------------------------------

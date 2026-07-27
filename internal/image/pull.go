@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cxdy/grain/internal/hostbin"
 )
 
 // Manager handles base images under dataDir/images/<id>/.
@@ -386,8 +388,8 @@ func hasAgentForImport(spec Spec, id string) bool {
 func materializeQcow2(ctx context.Context, src, dest string) error {
 	ext := strings.ToLower(filepath.Ext(src))
 	// Prefer qemu-img convert to flatten overlay chains into a standalone base.
-	if _, err := exec.LookPath("qemu-img"); err == nil {
-		cmd := exec.CommandContext(ctx, "qemu-img", "convert", "-O", "qcow2", src, dest)
+	if qemuImg, err := hostbin.LookPath("qemu-img"); err == nil {
+		cmd := exec.CommandContext(ctx, qemuImg, "convert", "-O", "qcow2", src, dest)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			// Fall back to plain copy for already-standalone qcow2 if convert fails.
 			if ext == ".qcow2" {

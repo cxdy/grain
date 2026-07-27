@@ -12,6 +12,7 @@ import (
 
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/config"
+	"github.com/cxdy/grain/internal/hostbin"
 	"github.com/cxdy/grain/internal/image"
 	"github.com/cxdy/grain/internal/sshkey"
 )
@@ -177,28 +178,34 @@ func runDoctor(cfg config.Config) error {
 		}
 	}
 	if hv == "qemu" || hv == "" {
-		check(qemu, func() error {
-			_, err := exec.LookPath(qemu)
-			if err != nil {
-				return fmt.Errorf("not found (brew install qemu)")
-			}
-			return nil
-		})
-	} else if _, err := exec.LookPath(qemu); err == nil {
-		fmt.Printf("  ✓ %s (optional; hypervisor=%s)\n", qemu, hv)
-	} else {
-		fmt.Printf("  · %s not on PATH (ok for hypervisor=%s)\n", qemu, hv)
-	}
-	check("qemu-img", func() error {
-		_, err := exec.LookPath("qemu-img")
-		if err != nil {
-			if hv == "firecracker" {
-				return fmt.Errorf("not found — needed to convert qcow2 rootfs to raw for firecracker")
-			}
-			return fmt.Errorf("not found (brew install qemu)")
+		if p, err := hostbin.LookPath(qemu); err != nil {
+			fmt.Printf("  ✗ %s: not found (brew install qemu)\n", qemu)
+			ok = false
+		} else if off, found := hostbin.FoundOffPATH(filepath.Base(qemu)); found {
+			fmt.Printf("  ✓ %s (%s — not on PATH; grain still finds it)\n", qemu, off)
+			_ = p
+		} else {
+			fmt.Printf("  ✓ %s\n", qemu)
 		}
-		return nil
-	})
+	} else if p, err := hostbin.LookPath(qemu); err == nil {
+		fmt.Printf("  ✓ %s (optional; hypervisor=%s)\n", p, hv)
+	} else {
+		fmt.Printf("  · %s not found (ok for hypervisor=%s)\n", qemu, hv)
+	}
+	if p, err := hostbin.LookPath("qemu-img"); err != nil {
+		if hv == "firecracker" {
+			fmt.Printf("  ✗ qemu-img: not found — needed to convert qcow2 rootfs to raw for firecracker\n")
+			ok = false
+		} else {
+			fmt.Printf("  ✗ qemu-img: not found (brew install qemu)\n")
+			ok = false
+		}
+	} else if off, found := hostbin.FoundOffPATH("qemu-img"); found {
+		fmt.Printf("  ✓ qemu-img (%s — not on PATH; grain still finds it)\n", off)
+		_ = p
+	} else {
+		fmt.Printf("  ✓ qemu-img\n")
+	}
 	if runtime.GOOS == "darwin" {
 		check("hdiutil (cloud-init seed)", func() error {
 			_, err := exec.LookPath("hdiutil")
@@ -227,11 +234,11 @@ func runDoctor(cfg config.Config) error {
 
 	// QMP capability (optional soft check): pause/resume/graceful stop use QMP.
 	if hv == "qemu" || hv == "" {
-		if _, err := exec.LookPath(qemu); err == nil {
-			if qemuSupportsQMP(qemu) {
-				fmt.Printf("  ✓ qmp (%s -qmp)\n", qemu)
+		if p, err := hostbin.LookPath(qemu); err == nil {
+			if qemuSupportsQMP(p) {
+				fmt.Printf("  ✓ qmp (%s -qmp)\n", p)
 			} else {
-				fmt.Printf("  · qmp: could not confirm -qmp on %s (pause/resume may be unavailable)\n", qemu)
+				fmt.Printf("  · qmp: could not confirm -qmp on %s (pause/resume may be unavailable)\n", p)
 			}
 		}
 	}

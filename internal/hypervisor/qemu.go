@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cxdy/grain/internal/hostbin"
 	"github.com/cxdy/grain/internal/netutil"
 	"github.com/cxdy/grain/internal/vm"
 )
@@ -44,9 +45,9 @@ func NewQEMURuntime(binary, dataDir string) *QEMURuntime {
 }
 
 func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath string) error {
-	bin, err := exec.LookPath(q.Binary)
+	bin, err := hostbin.LookPath(q.Binary)
 	if err != nil {
-		return fmt.Errorf("%s not found — install qemu (brew install qemu)", q.Binary)
+		return fmt.Errorf("%s not found — install qemu (brew install qemu) and ensure it is on PATH", q.Binary)
 	}
 
 	// Prefer qcow2 overlay next to requested path

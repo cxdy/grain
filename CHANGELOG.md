@@ -11,10 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Releases** use [GoReleaser](https://goreleaser.com). Install script accepts `.tar.gz` archives and falls back to bare binaries from v0.1.0.
-- **Build system:** `justfile` replaces `Makefile`. Cut tags with `just release-tag` (`svu next`); preview with `just version`. See [docs/developer/releasing.md](docs/developer/releasing.md).
+### Fixed
+
+## [0.1.2] - 2026-07-27
 
 ### Fixed
+
+- **Install script** next-step links pointed at a non-existent `docs/recipes` path; they now open grainvm.com (docs, act, k3s).
+- **QEMU discovery** — doctor and the QEMU runtime resolve `qemu-system-*` / `qemu-img` from Homebrew locations (`/opt/homebrew/bin`, `/usr/local/bin`) when those dirs are not on `PATH`.
+
+### Changed
+
+- Default embedded version string is **0.1.2** (release builds still set via GoReleaser ldflags).
+- Installer “next steps” mention `grain act` and the k3s preset.
+- GitHub **issue templates** (bug / feature) and **CODEOWNERS**.
+
+## [0.1.1] - 2026-07-27
+
+### Added
+
+- Published SDKs: npm `@cxdy/grain`, PyPI `cxdy-grain`; Go client via `github.com/cxdy/grain/client`.
+- Trusted-publishing workflows for npm and PyPI.
+- Product docs: quick start, act/k3s homepage surfaces, multi-scenario demo.
+
+### Changed
+
+- GoReleaser archives (`.tar.gz`) as primary install assets; install script supports them.
 
 ## [0.1.0] - 2026-07-27
 

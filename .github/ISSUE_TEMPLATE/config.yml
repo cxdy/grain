@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://grainvm.com
+    about: Install, guides, and API reference
+  - name: Security vulnerability
+    url: https://github.com/cxdy/grain/security/advisories/new
+    about: Report security issues privately (do not open a public issue)

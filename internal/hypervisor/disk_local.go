@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/cxdy/grain/internal/hostbin"
 	"github.com/cxdy/grain/internal/image"
 )
 
@@ -52,7 +53,7 @@ func (d *LocalDisk) Clone(ctx context.Context, baseDisk, destPath string, sizeGB
 		return err
 	}
 	// Prefer qcow2 overlay (fast, small) when qemu-img exists and base is qcow2/raw
-	if _, err := exec.LookPath("qemu-img"); err == nil {
+	if qemuImg, err := hostbin.LookPath("qemu-img"); err == nil {
 		format := "raw"
 		if filepath.Ext(baseDisk) == ".qcow2" {
 			format = "qcow2"
@@ -61,7 +62,7 @@ func (d *LocalDisk) Clone(ctx context.Context, baseDisk, destPath string, sizeGB
 		if filepath.Ext(destPath) != ".qcow2" {
 			destPath = destPath + ".qcow2"
 		}
-		cmd := exec.CommandContext(ctx, "qemu-img", "create", "-f", "qcow2", "-b", baseDisk, "-F", format, destPath)
+		cmd := exec.CommandContext(ctx, qemuImg, "create", "-f", "qcow2", "-b", baseDisk, "-F", format, destPath)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("qemu-img create: %w (%s)", err, string(out))
 		}
@@ -88,10 +89,11 @@ func maybeResize(ctx context.Context, path string, sizeGB int) error {
 	if sizeGB <= 0 {
 		return nil
 	}
-	if _, err := exec.LookPath("qemu-img"); err != nil {
+	qemuImg, err := hostbin.LookPath("qemu-img")
+	if err != nil {
 		return nil
 	}
-	cmd := exec.CommandContext(ctx, "qemu-img", "resize", path, fmt.Sprintf("%dG", sizeGB))
+	cmd := exec.CommandContext(ctx, qemuImg, "resize", path, fmt.Sprintf("%dG", sizeGB))
 	_, _ = cmd.CombinedOutput()
 	return nil
 }
