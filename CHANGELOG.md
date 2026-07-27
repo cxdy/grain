@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.2.0] - 2026-07-27
+
+### Added
+
 - **`grain tray`** — macOS menu bar / Linux system tray status helper.
 - **Guest arch** — `grain new --arch arm64|amd64` (and config `guest_arch`). Cross-arch on Apple Silicon uses QEMU TCG for x86_64 guests.
 - **Virtio GPU** — `grain new --gpu virtio` / config `gpu: virtio` adds `virtio-gpu-pci`.
@@ -18,8 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Python SDK** PyPI name is **`grainvm`** (`pip install grainvm`; import still `import grain`). Previous name `cxdy-grain` is not used for new publishes.
-
-### Fixed
+- Docs site visual refresh (typography and cool ink/mint/steel palette).
 
 ## [0.1.4] - 2026-07-27
 
