@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`grain act`** — run [nektos/act](https://github.com/nektos/act) inside an ephemeral microVM (`--preset act`: Docker Engine + act); mounts the project at `/work`, waits for docker/act, streams the run, deletes the sandbox unless `--keep`. Recipe: [guides/recipes/act](https://grainvm.com/guides/recipes/act/).
 - **Guest agent (`grain-agent`)** — in-guest HTTP server for health, streaming/buffered exec, interactive shell (PTY), file copy, filesystem ops, stats, and secret materialization; deploy over SSH when missing; optional vsock transport with TCP hostfwd fallback.
 - **Create wait modes** — `auto` (default: agent when image HasAgent, else ssh), `ssh`, `agent`, `userdata`.
 - **Golden image `grain-ubuntu`** — bake scripts, CI bake workflow, pull from GitHub Release tag `golden-latest` with companion `.sha256` sidecars; minimal cloud-init seed for agent-ready clones; auto default when local Ready.
@@ -20,12 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pause / resume** — QMP freeze/unfreeze guest vCPUs without tearing down the process.
 - **Live port forwards** — `fwd ls|add|rm` plus create-time `--publish`.
 - **Virtio-9p mounts** — `-v HOST:GUEST` (and virtiofs on Linux when virtiofsd is available).
-- **Profiles & presets** — named create profiles in config; embedded `docker` and `k3s` userdata presets.
+- **Profiles & presets** — named create profiles in config; embedded `docker`, `k3s`, and `act` userdata presets.
 - **OpenAPI + Go client SDK** — `api/openapi.yaml`, optional Bearer `api_token` / `GRAIN_TOKEN`, public `github.com/cxdy/grain/client`.
 - **TypeScript client SDK** — `sdk/ts` (`@cxdy/grain`) thin fetch client for Node automation.
 - **Experimental Firecracker** backend on Linux (raw rootfs, vsock agent, known limits documented).
 - **Boot benchmark** — `scripts/bench-create.sh` times N creates and prints p50/p95/avg.
-- Install script, recipes (coding-agent, k3s, docker-socket, ci-ephemeral), and feature docs (agent, images, proxy, firecracker, mounts, networking, profiles).
+- Install script, recipes (coding-agent, k3s, docker-socket, ci-ephemeral, act), grainvm.com Diátaxis site, and feature docs (agent, images, proxy, firecracker, mounts, networking, profiles).
 
 ### Changed
 

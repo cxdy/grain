@@ -1,6 +1,6 @@
 ---
 title: "Profiles and presets"
-description: "Named create defaults and docker/k3s presets."
+description: "Named create defaults and docker / k3s / act presets."
 ---
 
 
@@ -46,15 +46,26 @@ Embedded cloud-init fragments applied with `grain new --preset NAME` or `profile
 |--------|--------|
 | `docker` | Install Docker (cloud-init packages / install path) |
 | `k3s` | Single-node k3s; defaults toward 2 CPU / 4096 MiB when unset; auto-publishes guest **6443** |
+| `act` | Docker Engine + [nektos/act](https://github.com/nektos/act); defaults toward 2 CPU / 4096 MiB when unset |
 
 Presets merge into userdata with the structured cloud-init merge (safe with `--userdata-file`).
 
 ```bash
 grain new --preset docker
 grain new --preset k3s -n lab -p
+grain new --preset act -v "$PWD:/work" -n act-lab --wait agent
 # first boot can take several minutes — use:
 grain logs -f lab
 ```
+
+For a one-shot GitHub Actions run (create → act → destroy), prefer the dedicated command:
+
+```bash
+grain act -- -l
+grain act -- -j test
+```
+
+See the [act recipe]({{ '/guides/recipes/act/' | relative_url }}).
 
 ## Combining
 

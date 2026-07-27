@@ -13,7 +13,7 @@ How-to guides assume you already installed grain and created at least one sandbo
 | [Guest agent]({{ '/guides/agent/' | relative_url }}) | Exec, shell, cp, fs without living in SSH |
 | [Networking & ports]({{ '/guides/networking/' | relative_url }}) | Publish ports, live forwards, SLIRP limits |
 | [Mounts & shares]({{ '/guides/mounts/' | relative_url }}) | Share host directories into the guest |
-| [Profiles & presets]({{ '/guides/profiles/' | relative_url }}) | Named defaults and docker/k3s presets |
+| [Profiles & presets]({{ '/guides/profiles/' | relative_url }}) | Named defaults and docker / k3s / act presets |
 | [Pause, suspend, restore]({{ '/guides/lifecycle/' | relative_url }}) | Free CPU or RAM while keeping work |
 
 ## Security & ops

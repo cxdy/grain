@@ -57,7 +57,7 @@ Global flag: `--config path` (default `~/.grain/config.yaml`).
 | `-v` / `--volume` | `HOST:GUEST` share (repeatable) |
 | `--publish-socket` | Host↔guest unix socket forward |
 | `--profile` | Named profile |
-| `--preset` | `docker` or `k3s` |
+| `--preset` | `docker`, `k3s`, or `act` |
 | `--userdata-file` | Extra cloud-init / shell |
 | `--proxy` | Inject `HTTPS_PROXY` for egress proxy |
 
@@ -71,13 +71,34 @@ Name is optional for `sh` / `rm` / `x` / `fs` / etc. when exactly one VM exists.
 | `--agent` | Agent only; error if unavailable |
 | `--ssh` | Force SSH/scp |
 
+## GitHub Actions (`grain act`)
+
+Runs [nektos/act](https://github.com/nektos/act) inside an ephemeral sandbox (Docker + act preset). Put act flags after `--`.
+
+```bash
+grain act -- -l
+grain act -- -j test
+grain act --keep -- -W .github/workflows/ci.yml
+```
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--dir` | `.` | Host project mounted at `/work` |
+| `--name` | `act-<dirname>` | Sandbox name |
+| `--cpus` | 2 | vCPUs |
+| `--mem` | 4096 | Memory MiB |
+| `--image` | auto | Base image id |
+| `--timeout` | 15m | Create + ready + act |
+| `--keep` | false | Keep VM after act exits |
+
+Full guide: [Recipe: GitHub Actions (act)]({{ '/guides/recipes/act/' | relative_url }}).
+
 ## Secrets & proxy
 
 | Command | Description |
 |---------|-------------|
 | `grain secret ls\|set\|rm\|inject` | Host secrets store |
 | `grain proxy up\|down\|allow\|deny\|ls\|client` | Egress proxy process |
-| `grain act -- [act-args]` | Run [nektos/act](https://github.com/nektos/act) in an ephemeral sandbox |
 
 ## Profiles
 

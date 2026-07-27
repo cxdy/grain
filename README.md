@@ -76,9 +76,10 @@ grain up
 | `new -P` / `--publish` | host→guest ports (`HOST:GUEST` or `GUEST`; repeatable) |
 | `new -v` / `--volume` | share host dir `HOST:GUEST` via virtio-9p (repeatable) |
 | `new --profile NAME` | named profile from config (flags override profile fields) |
-| `new --preset docker\|k3s` | embedded cloud-init userdata preset |
+| `new --preset docker\|k3s\|act` | embedded cloud-init userdata preset |
 | `new --userdata-file` | cloud-init userdata or shell script |
 | `new --proxy` | inject `HTTPS_PROXY` via cloud-init (guest → `10.0.2.2:3128`) |
+| `act -- [act-args]` | run [nektos/act](https://github.com/nektos/act) in an ephemeral sandbox (`--keep` to retain) |
 | `profile ls` | list named create profiles |
 | `stop` / `start` | stop VM (ephemeral deleted; persistent kept) / start stopped persistent |
 | `suspend` / `restore` | stop QEMU (free RAM); restore from disk/snapshot |
@@ -100,15 +101,17 @@ grain up
 
 **Also:** daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), **TypeScript client SDK** ([`sdk/ts`](sdk/ts) — `@cxdy/grain`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
 
-**Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh). Full overview: [docs/agent.md](docs/agent.md).
+**Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh). Full overview: [Guest agent](https://grainvm.com/guides/agent/).
 
-**Profiles** (`~/.grain/config.yaml` → `profiles:`) set create defaults; resolve order is CLI flags → profile → global defaults. Instances get `Tags["profile"]=name`. **Presets** (`docker`, `k3s`) merge into userdata; `k3s` also suggests 2 CPU / 4096 MiB when unset and auto-publishes guest 6443.
+**Profiles** (`~/.grain/config.yaml` → `profiles:`) set create defaults; resolve order is CLI flags → profile → global defaults. Instances get `Tags["profile"]=name`. **Presets** (`docker`, `k3s`, `act`) merge into userdata; `k3s` and `act` suggest 2 CPU / 4096 MiB when unset; `k3s` also auto-publishes guest 6443.
 
 ```bash
 grain new --profile agent
 grain new --preset docker
 grain new --preset k3s -n lab -p
 grain new --wait agent -v "$(pwd):/work"
+grain act -- -l                 # GitHub Actions via act (ephemeral sandbox)
+grain act --keep -- -j test
 grain profile ls
 grain pause sbox-1 && grain resume sbox-1
 grain fwd add sbox-1 8080:80
@@ -116,25 +119,28 @@ grain fwd add sbox-1 8080:80
 
 ## Docs
 
+Full site: **[grainvm.com](https://grainvm.com)** (this repo’s `docs/` is the Jekyll source).
+
 | Guide | Topics |
 |-------|--------|
-| [docs/agent.md](docs/agent.md) | guest agent: health, exec, cp, fs, deploy, wait modes |
-| [docs/images.md](docs/images.md) | `grain-ubuntu` / `ubuntu-cloud` / `alpine-cloud`, pull, bake, SHA, bench |
-| [docs/proxy.md](docs/proxy.md) | host egress proxy, allowlist, secret inject, `new --proxy` |
-| [docs/firecracker.md](docs/firecracker.md) | experimental Firecracker backend, kernel/rootfs, vsock |
-| [docs/networking.md](docs/networking.md) | SLIRP, SSH, `--publish`, `fwd ls/add/rm`, privileged ports |
-| [docs/mounts.md](docs/mounts.md) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
-| [docs/profiles.md](docs/profiles.md) | named profiles, docker/k3s presets |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
+| [guides/agent](https://grainvm.com/guides/agent/) | guest agent: health, exec, cp, fs, deploy, wait modes |
+| [guides/images](https://grainvm.com/guides/images/) | `grain-ubuntu` / `ubuntu-cloud` / `alpine-cloud`, pull, bake, SHA, bench |
+| [guides/proxy](https://grainvm.com/guides/proxy/) | host egress proxy, allowlist, secret inject, `new --proxy` |
+| [guides/firecracker](https://grainvm.com/guides/firecracker/) | experimental Firecracker backend, kernel/rootfs, vsock |
+| [guides/networking](https://grainvm.com/guides/networking/) | SLIRP, SSH, `--publish`, `fwd ls/add/rm`, privileged ports |
+| [guides/mounts](https://grainvm.com/guides/mounts/) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
+| [guides/profiles](https://grainvm.com/guides/profiles/) | named profiles, docker / k3s / act presets |
+| [guides/troubleshooting](https://grainvm.com/guides/troubleshooting/) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
 
 ### Recipes
 
 | Recipe | Topics |
 |--------|--------|
-| [docs/recipes/coding-agent.md](docs/recipes/coding-agent.md) | sandbox + mount repo + run agent + `cp` results |
-| [docs/recipes/k3s.md](docs/recipes/k3s.md) | `--preset k3s`, port forwards, grab kubeconfig |
-| [docs/recipes/docker-socket.md](docs/recipes/docker-socket.md) | Docker in VM + host socket/TCP forward pattern |
-| [docs/recipes/ci-ephemeral.md](docs/recipes/ci-ephemeral.md) | create → exec tests → `rm` (CI jobs) |
+| [coding agent](https://grainvm.com/guides/recipes/coding-agent/) | sandbox + mount repo + run agent + `cp` results |
+| [k3s](https://grainvm.com/guides/recipes/k3s/) | `--preset k3s`, port forwards, grab kubeconfig |
+| [Docker socket](https://grainvm.com/guides/recipes/docker-socket/) | Docker in VM + host socket/TCP forward pattern |
+| [CI ephemeral](https://grainvm.com/guides/recipes/ci-ephemeral/) | create → exec tests → `rm` (CI jobs) |
+| [GitHub Actions (act)](https://grainvm.com/guides/recipes/act/) | `grain act` — nektos/act in an isolated microVM |
 
 ## How it works
 
@@ -209,7 +215,7 @@ profiles:
     disk_gb: 20
     image: ubuntu-cloud
     persistent: false
-    preset: ""            # optional: docker | k3s
+    preset: ""            # optional: docker | k3s | act
     mounts:
       - {host: ".", guest: "/work"}
     forwards:

@@ -7,9 +7,9 @@ import (
 	"github.com/cxdy/grain/internal/presets"
 )
 
-func TestGetDockerK3sNonEmpty(t *testing.T) {
+func TestGetDockerK3sActNonEmpty(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"docker", "k3s"} {
+	for _, name := range []string{"docker", "k3s", "act"} {
 		ud, err := presets.Get(name)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
@@ -28,6 +28,13 @@ func TestGetDockerK3sNonEmpty(t *testing.T) {
 	k3s, _ := presets.Get("k3s")
 	if !strings.Contains(k3s, "k3s") {
 		t.Fatalf("k3s preset should mention k3s:\n%s", k3s)
+	}
+	act, _ := presets.Get("act")
+	if !strings.Contains(act, "docker") {
+		t.Fatalf("act preset should install docker:\n%s", act)
+	}
+	if !strings.Contains(act, "nektos/act") && !strings.Contains(act, "/usr/local/bin") {
+		t.Fatalf("act preset should install act:\n%s", act)
 	}
 }
 
@@ -56,29 +63,35 @@ func TestList(t *testing.T) {
 	for _, n := range list {
 		found[n] = true
 	}
-	if !found["docker"] || !found["k3s"] {
+	if !found["docker"] || !found["k3s"] || !found["act"] {
 		t.Fatalf("list %v", list)
 	}
-	// preferred order: docker before k3s
-	di, ki := -1, -1
+	// preferred order: docker before k3s before act
+	di, ki, ai := -1, -1, -1
 	for i, n := range list {
-		if n == "docker" {
+		switch n {
+		case "docker":
 			di = i
-		}
-		if n == "k3s" {
+		case "k3s":
 			ki = i
+		case "act":
+			ai = i
 		}
 	}
-	if di < 0 || ki < 0 || di > ki {
+	if di < 0 || ki < 0 || ai < 0 || di > ki || ki > ai {
 		t.Fatalf("order %v", list)
 	}
 }
 
-func TestDefaultResourcesK3s(t *testing.T) {
+func TestDefaultResourcesK3sAndAct(t *testing.T) {
 	t.Parallel()
 	c, m := presets.DefaultResources("k3s")
 	if c != 2 || m != 4096 {
 		t.Fatalf("k3s defaults cpus=%d mem=%d", c, m)
+	}
+	c, m = presets.DefaultResources("act")
+	if c != 2 || m != 4096 {
+		t.Fatalf("act defaults cpus=%d mem=%d", c, m)
 	}
 	c, m = presets.DefaultResources("docker")
 	if c != 0 || m != 0 {
@@ -93,5 +106,8 @@ func TestNeedsAPIServerPort(t *testing.T) {
 	}
 	if presets.NeedsAPIServerPort("docker") {
 		t.Fatal("docker should not force 6443")
+	}
+	if presets.NeedsAPIServerPort("act") {
+		t.Fatal("act should not force 6443")
 	}
 }

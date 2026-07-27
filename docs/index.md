@@ -144,12 +144,12 @@ description: grain runs disposable Linux sandboxes locally — install in one co
         <p>Default-deny outbound HTTP(S) with allow rules and optional secret injection on the wire.</p>
       </div>
       <div class="feature">
-        <h3>Automate it</h3>
-        <p>Unix socket API, OpenAPI, Go client, and TypeScript SDK for agents and CI.</p>
+        <h3>GitHub Actions locally</h3>
+        <p><code>grain act</code> boots Docker + <a href="https://github.com/nektos/act">act</a> in an isolated microVM, runs your workflows, then tears the sandbox down.</p>
       </div>
       <div class="feature">
-        <h3>Your hardware</h3>
-        <p>QEMU/HVF on Mac, QEMU or experimental Firecracker on Linux. Data stays local.</p>
+        <h3>Automate it</h3>
+        <p>Unix socket API, OpenAPI, Go client, and TypeScript SDK for agents and CI.</p>
       </div>
     </div>
   </div>
@@ -162,7 +162,7 @@ description: grain runs disposable Linux sandboxes locally — install in one co
     <div class="audiences">
       <div class="audience">
         <h3>End users</h3>
-        <p>Install, first sandbox, daily CLI, recipes for coding agents and k3s.</p>
+        <p>Install, first sandbox, daily CLI, recipes for coding agents, k3s, and <code>grain act</code>.</p>
         <a class="btn btn-sm btn-ghost" href="{{ '/get-started/install/' | relative_url }}">Start here →</a>
       </div>
       <div class="audience">
