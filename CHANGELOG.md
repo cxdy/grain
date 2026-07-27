@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Python SDK** PyPI name is **`grainvm`** (`pip install grainvm`; import still `import grain`). Previous name `cxdy-grain` is not used for new publishes.
+
 ### Fixed
 
 ## [0.1.4] - 2026-07-27

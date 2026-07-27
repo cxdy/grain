@@ -98,7 +98,7 @@ grain fwd ls lab         # host port → guest 6443
 | **Presets** | `act` · `k3s` · `docker` |
 | **Guest agent** | Exec, shell, file copy, and fs ops without living in SSH |
 | **API** | Unix socket + optional TCP · [OpenAPI](api/openapi.yaml) |
-| **SDKs** | [Go](https://pkg.go.dev/github.com/cxdy/grain/client) · [TypeScript](https://www.npmjs.com/package/@cxdy/grain) · [Python](https://pypi.org/project/cxdy-grain/) |
+| **SDKs** | [Go](https://pkg.go.dev/github.com/cxdy/grain/client) · [TypeScript](https://www.npmjs.com/package/@cxdy/grain) · [Python](https://pypi.org/project/grainvm/) |
 
 ---
 

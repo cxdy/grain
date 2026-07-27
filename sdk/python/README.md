@@ -1,14 +1,16 @@
-# `cxdy-grain` — Python client
+# `grainvm` — Python client
 
 Lightweight Python SDK for the [grain](https://github.com/cxdy/grain) daemon HTTP API. Stdlib only (`http.client`) — no runtime dependencies. Types and methods mirror the [Go client](https://pkg.go.dev/github.com/cxdy/grain/client) and [TypeScript SDK](https://www.npmjs.com/package/@cxdy/grain).
+
+Install name: **`grainvm`**. Import: **`import grain`**.
 
 ## Install
 
 ```bash
-pip install cxdy-grain
+pip install grainvm
 ```
 
-Package: [pypi.org/project/cxdy-grain](https://pypi.org/project/cxdy-grain/). Requires **Python 3.9+**.
+Package: [pypi.org/project/grainvm](https://pypi.org/project/grainvm/). Requires **Python 3.9+**.
 
 From a grain checkout (development):
 
