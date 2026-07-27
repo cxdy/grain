@@ -1,7 +1,7 @@
 ---
 layout: home
 title: Fast Linux microVMs on your hardware
-description: grain runs disposable Linux sandboxes locally — install in one command, shell in seconds.
+description: Local Linux microVMs for GitHub Actions (grain act) and throwaway k3s — plus sandboxes, agent, and APIs. macOS & Linux.
 ---
 
 <section class="hero">
@@ -12,10 +12,15 @@ description: grain runs disposable Linux sandboxes locally — install in one co
         grain is a local microVM control plane — small like a grain of sand, complete like a real Linux box.
         Ephemeral by default, persistent when you need it, with a guest agent for exec, files, and shell.
       </p>
+      <p class="hero-wedges">
+        <a href="#workloads"><strong>grain act</strong> — GitHub Actions in an isolated microVM</a>
+        <span class="hero-wedge-sep" aria-hidden="true">·</span>
+        <a href="#workloads"><strong>--preset k3s</strong> — throwaway single-node cluster</a>
+      </p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#install">Install grain</a>
+        <a class="btn btn-ghost" href="#workloads">act &amp; k3s</a>
         <a class="btn btn-ghost" href="{{ '/get-started/quickstart/' | relative_url }}">Quick start</a>
-        <a class="btn btn-ghost" href="#demo-section" data-scroll-demo>Try interactive demo</a>
       </div>
       <p class="hero-meta">macOS Apple Silicon &amp; Linux · QEMU · optional Firecracker · Go, TypeScript &amp; Python SDKs</p>
     </div>
@@ -97,6 +102,56 @@ description: grain runs disposable Linux sandboxes locally — install in one co
   </div>
 </section>
 
+<section class="section section-workloads" id="workloads">
+  <div class="wrap">
+    <h2 class="section-title">Two workflows people use first</h2>
+    <p class="section-lead">
+      Beyond a plain shell: run <strong>GitHub Actions</strong> or a <strong>k3s</strong> lab inside a disposable microVM —
+      not on host Docker, not as a permanent desktop VM.
+    </p>
+    <div class="workloads">
+      <article class="workload">
+        <div class="workload-head">
+          <p class="workload-label">CI debugging</p>
+          <h3>GitHub Actions with <code>grain act</code></h3>
+        </div>
+        <p class="workload-lead">
+          Boots Docker + <a href="https://github.com/nektos/act">nektos/act</a> in an isolated Linux microVM,
+          mounts your repo, runs workflows, then tears the sandbox down. Host Docker stays clean.
+        </p>
+        <pre class="code-block install-code" id="workload-act" data-copy-text="grain up&#10;grain image pull grain-ubuntu&#10;cd /path/to/your/repo&#10;grain act -- -l&#10;grain act -- -j test"><code><span class="line"><span class="prompt">$</span> grain up</span>
+<span class="line"><span class="prompt">$</span> grain image pull grain-ubuntu</span>
+<span class="line"><span class="prompt">$</span> cd /path/to/your/repo</span>
+<span class="line"><span class="prompt">$</span> grain act -- -l</span>
+<span class="line"><span class="prompt">$</span> grain act -- -j test</span></code></pre>
+        <div class="workload-actions">
+          <button type="button" class="btn btn-sm btn-ghost copy-btn-inline" data-copy="#workload-act">Copy commands</button>
+          <a class="btn btn-sm btn-primary" href="{{ '/guides/recipes/act/' | relative_url }}">act recipe →</a>
+        </div>
+      </article>
+
+      <article class="workload">
+        <div class="workload-head">
+          <p class="workload-label">Local Kubernetes</p>
+          <h3>Throwaway k3s lab</h3>
+        </div>
+        <p class="workload-lead">
+          One preset installs single-node <strong>k3s</strong>, publishes the API port, and keeps state on a persistent disk when you pass <code>-p</code>.
+          Grab kubeconfig and use host <code>kubectl</code>.
+        </p>
+        <pre class="code-block install-code" id="workload-k3s" data-copy-text="grain up&#10;grain image pull grain-ubuntu&#10;grain new --preset k3s -n lab -p --wait userdata&#10;grain fwd ls lab"><code><span class="line"><span class="prompt">$</span> grain up</span>
+<span class="line"><span class="prompt">$</span> grain image pull grain-ubuntu</span>
+<span class="line"><span class="prompt">$</span> grain new --preset k3s -n lab -p --wait userdata</span>
+<span class="line"><span class="prompt">$</span> grain fwd ls lab</span></code></pre>
+        <div class="workload-actions">
+          <button type="button" class="btn btn-sm btn-ghost copy-btn-inline" data-copy="#workload-k3s">Copy commands</button>
+          <a class="btn btn-sm btn-primary" href="{{ '/guides/recipes/k3s/' | relative_url }}">k3s recipe →</a>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
 <section class="section">
   <div class="wrap">
     <h2 class="section-title">Built for real work</h2>
@@ -119,8 +174,8 @@ description: grain runs disposable Linux sandboxes locally — install in one co
         <p>Default-deny outbound HTTP(S) with allow rules and optional secret injection on the wire.</p>
       </div>
       <div class="feature">
-        <h3>GitHub Actions locally</h3>
-        <p><code>grain act</code> boots Docker + <a href="https://github.com/nektos/act">act</a> in an isolated microVM, runs your workflows, then tears the sandbox down.</p>
+        <h3>Presets that matter</h3>
+        <p><code>docker</code>, <code>k3s</code>, and <code>act</code> bake cloud-init so common labs are one flag — not a shell cookbook.</p>
       </div>
       <div class="feature">
         <h3>Automate it</h3>
@@ -137,7 +192,7 @@ description: grain runs disposable Linux sandboxes locally — install in one co
     <div class="audiences">
       <div class="audience">
         <h3>End users</h3>
-        <p>Install, first sandbox, daily CLI, recipes for coding agents, k3s, and <code>grain act</code>.</p>
+        <p>Install, first sandbox, then jump to <a href="{{ '/guides/recipes/act/' | relative_url }}">act</a> or <a href="{{ '/guides/recipes/k3s/' | relative_url }}">k3s</a> when you have a real workload.</p>
         <a class="btn btn-sm btn-ghost" href="{{ '/get-started/quickstart/' | relative_url }}">Start here →</a>
       </div>
       <div class="audience">

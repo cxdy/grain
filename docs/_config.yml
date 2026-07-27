@@ -50,13 +50,15 @@ defaults:
 
 nav:
   - title: Get started
-    url: /get-started/install/
+    url: /get-started/quickstart/
+  - title: act
+    url: /guides/recipes/act/
+  - title: k3s
+    url: /guides/recipes/k3s/
   - title: Guides
     url: /guides/
   - title: Reference
     url: /reference/cli/
-  - title: Explain
-    url: /explain/architecture/
   - title: GitHub
     url: https://github.com/cxdy/grain
     external: true
@@ -71,6 +73,10 @@ docs_nav:
         url: /get-started/install/
       - title: Your first sandbox
         url: /get-started/first-sandbox/
+      - title: GitHub Actions (act)
+        url: /guides/recipes/act/
+      - title: k3s lab
+        url: /guides/recipes/k3s/
       - title: Core concepts
         url: /get-started/concepts/
       - title: Contributing
@@ -82,6 +88,10 @@ docs_nav:
     links:
       - title: Overview
         url: /guides/
+      - title: GitHub Actions (act)
+        url: /guides/recipes/act/
+      - title: k3s lab
+        url: /guides/recipes/k3s/
       - title: Images & golden boots
         url: /guides/images/
       - title: Guest agent
@@ -104,16 +114,12 @@ docs_nav:
         url: /guides/firecracker/
       - title: Troubleshooting
         url: /guides/troubleshooting/
-      - title: "Recipe: coding agent"
+      - title: Coding agent
         url: /guides/recipes/coding-agent/
-      - title: "Recipe: k3s"
-        url: /guides/recipes/k3s/
-      - title: "Recipe: Docker socket"
+      - title: Docker socket
         url: /guides/recipes/docker-socket/
-      - title: "Recipe: CI ephemeral"
+      - title: CI ephemeral
         url: /guides/recipes/ci-ephemeral/
-      - title: "Recipe: GitHub Actions (act)"
-        url: /guides/recipes/act/
   reference:
     title: Reference
     links:

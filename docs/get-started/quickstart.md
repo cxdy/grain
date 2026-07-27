@@ -145,7 +145,33 @@ Ephemeral is the default: `rm`, `stop`, or daemon restart removes the VM. Use `g
 
 ---
 
-## 4. Useful next commands
+## 4. Real workloads (act & k3s)
+
+These are the two features most people try after a plain shell.
+
+### GitHub Actions — `grain act`
+
+From a repo with `.github/workflows/`:
+
+```bash
+grain act -- -l              # list workflows / jobs
+grain act -- -j test         # run a job in an ephemeral microVM
+```
+
+Docker + [act](https://github.com/nektos/act) run **inside** the guest so host Docker stays clean. Full guide: [GitHub Actions with act]({{ '/guides/recipes/act/' | relative_url }}).
+
+### Throwaway k3s lab
+
+```bash
+grain new --preset k3s -n lab -p --wait userdata
+grain fwd ls lab             # host port → guest 6443
+```
+
+Pull kubeconfig and use host `kubectl` — see [k3s recipe]({{ '/guides/recipes/k3s/' | relative_url }}).
+
+---
+
+## 5. Useful next commands
 
 Once `grain up` is running and an image is local:
 
@@ -170,21 +196,16 @@ grain start lab
 # Guest file copy (agent preferred)
 grain cp ./hello.sh lab:/tmp/hello.sh
 grain x lab -- cat /tmp/hello.sh
-```
 
-Presets for heavier setups:
-
-```bash
+# Docker-in-guest preset
 grain new --preset docker
-grain new --preset k3s -n lab -p
-grain act -- -l                 # nektos/act in an ephemeral sandbox
 ```
 
-More: [Profiles & presets]({{ '/guides/profiles/' | relative_url }}) · [Mounts]({{ '/guides/mounts/' | relative_url }}) · [Networking]({{ '/guides/networking/' | relative_url }}) · [act recipe]({{ '/guides/recipes/act/' | relative_url }}).
+More: [Profiles & presets]({{ '/guides/profiles/' | relative_url }}) · [Mounts]({{ '/guides/mounts/' | relative_url }}) · [Networking]({{ '/guides/networking/' | relative_url }}).
 
 ---
 
-## 5. If something fails
+## 6. If something fails
 
 ```bash
 grain doctor
@@ -203,7 +224,7 @@ Common fixes:
 
 ---
 
-## 6. Automation (optional)
+## 7. Automation (optional)
 
 The daemon exposes HTTP on the unix socket and optional TCP (`api: 127.0.0.1:7474`). Spec: [OpenAPI](https://github.com/cxdy/grain/blob/main/api/openapi.yaml).
 
@@ -222,8 +243,9 @@ curl --unix-socket ~/.grain/grain.sock http://grain/vms
 
 ## Next steps
 
+- [GitHub Actions (act)]({{ '/guides/recipes/act/' | relative_url }}) · [k3s lab]({{ '/guides/recipes/k3s/' | relative_url }})  
 - [Your first sandbox]({{ '/get-started/first-sandbox/' | relative_url }}) — interactive demo + deeper walkthrough  
 - [Core concepts]({{ '/get-started/concepts/' | relative_url }}) — daemon, images, agent, ephemeral vs persistent  
 - [Guides]({{ '/guides/' | relative_url }}) — images, agent, mounts, proxy, remote host  
 - [CLI reference]({{ '/reference/cli/' | relative_url }}) · [HTTP API]({{ '/reference/api/' | relative_url }})  
-- Recipes: [coding agent]({{ '/guides/recipes/coding-agent/' | relative_url }}) · [k3s]({{ '/guides/recipes/k3s/' | relative_url }}) · [CI ephemeral]({{ '/guides/recipes/ci-ephemeral/' | relative_url }})  
+

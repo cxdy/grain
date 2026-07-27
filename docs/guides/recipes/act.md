@@ -1,6 +1,6 @@
 ---
-title: "Recipe: GitHub Actions with act"
-description: Run nektos/act inside a grain sandbox to test GitHub Actions without cloud runners.
+title: GitHub Actions with act
+description: Run nektos/act inside a grain microVM — isolated GitHub Actions without polluting host Docker.
 ---
 
 [nektos/act](https://github.com/nektos/act) runs GitHub Actions workflows on your machine using Docker. **grain act** boots an isolated Linux microVM with Docker + act, mounts your project, runs act, then tears the sandbox down.

@@ -274,6 +274,32 @@ a:hover {
   color: var(--faint);
 }
 
+.hero-wedges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.65rem;
+  margin: 0 0 1.25rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+  max-width: 36rem;
+}
+
+.hero-wedges a {
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--brand) 45%, var(--border));
+}
+
+.hero-wedges a:hover {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+
+.hero-wedge-sep {
+  color: var(--faint);
+}
+
 .install-card {
   background: var(--bg-elev);
   border: 1px solid var(--border);
@@ -486,6 +512,71 @@ a:hover {
   margin: 0;
   color: var(--muted);
   font-size: 0.94rem;
+}
+
+/* Homepage: act + k3s workload cards */
+.section-workloads {
+  background: color-mix(in srgb, var(--brand-soft) 35%, var(--bg));
+  border-block: 1px solid var(--border);
+}
+
+.workloads {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 900px) {
+  .workloads {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.15rem;
+  }
+}
+
+.workload {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  padding: 1.25rem 1.3rem 1.15rem;
+  box-shadow: var(--shadow);
+}
+
+.workload-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.workload-head h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.workload-lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.workload .code-block {
+  flex: 1;
+}
+
+.workload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.copy-btn-inline {
+  position: static;
 }
 
 .audiences {

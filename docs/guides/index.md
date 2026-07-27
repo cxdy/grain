@@ -5,6 +5,20 @@ description: Problem-oriented how-tos for everyday use and operating grain in pr
 
 How-to guides assume you already installed grain and created at least one sandbox. Each page solves a specific job.
 
+If you are brand new, start with the [quick start]({{ '/get-started/quickstart/' | relative_url }}).
+
+## Popular workloads
+
+| Guide | Outcome |
+|-------|---------|
+| [GitHub Actions (act)]({{ '/guides/recipes/act/' | relative_url }}) | Run [nektos/act](https://github.com/nektos/act) in an isolated microVM — host Docker stays clean |
+| [k3s lab]({{ '/guides/recipes/k3s/' | relative_url }}) | Single-node Kubernetes with `--preset k3s`, API port + kubeconfig |
+
+```bash
+grain act -- -j test
+grain new --preset k3s -n lab -p --wait userdata
+```
+
 ## Everyday use
 
 | Guide | When you need it |
@@ -26,14 +40,10 @@ How-to guides assume you already installed grain and created at least one sandbo
 | [Firecracker]({{ '/guides/firecracker/' | relative_url }}) | Linux experimental backend |
 | [Troubleshooting]({{ '/guides/troubleshooting/' | relative_url }}) | When boot, agent, or QEMU misbehaves |
 
-## Recipes
+## More recipes
 
 | Recipe | Outcome |
 |--------|---------|
 | [Coding agent]({{ '/guides/recipes/coding-agent/' | relative_url }}) | Isolated agent with a mounted repo |
-| [k3s]({{ '/guides/recipes/k3s/' | relative_url }}) | Single-node Kubernetes lab |
 | [Docker socket]({{ '/guides/recipes/docker-socket/' | relative_url }}) | Docker in the VM, socket on the host |
 | [CI ephemeral]({{ '/guides/recipes/ci-ephemeral/' | relative_url }}) | Create → test → destroy |
-| [GitHub Actions (act)]({{ '/guides/recipes/act/' | relative_url }}) | Run `act` inside an isolated microVM |
-
-If you are brand new, start with the [quick start]({{ '/get-started/quickstart/' | relative_url }}) instead.

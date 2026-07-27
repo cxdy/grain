@@ -1,6 +1,6 @@
 ---
-title: "Recipe: single-node k3s lab"
-description: How-to recipe from the grain documentation set.
+title: k3s lab
+description: Spin up a disposable or persistent single-node k3s cluster with grain’s k3s preset.
 ---
 
 

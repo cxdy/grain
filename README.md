@@ -2,6 +2,8 @@
 
 **Fast Linux microVM sandboxes on your own hardware.** Apache-2.0.
 
+Run **GitHub Actions** (`grain act`) and **throwaway k3s** labs in isolated microVMs — plus everyday sandboxes with mounts, ports, and a guest agent.
+
 Ephemeral by default · persistent when you want · local-first · macOS & Linux (not Windows/WSL).
 
 **Docs:** [grainvm.com](https://grainvm.com) · **Quick start:** [grainvm.com/get-started/quickstart](https://grainvm.com/get-started/quickstart/)
@@ -38,13 +40,41 @@ grain sh
 grain rm && grain down
 ```
 
-More detail (install options, full config example, next steps): **[Quick start](https://grainvm.com/get-started/quickstart/)**.
+More detail: **[Quick start](https://grainvm.com/get-started/quickstart/)**.
+
+## Try a real workload
+
+### GitHub Actions (`grain act`)
+
+Run [nektos/act](https://github.com/nektos/act) inside a disposable microVM so host Docker stays clean:
+
+```bash
+grain up
+grain image pull grain-ubuntu
+cd /path/to/your/repo
+grain act -- -l              # list workflows / jobs
+grain act -- -j test         # run a job
+```
+
+Guide: [GitHub Actions with act](https://grainvm.com/guides/recipes/act/).
+
+### Throwaway k3s lab
+
+```bash
+grain up
+grain image pull grain-ubuntu
+grain new --preset k3s -n lab -p --wait userdata
+grain fwd ls lab             # API server host port → guest 6443
+```
+
+Guide: [k3s recipe](https://grainvm.com/guides/recipes/k3s/) (kubeconfig pull-down and `kubectl`).
 
 ## What you get
 
 | | |
 |--|--|
-| **CLI** | `up` / `new` / `sh` / `x` / `rm` · mounts · port forwards · profiles · presets (`docker`, `k3s`, `act`) |
+| **Workloads** | `grain act` · `--preset k3s` · `--preset docker` |
+| **CLI** | `up` / `new` / `sh` / `x` / `rm` · mounts · port forwards · profiles |
 | **Guest agent** | Fast exec, file copy, fs ops without SSH when healthy |
 | **API** | Unix socket + optional TCP · [OpenAPI](api/openapi.yaml) |
 | **SDKs** | [Go](https://pkg.go.dev/github.com/cxdy/grain/client) · [TypeScript](https://www.npmjs.com/package/@cxdy/grain) · [Python](https://pypi.org/project/cxdy-grain/) |
@@ -55,6 +85,8 @@ More detail (install options, full config example, next steps): **[Quick start](
 |--|--|
 | [Install](https://grainvm.com/get-started/install/) | Platforms, script, binaries, from source |
 | [Quick start](https://grainvm.com/get-started/quickstart/) | Install + config + first VM |
+| [GitHub Actions (act)](https://grainvm.com/guides/recipes/act/) | Isolated `act` in a microVM |
+| [k3s lab](https://grainvm.com/guides/recipes/k3s/) | Single-node cluster preset |
 | [First sandbox](https://grainvm.com/get-started/first-sandbox/) | Tutorial + interactive demo |
 | [Guides](https://grainvm.com/guides/) | Images, agent, networking, mounts, proxy, remote host |
 | [Reference](https://grainvm.com/reference/cli/) | CLI, config, API, SDKs |
