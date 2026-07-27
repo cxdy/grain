@@ -3,7 +3,7 @@
 #
 # Prerequisites (macOS + QEMU):
 #   brew install qemu
-#   make build agent-linux
+#   just build && just agent-linux
 #   grain up
 #   grain image pull ubuntu-cloud
 #
@@ -74,7 +74,7 @@ if [[ -z "$GRAIN_BIN" ]]; then
   elif command -v grain >/dev/null 2>&1; then
     GRAIN_BIN=grain
   else
-    die "grain binary not found (build with: make build)"
+    die "grain binary not found (build with: just build)"
   fi
 fi
 
@@ -162,7 +162,7 @@ doctor_ci() {
     fi
   fi
   if [[ "$ok" -ne 1 ]]; then
-    die "CI doctor failed — install qemu-system + qemu-utils and rebuild grain (make build agent-linux)"
+    die "CI doctor failed — install qemu-system + qemu-utils and rebuild grain (just build && just agent-linux)"
   fi
 }
 
@@ -175,8 +175,8 @@ fi
 # 1) Linux agent binary for deploy
 AGENT_BIN="bin/grain-agent-linux-${AGENT_ARCH}"
 if [[ ! -f "$AGENT_BIN" ]]; then
-  log "building agent-linux (make agent-linux)"
-  run "make agent-linux"
+  log "building agent-linux (just agent-linux)"
+  run "just agent-linux"
 fi
 [[ -f "$AGENT_BIN" || "$DRY_RUN" -eq 1 ]] || die "missing $AGENT_BIN"
 

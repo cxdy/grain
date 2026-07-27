@@ -78,7 +78,7 @@ Or from a checkout:
 ```bash
 git clone https://github.com/cxdy/grain.git
 cd grain
-make test && make build agent-linux
+just test && just build && just agent-linux
 ./bin/grain version
 ```
 

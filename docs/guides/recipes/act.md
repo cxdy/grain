@@ -68,7 +68,7 @@ First boot installs packages and act (needs network); later runs on a warm image
 **Guest agent:** `grain act` uses `--wait agent`. Without a golden image, the host deploys `grain-agent` over SSH — you need a linux agent binary on the host:
 
 ```bash
-make agent-linux
+just agent-linux
 # or install release agent under ~/.grain/agent/
 ```
 

@@ -27,7 +27,7 @@ func LinuxBinaryName(goarch string) string {
 //  4. {dataDir}/agent/grain-agent-linux-$GOARCH
 //
 // Host GOARCH is used as the guest arch (local QEMU typically matches the host).
-// Run `make agent-linux` to produce these binaries before live deploy.
+// Run `just agent-linux` to produce these binaries before live deploy.
 func LinuxBinaryPath(dataDir string) (string, error) {
 	name := LinuxBinaryName(runtime.GOARCH)
 	var candidates []string
@@ -73,6 +73,6 @@ func LinuxBinaryPath(dataDir string) (string, error) {
 		}
 		return abs, nil
 	}
-	return "", fmt.Errorf("linux agent binary %s not found (run make agent-linux); searched: %s",
+	return "", fmt.Errorf("linux agent binary %s not found (run just agent-linux); searched: %s",
 		name, strings.Join(searched, ", "))
 }

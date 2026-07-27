@@ -17,9 +17,9 @@ Also read [SECURITY.md](SECURITY.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md
 - **make**
 
 ```bash
-make test          # unit tests (mock hypervisor — no QEMU required)
-make smoke-api     # CLI + daemon e2e without QEMU
-make build
+just test          # unit tests (mock hypervisor — no QEMU required)
+just smoke-api     # CLI + daemon e2e without QEMU
+just build
 ./bin/grain doctor # dependency check (QEMU, image, optional agent binary)
 ```
 
@@ -30,7 +30,7 @@ Unit tests use a **mock hypervisor**. Live QEMU is optional for day-to-day devel
 Before deploying the agent to a non-golden image, or before `grain act` on images without a baked-in agent, build Linux agent binaries:
 
 ```bash
-make build agent-linux
+just build && just agent-linux
 # produces bin/grain-agent-linux-amd64 and bin/grain-agent-linux-arm64
 ```
 
@@ -48,7 +48,7 @@ Prefer `grain image pull grain-ubuntu` (golden from tag `golden-latest`) so crea
 
 ## Pull requests
 
-- Include **tests** for behavior changes (`make test`; `make smoke-api` when touching CLI/daemon glue).
+- Include **tests** for behavior changes (`just test`; `just smoke-api` when touching CLI/daemon glue).
 - Update **docs** (README and/or `docs/`) when the change is user-facing.
 - Keep PRs focused; note risk (hypervisor, API auth, install script) in the description.
 - Do not commit large binaries or accidental golden bake artifacts under `dist/` unless that is the intentional subject of the PR.
@@ -56,7 +56,7 @@ Prefer `grain image pull grain-ubuntu` (golden from tag `golden-latest`) so crea
 ## Local workflow
 
 ```bash
-make test && make build
+just test && just build
 ./bin/grain doctor
 ./bin/grain up
 ./bin/grain image pull grain-ubuntu   # once
@@ -68,13 +68,14 @@ Troubleshooting: [guides/troubleshooting](https://grainvm.com/guides/troubleshoo
 
 ## Release
 
-Maintainer checklist: [docs/RELEASE.md](docs/RELEASE.md).
-
-GitHub Releases for `v*` tags are produced by **GoReleaser** (`.goreleaser.yaml`, grex-style workflow). Snapshot locally without publishing:
+Maintainer checklist: [docs/RELEASE.md](docs/RELEASE.md).  
+How-to: [docs/developer/releasing.md](docs/developer/releasing.md).
 
 ```bash
-go install github.com/goreleaser/goreleaser/v2@latest
-make release-build   # dist/*.tar.gz + checksums.txt
+brew install just svu
+just version          # preview: svu current / svu next
+just release-tag      # create + push next semver tag (triggers GoReleaser)
+just release-build    # snapshot tarballs under dist/ (no publish)
 ```
 
 Golden images (`golden-latest`) use the separate bake workflow, not GoReleaser.

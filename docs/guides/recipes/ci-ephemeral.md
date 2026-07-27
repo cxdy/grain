@@ -12,7 +12,7 @@ Use grain as a disposable Linux runner: one VM per job, no leftover state.
 grain up
 grain image pull
 # Optional for agent exec without SSH latency:
-# make agent-linux   # from a checkout, once per arch
+# just agent-linux   # from a checkout, once per arch
 ```
 
 ## Minimal script
@@ -94,7 +94,7 @@ jobs:
       - name: Agent binary (optional)
         run: |
           # if building from this monorepo; otherwise skip and use SSH-only x
-          make agent-linux || true
+          just agent-linux || true
       - name: Up + image
         run: |
           grain doctor || true

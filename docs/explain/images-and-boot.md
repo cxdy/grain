@@ -38,7 +38,7 @@ Report p50/p95 on your hardware; do not assume marketing numbers from other tool
 ## Baking your own golden
 
 ```bash
-make build agent-linux
+just build && just agent-linux
 ./scripts/bake-golden.sh
 # or CI: ./scripts/ci-bake-golden.sh
 ```

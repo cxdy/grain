@@ -16,8 +16,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: extractions/setup-just@v3
+
       - name: Unit tests
-        run: go test ./... -count=1
+        run: just test
 
       - name: Smoke API (mock hypervisor)
-        run: make smoke-api
+        run: just smoke-api

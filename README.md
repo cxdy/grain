@@ -53,7 +53,7 @@ go install github.com/cxdy/grain/cmd/grain@latest
 ### Build from checkout
 
 ```bash
-make test && make build
+just test && just build
 # Real VMs need QEMU:
 brew install qemu
 ./bin/grain doctor
@@ -103,7 +103,7 @@ grain up
 
 **Also:** daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), **TypeScript client SDK** ([`sdk/ts`](sdk/ts) — `@cxdy/grain`), **Python client SDK** ([`sdk/python`](sdk/python) — `cxdy-grain` / `import grain`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
 
-**Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh). Full overview: [Guest agent](https://grainvm.com/guides/agent/).
+**Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`just agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh). Full overview: [Guest agent](https://grainvm.com/guides/agent/).
 
 **Profiles** (`~/.grain/config.yaml` → `profiles:`) set create defaults; resolve order is CLI flags → profile → global defaults. Instances get `Tags["profile"]=name`. **Presets** (`docker`, `k3s`, `act`) merge into userdata; `k3s` and `act` suggest 2 CPU / 4096 MiB when unset; `k3s` also auto-publishes guest 6443.
 
@@ -158,7 +158,7 @@ Full site: **[grainvm.com](https://grainvm.com)** (this repo’s `docs/` is the 
 ```bash
 grain image pull grain-ubuntu   # from GitHub Releases tag golden-latest
 grain new -i grain-ubuntu       # or: grain new  (auto if grain-ubuntu is local)
-# offline: make agent-linux && ./scripts/bake-golden.sh
+# offline: just agent-linux && ./scripts/bake-golden.sh
 # or: grain image import ./my-golden.qcow2 --id grain-ubuntu
 ```
 
@@ -167,15 +167,15 @@ Ephemeral VMs are removed on `rm`, `stop`, or daemon stop. Persistent (`-p`) kee
 ## Tests & TDD
 
 ```bash
-make test          # unit tests (mock hypervisor)
-make smoke-api     # CLI + daemon e2e without QEMU
-make cover
+just test          # unit tests (mock hypervisor)
+just smoke-api     # CLI + daemon e2e without QEMU
+just cover
 ```
 
 ## Observability (optional)
 
 ```bash
-make obs-up   # Prometheus :9090, Grafana :3000, Loki :3100
+just obs-up   # Prometheus :9090, Grafana :3000, Loki :3100
 curl -s http://127.0.0.1:7474/metrics
 ```
 
@@ -327,7 +327,7 @@ See [`sdk/python/README.md`](sdk/python/README.md) and [grainvm.com/reference/py
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, coding norms, and PR expectations.
 
 - **Platforms:** macOS and Linux only (not Windows/WSL)
-- **Tests:** `make test` (mock hypervisor), `make smoke-api`
+- **Tests:** `just test` (mock hypervisor), `just smoke-api`
 - **Doctor:** `grain doctor` after install; full docs at [grainvm.com](https://grainvm.com)
 - **Security:** [SECURITY.md](SECURITY.md) · **Conduct:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - **v0.1 release checklist:** [docs/RELEASE.md](docs/RELEASE.md)

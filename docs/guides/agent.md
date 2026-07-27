@@ -50,7 +50,7 @@ Deploy runs only when a Linux agent binary is found. Search order (`internal/age
 Build both arches:
 
 ```bash
-make agent-linux
+just agent-linux
 # → bin/grain-agent-linux-arm64
 # → bin/grain-agent-linux-amd64
 ```

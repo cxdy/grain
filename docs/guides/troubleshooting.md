@@ -25,7 +25,7 @@ Checks:
 | `qemu-img` | same QEMU package |
 | `hdiutil` | macOS only — builds cloud-init seed ISO |
 | base image | default `image` from config; pull if missing |
-| guest agent binary | soft warning if `grain-agent-linux-$arch` missing (`make agent-linux`); SSH-only still works |
+| guest agent binary | soft warning if `grain-agent-linux-$arch` missing (`just agent-linux`); SSH-only still works |
 | qmp | soft check that QEMU documents `-qmp` (needed for pause/resume/graceful stop) |
 | daemon socket | optional; prints if not running |
 

@@ -18,7 +18,7 @@
 #   ARTIFACT_DIR     default ./dist/golden
 #   GRAIN_DATA_DIR   optional isolated data dir (else bake-golden --ci picks one)
 #   CI_READY_TIMEOUT default 15m
-#   SKIP_BUILD=1     skip make build agent-linux
+#   SKIP_BUILD=1     skip just build && just agent-linux
 #
 set -euo pipefail
 
@@ -59,7 +59,7 @@ if [[ "$(uname -s)" == "Linux" ]]; then
     warn " /dev/kvm missing — real bake likely to fail or take forever"
     warn " grain uses -cpu host (needs KVM). Options:"
     warn "   1) self-hosted runner with KVM"
-    warn "   2) bake locally: make build agent-linux && ./scripts/bake-golden.sh --ci"
+    warn "   2) bake locally: just build && just agent-linux && ./scripts/bake-golden.sh --ci"
     warn "   3) download a prior Actions artifact and grain image import"
     warn "============================================================"
   elif [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
@@ -71,8 +71,8 @@ fi
 
 # --- build ---
 if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
-  log "make build agent-linux"
-  make build agent-linux
+  log "just build && just agent-linux"
+  just build && just agent-linux
 else
   log "SKIP_BUILD=1 — using existing bin/"
 fi

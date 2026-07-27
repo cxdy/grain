@@ -42,6 +42,11 @@ defaults:
     values:
       layout: docs
       section: explain
+  - scope:
+      path: "developer"
+    values:
+      layout: docs
+      section: get-started
 
 nav:
   - title: Get started
@@ -68,6 +73,8 @@ docs_nav:
         url: /get-started/concepts/
       - title: Contributing
         url: /get-started/contributing/
+      - title: Releasing
+        url: /developer/releasing/
   guides:
     title: Guides
     links:

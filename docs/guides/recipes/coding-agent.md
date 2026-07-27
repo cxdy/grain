@@ -13,7 +13,7 @@ grain up
 grain image pull          # once
 grain doctor              # QEMU + image OK
 # Optional but recommended for grain x / grain cp without SSH:
-make agent-linux          # from a source checkout
+just agent-linux          # from a source checkout
 ```
 
 ## 1. Create a sandbox with the repo mounted

@@ -170,7 +170,7 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 	// WaitAgent deploys grain-agent over SSH when the base image is not golden.
 	// Fail fast if neither a deploy binary nor a golden image is available.
 	if _, err := agent.LinuxBinaryPath(cfg.DataDir); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: no grain-agent linux binary — WaitAgent will need a golden image or: make agent-linux\n  (%v)\n", err)
+		fmt.Fprintf(os.Stderr, "warning: no grain-agent linux binary — WaitAgent will need a golden image or: just agent-linux\n  (%v)\n", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "grain act  project=%s  vm=%s  cpus=%d mem=%d\n", workDir, vmName, cpus, mem)
@@ -189,7 +189,7 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 		Mounts: []vm.Mount{
 			{Host: workDir, Guest: "/work"},
 		},
-		// agent: short probe, then SSH-deploy grain-agent (requires make agent-linux
+		// agent: short probe, then SSH-deploy grain-agent (requires just agent-linux
 		// or a golden grain-ubuntu image). Docker/act packages install via cloud-init.
 		Wait:    "agent",
 		Timeout: timeout.String(),

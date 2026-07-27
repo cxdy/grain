@@ -112,8 +112,8 @@ func TestLinuxBinaryPath_NotFound(t *testing.T) {
 		if !strings.Contains(err.Error(), "not found") {
 			t.Fatalf("error should mention not found: %v", err)
 		}
-		if !strings.Contains(err.Error(), "make agent-linux") {
-			t.Fatalf("error should mention make agent-linux: %v", err)
+		if !strings.Contains(err.Error(), "just agent-linux") {
+			t.Fatalf("error should mention just agent-linux: %v", err)
 		}
 	}
 }

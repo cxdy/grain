@@ -28,7 +28,7 @@ Exact names may grow; common counters include:
 | `grain_vms_running` | Gauge-style running count (implementation may use counter semantics — scrape and graph carefully) |
 | `grain_create_errors_total` | Failed creates |
 
-Optional compose stack for Prometheus/Grafana lives under `deploy/observability/` in the repository (`make obs-up`).
+Optional compose stack for Prometheus/Grafana lives under `deploy/observability/` in the repository (`just obs-up`).
 
 ## Logging
 

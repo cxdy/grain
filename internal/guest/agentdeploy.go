@@ -35,7 +35,7 @@ WantedBy=multi-user.target
 //
 // Requires working SSH (user typically has passwordless sudo via cloud-init).
 // agentLinuxBinary must be a local path to a Linux-built grain-agent
-// (see agent.LinuxBinaryPath / make agent-linux).
+// (see agent.LinuxBinaryPath / just agent-linux).
 func EnsureAgent(ctx context.Context, host string, sshPort int, user, privKey, agentLinuxBinary string) error {
 	if host == "" {
 		return fmt.Errorf("ensure agent: empty host")

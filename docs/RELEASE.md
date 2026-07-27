@@ -16,11 +16,10 @@ Practical gates before tagging **v0.1.0**. Do not start a long golden bake from 
 ## Version & changelog
 
 - [x] **CHANGELOG**: move `[Unreleased]` notes into **`[0.1.0]`** with date; leave a fresh Unreleased section
-- [x] **Version pins** at **0.1.0** (not `0.1.0-dev`):
-  - `Makefile` `VERSION`
-  - `cmd/grain` / `cmd/grain-agent` version ldflags as used by `make build`
+- [x] **Version pins** for first cut; later tags via **`just release-tag`** / `svu next` (see [developer/releasing](docs/developer/releasing.md))
 - [x] Tag **`v0.1.0`** and attach release binaries (and notes pointing at CHANGELOG + docs)
-- [ ] Prefer **GoReleaser** (`.goreleaser.yaml` + `.github/workflows/release.yml`) for subsequent tags
+- [x] **GoReleaser** (`.goreleaser.yaml` + release workflow) for subsequent tags
+- [x] **justfile** (not Makefile) for local build and `just release-tag`
 
 ## Packages
 

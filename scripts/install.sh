@@ -265,7 +265,7 @@ install_agent_from_release() {
   elif url="$(latest_asset_url_named "$asset_bin")"; then
     :
   else
-    warn "no release asset ${asset_tar} or ${asset_bin} (run make agent-linux for local dev)"
+    warn "no release asset ${asset_tar} or ${asset_bin} (run just agent-linux for local dev)"
     return 1
   fi
   name="$(basename "$url")"
@@ -408,7 +408,7 @@ Options:
   2. Install Go 1.23+ and run:
        go install github.com/${REPO}/cmd/grain@latest
   3. Build from source:
-       git clone https://github.com/${REPO}.git && cd grain && make build
+       git clone https://github.com/${REPO}.git && cd grain && just build
 EOF
   exit 1
 }

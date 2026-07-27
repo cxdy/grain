@@ -1,5 +1,5 @@
 # Optional local observability stack for grain.
-# Usage: make obs-up
+# Usage: just obs-up
 # Point Prometheus at the grain daemon metrics endpoint (default 127.0.0.1:7474).
 
 services:

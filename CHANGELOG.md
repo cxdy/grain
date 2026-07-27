@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Releases** use [GoReleaser](https://goreleaser.com) (grex-style workflow) instead of a hand-rolled `make release-build` + softprops upload. Install script accepts `.tar.gz` archives and falls back to bare binaries from v0.1.0.
+- **Releases** use [GoReleaser](https://goreleaser.com) (grex-style) instead of a hand-rolled Makefile release. Install script accepts `.tar.gz` archives and falls back to bare binaries from v0.1.0.
+- **Build system:** `justfile` replaces `Makefile`. Cut tags with `just release-tag` (`svu next`); preview with `just version`. See [docs/developer/releasing.md](docs/developer/releasing.md).
 
 ### Fixed
 

@@ -53,7 +53,7 @@ description: grain runs disposable Linux sandboxes locally — install in one co
         <div class="code-block" id="install-cmd-source">
           <div><span class="prompt">$</span> go install github.com/cxdy/grain/cmd/grain@latest</div>
           <div><span class="prompt">$</span> # or from a checkout:</div>
-          <div><span class="prompt">$</span> make build agent-linux && ./bin/grain doctor</div>
+          <div><span class="prompt">$</span> just build && just agent-linux && ./bin/grain doctor</div>
         </div>
         <p class="panel-note">Requires Go 1.23+. Release binaries also ship on <a href="https://github.com/cxdy/grain/releases">GitHub Releases</a>.</p>
       </div>

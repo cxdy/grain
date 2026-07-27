@@ -4,7 +4,7 @@
 # Prerequisites:
 #   grain up
 #   grain image pull grain-ubuntu   # or ubuntu-cloud / alpine-cloud
-#   make agent-linux                # for --wait agent on non-golden images
+#   just agent-linux                # for --wait agent on non-golden images
 #
 # Usage:
 #   ./scripts/bench-create.sh                 # 5 creates, auto wait

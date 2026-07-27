@@ -222,7 +222,7 @@ func runDoctor(cfg config.Config) error {
 	if path, err := agent.LinuxBinaryPath(cfg.DataDir); err == nil {
 		fmt.Printf("  ✓ guest agent binary %s\n", path)
 	} else {
-		fmt.Printf("  · guest agent binary missing — run: make agent-linux (SSH-only VMs still work)\n")
+		fmt.Printf("  · guest agent binary missing — run: just agent-linux (SSH-only VMs still work)\n")
 	}
 
 	// QMP capability (optional soft check): pause/resume/graceful stop use QMP.

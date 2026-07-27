@@ -38,7 +38,7 @@ ssh_user: ubuntu     # override per image when needed (alpine-cloud → alpine)
 - arm64 / amd64 from [Ubuntu cloud images](https://cloud-images.ubuntu.com/minimal/releases/noble/release/)
 - qcow2, **cloud-init** NoCloud, SSH user **`ubuntu`**
 - ~300 MB download
-- **HasAgent: false** — grain deploys `grain-agent` over SSH when `~/.grain/agent/grain-agent-linux-*` or `make agent-linux` is available
+- **HasAgent: false** — grain deploys `grain-agent` over SSH when `~/.grain/agent/grain-agent-linux-*` or `just agent-linux` is available
 
 ## Catalog: `alpine-cloud`
 
@@ -117,7 +117,7 @@ Bake prepares the disk for this path (`cloud-init clean`, `userdata-ran` stamp, 
 On a Mac with QEMU:
 
 ```bash
-make build agent-linux
+just build && just agent-linux
 brew install qemu
 ./scripts/bake-golden.sh
 # or dry-run:
@@ -172,7 +172,7 @@ grain new -i grain-ubuntu
 #### Local / CI script
 
 ```bash
-make build agent-linux
+just build && just agent-linux
 # Full CI path (isolated data dir, writes dist/golden/…):
 ./scripts/ci-bake-golden.sh
 # or:
@@ -185,7 +185,7 @@ Every successful bake **always** updates the `golden-latest` release (create tag
 ### Bake manually
 
 ```bash
-make agent-linux
+just agent-linux
 grain up
 grain image pull ubuntu-cloud
 grain new -p -n bake-vm -i ubuntu-cloud

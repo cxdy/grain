@@ -39,8 +39,8 @@ This documents grain’s local microVM product surface as of the Unreleased / v0
 ## Quick verification
 
 ```bash
-make test && make smoke-api
-make build agent-linux
+just test && just smoke-api
+just build && just agent-linux
 ./bin/grain doctor
 # live (optional):
 # ./bin/grain up && ./bin/grain image pull grain-ubuntu && ./scripts/bench-create.sh
