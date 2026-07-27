@@ -36,8 +36,10 @@ func ResolveAgentTransport(requested string, vhostAvailable bool) string {
 	}
 }
 
-// VhostVsockAvailable reports whether the host has /dev/vhost-vsock
-// (typically Linux with vhost_vsock loaded). Always false on macOS HVF.
+// VhostVsockAvailable reports whether the host has a *usable* /dev/vhost-vsock
+// (typically Linux with vhost_vsock loaded and device permissions). Always false
+// on macOS HVF. GitHub-hosted runners sometimes expose the node without write
+// access — existence alone is not enough (QEMU then fails with Permission denied).
 func VhostVsockAvailable() bool {
 	return vhostVsockAvailable(VhostVsockDevice)
 }
@@ -46,8 +48,13 @@ func vhostVsockAvailable(path string) bool {
 	if path == "" {
 		path = VhostVsockDevice
 	}
-	_, err := os.Stat(path)
-	return err == nil
+	// Must be openable read/write — QEMU needs that for vhost-vsock-pci.
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
 }
 
 // AllocateGuestCID picks a stable guest context ID for name in [MinGuestCID, …).
