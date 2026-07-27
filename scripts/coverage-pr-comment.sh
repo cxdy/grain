@@ -71,28 +71,31 @@ for cls in root.iter("class"):
         miss_s = miss_s[:87] + "…"
     rows.append((pct, filename, miss_s))
 
-ok = overall + 1e-9 >= min_cov
+# Badge matches integer display (round half up), so 74.95%+ shows as 75% ✅.
+shown = int(overall + 0.5)
+ok = shown >= int(min_cov + 1e-9)
 badge = "✅" if ok else "❌"
 rows.sort(key=lambda r: (r[0], r[1]))
 
 out = []
 out.append(marker)
-out.append(f"**Coverage** (lines): `{overall:.0f}%` {badge} — minimum `{min_cov:.0f}%`")
+out.append(f"**Coverage** (lines): `{shown}%` {badge} — minimum `{int(min_cov)}%`")
 if sha:
     out.append("")
     out.append(f"<sub>commit `{sha[:7]}` · {covered}/{total} lines · cmd/* and tray excluded</sub>")
 out.append("")
 out.append("<details>")
-out.append(f"<summary>Coverage report by file ({overall:.0f}% overall — click to expand)</summary>")
+out.append(f"<summary>Coverage report by file ({shown}% overall — click to expand)</summary>")
 out.append("")
 out.append("| File | Coverage | | Missing |")
 out.append("| - | :-: | :-: | - |")
-out.append(f"| **All files** | `{overall:.0f}%` | {badge} | |")
+out.append(f"| **All files** | `{shown}%` | {badge} | |")
 for pct, filename, miss in rows:
     if pct >= 99.999:
         continue
-    m = "✅" if pct + 1e-9 >= min_cov else "❌"
-    out.append(f"| `{filename}` | `{pct:.0f}%` | {m} | {miss} |")
+    file_shown = int(pct + 0.5)
+    m = "✅" if file_shown >= int(min_cov + 1e-9) else "❌"
+    out.append(f"| `{filename}` | `{file_shown}%` | {m} | {miss} |")
 out.append("")
 out.append("</details>")
 print("\n".join(out))
