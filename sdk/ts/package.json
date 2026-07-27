@@ -1,6 +1,6 @@
 {
   "name": "@cxdy/grain",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript client for the grain microVM daemon HTTP API",
   "type": "module",
   "main": "./dist/index.js",
@@ -33,10 +33,10 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cxdy/grain.git",
+    "url": "git+https://github.com/cxdy/grain.git",
     "directory": "sdk/ts"
   },
-  "homepage": "https://github.com/cxdy/grain/tree/main/sdk/ts",
+  "homepage": "https://grainvm.com/reference/typescript-sdk/",
   "bugs": {
     "url": "https://github.com/cxdy/grain/issues"
   },

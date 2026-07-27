@@ -3,23 +3,13 @@ title: TypeScript SDK
 description: Node-friendly fetch client for the grain daemon (@cxdy/grain under sdk/ts).
 ---
 
-Package path in the monorepo: [`sdk/ts`](https://github.com/cxdy/grain/tree/main/sdk/ts)  
-npm name: **`@cxdy/grain`** (not published to the public registry yet — install from path or git).
+npm: **[`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain)**.  
+Source: [`sdk/ts`](https://github.com/cxdy/grain/tree/main/sdk/ts).
 
 ## Install
 
 ```bash
-# from a grain checkout
-cd sdk/ts && npm install && npm run build
-
-# in your app
-npm install /path/to/grain/sdk/ts
-```
-
-Or:
-
-```bash
-npm install github:cxdy/grain#main:sdk/ts
+npm install @cxdy/grain
 ```
 
 Requires **Node 18+** (global `fetch`). Optional **`undici`** for Unix socket transport.

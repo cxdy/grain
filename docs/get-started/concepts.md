@@ -39,7 +39,8 @@ Automation can use:
 - Unix socket: `~/.grain/grain.sock`  
 - TCP: `http://127.0.0.1:7474` (default config)  
 - OpenAPI: `GET /openapi.yaml`  
-- SDKs: [Go]({{ '/reference/go-sdk/' | relative_url }}) · [TypeScript]({{ '/reference/typescript-sdk/' | relative_url }})  
+- SDKs: [Go]({{ '/reference/go-sdk/' | relative_url }}) · [TypeScript]({{ '/reference/typescript-sdk/' | relative_url }}) · [Python]({{ '/reference/python-sdk/' | relative_url }})  
+
 
 Optional Bearer auth: set `api_token` in config and `GRAIN_TOKEN` in the environment.
 

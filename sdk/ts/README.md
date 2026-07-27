@@ -2,29 +2,24 @@
 
 Lightweight TypeScript SDK for the [grain](https://github.com/cxdy/grain) daemon HTTP API. Thin `fetch`-based client with types for VM lifecycle, guest exec, agent health, and stats.
 
-Mirrors the Go client at [`github.com/cxdy/grain/client`](../../client/).
+Mirrors the Go client at [`github.com/cxdy/grain/client`](https://pkg.go.dev/github.com/cxdy/grain/client).
 
 ## Install
 
-Not published to npm yet. Use a local path or git URL:
-
 ```bash
-# from a sibling checkout of grain
-npm install /path/to/grain/sdk/ts
-
-# or git (after this package lives on main)
-npm install github:cxdy/grain#main:sdk/ts
+npm install @cxdy/grain
 ```
 
-Build once if you installed from a raw path that has no `dist/`:
+Package: [npmjs.com/package/@cxdy/grain](https://www.npmjs.com/package/@cxdy/grain). Node **18+** (global `fetch`). Optional: `undici` for Unix socket transport.
+
+From a grain checkout (development):
 
 ```bash
 cd /path/to/grain/sdk/ts
-npm install
-npm run build
+npm install && npm run build
+# in your app:
+npm install /path/to/grain/sdk/ts
 ```
-
-Node **18+** (global `fetch`). Optional: `undici` for Unix socket transport.
 
 ## Quick start (TCP)
 
@@ -174,7 +169,7 @@ Package is ESM-only (`"type": "module"`) with `.d.ts` types.
 
 ## API reference
 
-Daemon OpenAPI: [`api/openapi.yaml`](../../api/openapi.yaml). Go SDK: [`client/`](../../client/).
+Daemon OpenAPI: [`api/openapi.yaml`](https://github.com/cxdy/grain/blob/main/api/openapi.yaml). Go SDK: [`github.com/cxdy/grain/client`](https://pkg.go.dev/github.com/cxdy/grain/client). Docs: [grainvm.com/reference/typescript-sdk](https://grainvm.com/reference/typescript-sdk/).
 
 ## License
 

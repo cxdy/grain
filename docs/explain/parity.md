@@ -21,7 +21,7 @@ This documents grain’s local microVM product surface as of the Unreleased / v0
 | Pause/resume; suspend/restore | Done |
 | Resource caps, profiles, presets | Done |
 | Egress proxy (default-deny + secret inject) | Done |
-| Go SDK + TypeScript SDK + OpenAPI | Done |
+| Go / TypeScript / Python SDKs + OpenAPI | Done |
 | Install script, recipes, bench script | Done |
 | Firecracker backend | Experimental (Linux) |
 

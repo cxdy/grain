@@ -1,20 +1,20 @@
 # `cxdy-grain` — Python client
 
-Lightweight Python SDK for the [grain](https://github.com/cxdy/grain) daemon HTTP API. Stdlib only (`http.client`) — no runtime dependencies. Types and methods mirror the Go client ([`client/`](../../client/)) and TypeScript SDK ([`sdk/ts`](../ts/)).
+Lightweight Python SDK for the [grain](https://github.com/cxdy/grain) daemon HTTP API. Stdlib only (`http.client`) — no runtime dependencies. Types and methods mirror the [Go client](https://pkg.go.dev/github.com/cxdy/grain/client) and [TypeScript SDK](https://www.npmjs.com/package/@cxdy/grain).
 
 ## Install
 
-Not published to PyPI yet. Use a path or git URL:
-
 ```bash
-# from a grain checkout
-pip install -e /path/to/grain/sdk/python
-
-# or git
-pip install "git+https://github.com/cxdy/grain.git#subdirectory=sdk/python"
+pip install cxdy-grain
 ```
 
-Requires **Python 3.9+**.
+Package: [pypi.org/project/cxdy-grain](https://pypi.org/project/cxdy-grain/). Requires **Python 3.9+**.
+
+From a grain checkout (development):
+
+```bash
+pip install -e /path/to/grain/sdk/python
+```
 
 ## Quick start (TCP)
 
@@ -146,7 +146,7 @@ pytest -q
 
 ## API reference
 
-Daemon OpenAPI: [`api/openapi.yaml`](../../api/openapi.yaml). Site: [grainvm.com/reference/python-sdk](https://grainvm.com/reference/python-sdk/).
+Daemon OpenAPI: [`api/openapi.yaml`](https://github.com/cxdy/grain/blob/main/api/openapi.yaml). Docs: [grainvm.com/reference/python-sdk](https://grainvm.com/reference/python-sdk/).
 
 ## License
 

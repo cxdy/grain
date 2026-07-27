@@ -101,7 +101,7 @@ grain up
 | `doctor` | dependency check (QEMU, image, optional agent binary + QMP) |
 | `version` | print version |
 
-**Also:** daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), **TypeScript client SDK** ([`sdk/ts`](sdk/ts) — `@cxdy/grain`), **Python client SDK** ([`sdk/python`](sdk/python) — `cxdy-grain` / `import grain`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
+**Also:** daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), **TypeScript client SDK** ([`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain)), **Python client SDK** ([`cxdy-grain`](https://pypi.org/project/cxdy-grain/) / `import grain`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
 
 **Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`just agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh). Full overview: [Guest agent](https://grainvm.com/guides/agent/).
 
@@ -276,12 +276,10 @@ create wait modes): [`client/README.md`](client/README.md). Spec: [`api/openapi.
 
 ### TypeScript client SDK
 
-Thin fetch client for Node automation: [`sdk/ts`](sdk/ts) (`@cxdy/grain`). Not published to npm yet — install from a local path (or future git/npm publish).
+Thin fetch client for Node automation: **[`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain)** ([docs](https://grainvm.com/reference/typescript-sdk/)).
 
 ```bash
-cd sdk/ts && npm install && npm run build
-# from your app:
-npm install /path/to/grain/sdk/ts
+npm install @cxdy/grain
 ```
 
 ```ts
@@ -301,11 +299,10 @@ Unix socket via optional `undici` (`socketPath` or custom `fetch`) — see [`sdk
 
 ### Python client SDK
 
-Stdlib-only client for Python 3.9+: [`sdk/python`](sdk/python) (`cxdy-grain`, `import grain`). Not published to PyPI yet — install from a local path or git.
+Stdlib-only client for Python 3.9+: **[`cxdy-grain`](https://pypi.org/project/cxdy-grain/)** (`import grain`; [docs](https://grainvm.com/reference/python-sdk/)).
 
 ```bash
-pip install -e ./sdk/python
-# or: pip install "git+https://github.com/cxdy/grain.git#subdirectory=sdk/python"
+pip install cxdy-grain
 ```
 
 ```python

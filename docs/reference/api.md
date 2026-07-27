@@ -71,5 +71,7 @@ curl -N --unix-socket ~/.grain/grain.sock \
 
 Prefer typed clients when embedding:
 
-- [Go SDK]({{ '/reference/go-sdk/' | relative_url }}) — `github.com/cxdy/grain/client`  
-- [TypeScript SDK]({{ '/reference/typescript-sdk/' | relative_url }}) — `sdk/ts` (`@cxdy/grain`)  
+- [Go SDK]({{ '/reference/go-sdk/' | relative_url }}) — [`github.com/cxdy/grain/client`](https://pkg.go.dev/github.com/cxdy/grain/client)
+- [TypeScript SDK]({{ '/reference/typescript-sdk/' | relative_url }}) — [`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain)
+- [Python SDK]({{ '/reference/python-sdk/' | relative_url }}) — [`cxdy-grain`](https://pypi.org/project/cxdy-grain/)
+
