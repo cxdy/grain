@@ -97,6 +97,8 @@ docs_nav:
         url: /guides/recipes/docker-socket/
       - title: "Recipe: CI ephemeral"
         url: /guides/recipes/ci-ephemeral/
+      - title: "Recipe: GitHub Actions (act)"
+        url: /guides/recipes/act/
   reference:
     title: Reference
     links:

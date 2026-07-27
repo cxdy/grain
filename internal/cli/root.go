@@ -46,8 +46,9 @@ func Root(version string) *cobra.Command {
   grain new -P 8080:80  publish host:guest ports
   grain new -v HOST:GUEST  share host dir via virtio-9p
   grain new --profile agent   named profile from config
-  grain new --preset docker   userdata preset (docker|k3s)
+  grain new --preset docker|k3s|act   userdata presets
   grain new --wait agent      wait for agent (ssh|agent|userdata)
+  grain act -- [act-args]     run GitHub Actions via act in a sandbox
   grain stop / start    stop or restart a persistent VM
   grain pause / resume  QMP freeze/unfreeze guest vCPUs
   grain suspend / restore  stop process (free RAM); restore from disk/snapshot
@@ -71,6 +72,7 @@ func Root(version string) *cobra.Command {
 		cmdUp(&cfgPath),
 		cmdDown(&cfgPath),
 		cmdNew(&cfgPath),
+		cmdAct(&cfgPath),
 		cmdStop(&cfgPath),
 		cmdStart(&cfgPath),
 		cmdPause(&cfgPath),
@@ -374,7 +376,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringVarP(&image, "image", "i", "", "base image id (default from config)")
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
 	cmd.Flags().StringVar(&profileName, "profile", "", "named profile from config (flags override profile)")
-	cmd.Flags().StringVar(&presetName, "preset", "", "userdata preset: docker, k3s (merged into cloud-init)")
+	cmd.Flags().StringVar(&presetName, "preset", "", "userdata preset: docker, k3s, act (merged into cloud-init)")
 	cmd.Flags().StringVar(&waitMode, "wait", "", "readiness: auto (agent if golden image), ssh, agent, or userdata")
 	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
 	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")

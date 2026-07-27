@@ -33,5 +33,6 @@ How-to guides assume you already installed grain and created at least one sandbo
 | [k3s]({{ '/guides/recipes/k3s/' | relative_url }}) | Single-node Kubernetes lab |
 | [Docker socket]({{ '/guides/recipes/docker-socket/' | relative_url }}) | Docker in the VM, socket on the host |
 | [CI ephemeral]({{ '/guides/recipes/ci-ephemeral/' | relative_url }}) | Create → test → destroy |
+| [GitHub Actions (act)]({{ '/guides/recipes/act/' | relative_url }}) | Run `act` inside an isolated microVM |
 
 If you are brand new, start with the [install tutorial]({{ '/get-started/install/' | relative_url }}) instead.

@@ -77,6 +77,7 @@ Name is optional for `sh` / `rm` / `x` / `fs` / etc. when exactly one VM exists.
 |---------|-------------|
 | `grain secret ls\|set\|rm\|inject` | Host secrets store |
 | `grain proxy up\|down\|allow\|deny\|ls\|client` | Egress proxy process |
+| `grain act -- [act-args]` | Run [nektos/act](https://github.com/nektos/act) in an ephemeral sandbox |
 
 ## Profiles
 
