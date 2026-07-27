@@ -77,10 +77,15 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 			log.Warn("api listen is not loopback — ensure host firewall and api_token; prefer 127.0.0.1 + SSH tunnel or TLS reverse proxy",
 				"addr", cfg.API)
 		}
-		httpSrv = &http.Server{Addr: cfg.API, Handler: handler}
+		// Bind before claiming success so "port in use" fails the daemon start.
+		apiLn, err := net.Listen("tcp", cfg.API)
+		if err != nil {
+			return fmt.Errorf("api listen %s: %w", cfg.API, err)
+		}
+		httpSrv = &http.Server{Handler: handler}
 		go func() {
 			log.Info("api listen", "addr", cfg.API, "auth", cfg.ResolvedAPIToken() != "")
-			if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := httpSrv.Serve(apiLn); err != nil && err != http.ErrServerClosed {
 				log.Error("api server", "err", err)
 			}
 		}()

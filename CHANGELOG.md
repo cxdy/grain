@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Install script** next-step links pointed at a non-existent `docs/recipes` path; they now open grainvm.com (docs, act, k3s).
 - **QEMU discovery** — doctor and the QEMU runtime resolve `qemu-system-*` / `qemu-img` from Homebrew locations (`/opt/homebrew/bin`, `/usr/local/bin`) when those dirs are not on `PATH`.
+- **Daemon start** fails fast if the TCP API address is already bound (no half-up process that only holds the unix socket).
 
 ### Changed
 
