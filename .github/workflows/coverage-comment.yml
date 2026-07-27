@@ -1,13 +1,13 @@
 name: Coverage comment
 
-# Fork PRs only: same-repo PRs get the cobertura table from ci.yml directly.
-# This workflow posts the PR comment using the base repository's GITHUB_TOKEN
-# after CI uploads the coverage-report artifact (fork tokens are read-only).
+# Fork PRs only: same-repo PRs get the cobertura table from ci.yml directly
+# (scripts/coverage-pr-comment.sh). This workflow posts the PR comment using
+# the base repository's GITHUB_TOKEN after CI uploads the coverage-report
+# artifact (fork tokens are read-only on the base repo).
 #
-# Security: this workflow must NOT checkout or execute code from the PR.
-# It only downloads the coverage artifact produced by CI and comments on the PR.
-# pr-number.txt is untrusted only as an integer we pass to the GitHub API;
-# we never execute PR code.
+# Security: this workflow must NOT execute code from the PR. It checks out
+# only the base default branch for the comment script, downloads the CI
+# artifact, and comments via the GitHub API.
 on:
   workflow_run:
     workflows: [CI]
@@ -18,15 +18,26 @@ permissions:
   contents: read
   pull-requests: write
   issues: write # PR comments use the issues comments API
-  checks: write
 
 jobs:
   comment:
+    # Same-repo PRs already posted from ci.yml and do not upload coverage-report.
+    # Only fork PRs upload the artifact (see ci.yml head.repo.full_name check).
     if: >
       github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success'
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
+      # Base-repo default branch only — not the PR head.
+      - name: Checkout comment script (base repo)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            scripts/coverage-pr-comment.sh
+          sparse-checkout-cone-mode: false
+
       - name: Download coverage artifact
         uses: actions/download-artifact@v4
         with:
@@ -50,7 +61,6 @@ jobs:
           pr=""
 
           # 1) Preferred: written by CI from github.event.pull_request.number
-          #    (reliable for same-repo and fork PRs).
           if [ -f pr-number.txt ]; then
             pr="$(tr -d '[:space:]' < pr-number.txt || true)"
             if [[ -n "$pr" && "$pr" =~ ^[0-9]+$ ]]; then
@@ -61,13 +71,13 @@ jobs:
             fi
           fi
 
-          # 2) workflow_run.pull_requests (works for many same-repo PRs).
+          # 2) workflow_run.pull_requests (often empty for forks).
           if [ -z "$pr" ] && [ -n "${PR_FROM_EVENT:-}" ]; then
             pr="$PR_FROM_EVENT"
             echo "Resolved PR from workflow_run.pull_requests: #${pr}"
           fi
 
-          # 3) head owner:branch listing (works for fork PRs when API has the PR).
+          # 3) head owner:branch listing.
           if [ -z "$pr" ] && [ -n "${HEAD_REPO:-}" ] && [ -n "${HEAD_BRANCH:-}" ]; then
             head_owner="${HEAD_REPO%%/*}"
             pr="$(gh api \
@@ -104,21 +114,17 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "Commenting on PR #${pr}"
 
-      - name: Coverage report
+      - name: Coverage PR comment
         if: steps.pr.outputs.skip != 'true'
-        uses: 5monkeys/cobertura-action@v14
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          report_name: coverage
-          path: coverage.xml
-          pull_request_number: ${{ steps.pr.outputs.number }}
-          minimum_coverage: 75
-          fail_below_threshold: false
-          skip_covered: true
-          show_line: true
-          show_branch: false
-          show_class_names: false
-          show_missing: true
-          show_missing_max_length: 80
-          link_missing_lines: false
-          only_changed_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          COVERAGE_XML: coverage.xml
+          MIN_COVERAGE: "75"
+        run: |
+          set -euo pipefail
+          test -f coverage.xml
+          chmod +x scripts/coverage-pr-comment.sh
+          scripts/coverage-pr-comment.sh
