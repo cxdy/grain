@@ -7,19 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Dev tooling: mise (`.tool-versions`), pre-commit, golangci-lint, markdownlint-cli2, commitizen; `just init` / `just lint` / `just pre-commit`.
-- CI coverage: `just coverage` writes cobertura `coverage.xml`; PR comment workflow posts a per-file report (75% minimum, cmd/tray excluded).
-- Broad unit-test expansion across client, API, manager, hypervisor, agent, CLI helpers, and related packages.
-
-### Changed
-
-### Fixed
-
-- Release builds no longer fail on the tray dependency when `CGO_ENABLED=0` (tray is a CGO-only build path).
-- golangci-lint clean under the new config (errcheck, staticcheck, gosec exclusions for intentional CLI/hypervisor patterns).
-
 ## [0.2.0] - 2026-07-27
 
 ### Added
@@ -29,11 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Virtio GPU** — `grain new --gpu virtio` / config `gpu: virtio` adds `virtio-gpu-pci`.
 - **Overlay network** — `grain new --network overlay` / config `network: overlay` shares an L2 multicast segment between VMs (plus SLIRP for hostfwd).
 - Guides: tray, multi-arch, GPU, overlay networking. Product surface page cleaned up (no competitor comparison / deferred-feature table).
+- Dev tooling: mise (`.tool-versions`), pre-commit, golangci-lint, markdownlint-cli2, commitizen; `just init` / `just lint` / `just pre-commit`.
+- CI coverage: `just coverage` writes cobertura `coverage.xml`; PR comment workflow posts a per-file report (75% minimum, cmd/tray excluded).
+- Broad unit-test expansion across client, API, manager, hypervisor, agent, CLI helpers, and related packages.
 
 ### Changed
 
 - **Python SDK** PyPI name is **`grainvm`** (`pip install grainvm`; import still `import grain`). Previous name `cxdy-grain` is not used for new publishes.
 - Docs site visual refresh (typography and cool ink/mint/steel palette).
+
+### Fixed
+
+- Release builds no longer fail on the tray dependency when `CGO_ENABLED=0` (tray is a CGO-only build path).
 
 ## [0.1.4] - 2026-07-27
 
