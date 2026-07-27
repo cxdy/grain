@@ -39,8 +39,11 @@ func TestPhaseLabel(t *testing.T) {
 		"":                "starting",
 	}
 	for phase, want := range cases {
-		if got := phaseLabel(phase); got != want {
+		if got := phaseLabel(phase, ""); got != want {
 			t.Errorf("phaseLabel(%q)=%q want %q", phase, got, want)
 		}
+	}
+	if got := phaseLabel(vm.PhaseWaitSSH, "waiting for ssh (agent deploy)"); got != "waiting agent via ssh" {
+		t.Errorf("agent deploy label: %q", got)
 	}
 }

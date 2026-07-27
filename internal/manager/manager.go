@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -246,6 +247,15 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	emit := func(ev vm.CreateEvent) { emitCreate(opts, ev) }
 
 	if err := m.waitReady(ctx, inst, img, priv, waitMode, readyDeadline, emit); err != nil {
+		// Ctrl+C / client cancel: do not mark a live hypervisor process as error.
+		// The guest may already be agent-ready (grain sh works) even though wait aborted.
+		if isContextCancel(err) && m.rt.Running(inst) {
+			inst.Status = vm.StatusRunning
+			inst.Error = ""
+			_ = m.st.Put(inst)
+			m.log.Warn("create wait canceled; vm left running", "name", inst.Name, "err", err)
+			return inst, fmt.Errorf("create wait canceled (vm %q is still running — grain sh / grain ls): %w", inst.Name, err)
+		}
 		return m.fail(inst, err, opts)
 	}
 
@@ -373,13 +383,17 @@ func (m *Manager) waitSSHMode(
 	return nil
 }
 
-// waitAgentMode requires agent health. Short-probes first (longer for golden
-// images that bake the agent), then SSH-deploys grain-agent if needed.
+// waitAgentMode requires agent health. Short-probes first (full readiness budget
+// for golden images that bake the agent), then SSH-deploys grain-agent if needed.
 //
-// Important: do NOT spend the full ReadyTimeout on the initial probe — without a
-// baked agent that would burn the budget before SSH deploy ever runs (e.g. grain
-// act on ubuntu-cloud timed out at 25m waiting for an agent that was never
-// installed). Deploy + post-deploy wait use the remaining deadline.
+// Important: do NOT spend the full ReadyTimeout on the initial probe for images
+// without a baked agent — that would burn the budget before SSH deploy ever runs
+// (e.g. grain act on ubuntu-cloud timed out at 25m waiting for an agent that was
+// never installed). Deploy + post-deploy wait use the remaining deadline.
+//
+// Golden / HasAgent images use the full ReadyTimeout for the agent wait. Falling
+// back to SSH after only ~45s caused grain new to sit on "waiting ssh" while the
+// baked agent was still booting (or already healthy after SSH lagged).
 // Mock hypervisor treats agent wait as success after start.
 func (m *Manager) waitAgentMode(
 	ctx context.Context,
@@ -389,9 +403,10 @@ func (m *Manager) waitAgentMode(
 	emit func(vm.CreateEvent),
 	isMock bool,
 ) error {
+	baked := m.imageHasAgent(inst.Image)
 	if emit != nil {
 		msg := "waiting for guest agent"
-		if m.imageHasAgent(inst.Image) {
+		if baked {
 			msg = "waiting for baked-in guest agent"
 		}
 		emit(vm.CreateEvent{
@@ -408,10 +423,13 @@ func (m *Manager) waitAgentMode(
 		return fmt.Errorf("wait agent: no agent endpoint allocated")
 	}
 
-	// Short probe only — full budget is for SSH + deploy + wait below.
+	// Non-baked: short probe, then SSH deploy. Baked: full readiness budget on agent.
 	probeFor := agentProbeTimeout
-	if m.imageHasAgent(inst.Image) {
-		probeFor = agentBakedWait
+	if baked {
+		probeFor = time.Until(readyDeadline)
+		if probeFor <= 0 {
+			probeFor = agentBakedWait
+		}
 	}
 	if rem := time.Until(readyDeadline); rem > 0 && rem < probeFor {
 		probeFor = rem
@@ -430,6 +448,8 @@ func (m *Manager) waitAgentMode(
 		return nil
 	}
 
+	// Baked agent still down after full budget: soft-fail to SSH deploy only if
+	// SSH comes up; keep polling the agent in parallel (it often wins).
 	if inst.SSHPort > 0 {
 		if emit != nil {
 			emit(vm.CreateEvent{
@@ -443,17 +463,63 @@ func (m *Manager) waitAgentMode(
 		if time.Until(sshDeadline) < agentWaitFallback {
 			sshDeadline = time.Now().Add(agentWaitFallback)
 		}
-		sshUser := m.waitSSH(ctx, inst, img, priv, sshDeadline)
-		if sshUser != "" {
-			if err := m.waitOrDeployAgent(ctx, inst, sshUser, priv, sshDeadline, emit, true); err != nil {
-				return fmt.Errorf("wait agent: %w", err)
-			}
+		if m.waitSSHOrAgent(ctx, inst, img, priv, sshDeadline, emit) {
 			return nil
 		}
 		return fmt.Errorf("wait agent: guest agent not ready and ssh never came up (initial probe: %v)", probeErr)
 	}
 
 	return fmt.Errorf("wait agent: guest agent not ready: %w", probeErr)
+}
+
+// waitSSHOrAgent waits until either the guest agent becomes healthy or SSH
+// accepts and a hard agent deploy succeeds. Returns true when the agent is ready.
+func (m *Manager) waitSSHOrAgent(
+	ctx context.Context,
+	inst *vm.Instance,
+	img, priv string,
+	deadline time.Time,
+	emit func(vm.CreateEvent),
+) bool {
+	waitCtx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
+	ready := make(chan struct{}, 2)
+	go func() {
+		client, err := agent.Dial(waitCtx, agentTarget(inst))
+		if err != nil {
+			return
+		}
+		if err := agent.Wait(waitCtx, client); err != nil {
+			return
+		}
+		m.log.Info("guest agent ready (during ssh wait)", "name", inst.Name, "agent_port", inst.AgentPort)
+		select {
+		case ready <- struct{}{}:
+		default:
+		}
+	}()
+	go func() {
+		sshUser := m.waitSSH(waitCtx, inst, img, priv, deadline)
+		if sshUser == "" {
+			return
+		}
+		if err := m.waitOrDeployAgent(ctx, inst, sshUser, priv, deadline, emit, true); err != nil {
+			m.log.Warn("agent deploy after ssh failed", "name", inst.Name, "err", err)
+			return
+		}
+		select {
+		case ready <- struct{}{}:
+		default:
+		}
+	}()
+
+	select {
+	case <-ready:
+		return true
+	case <-waitCtx.Done():
+		return false
+	}
 }
 
 // waitUserdata polls agent Health until UserdataRan is true.
@@ -550,19 +616,39 @@ func (m *Manager) fail(inst *vm.Instance, err error, opts ...vm.CreateOpts) (*vm
 	return nil, err
 }
 
+func isContextCancel(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	// agent.Wait / guest.WaitSSH may wrap cancel without always preserving errors.Is.
+	msg := err.Error()
+	return strings.Contains(msg, "context canceled") || strings.Contains(msg, "context cancelled")
+}
+
 func (m *Manager) List() ([]*vm.Instance, error) {
 	list, err := m.st.List()
 	if err != nil {
 		return nil, err
 	}
 	for _, inst := range list {
-		if (inst.Status == vm.StatusRunning || inst.Status == vm.StatusPaused) && !m.rt.Running(inst) {
+		running := m.rt.Running(inst)
+		if (inst.Status == vm.StatusRunning || inst.Status == vm.StatusPaused) && !running {
 			m.killLiveForwards(inst)
 			m.killSocketForwards(inst)
 			inst.Status = vm.StatusStopped
 			inst.PID = 0
 			inst.QMPPath = ""
 			inst.LiveForwards = nil
+			_ = m.st.Put(inst)
+			continue
+		}
+		// Reconcile: wait aborted (Ctrl+C) used to leave StatusError while QEMU lives.
+		if running && (inst.Status == vm.StatusError || inst.Status == vm.StatusCreating) {
+			inst.Status = vm.StatusRunning
+			inst.Error = ""
 			_ = m.st.Put(inst)
 		}
 	}

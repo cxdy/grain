@@ -16,7 +16,7 @@ func TestPrintCreateProgress(t *testing.T) {
 
 func TestPhaseLabelUnknown(t *testing.T) {
 	t.Parallel()
-	if got := phaseLabel("custom-phase"); got != "custom-phase" {
+	if got := phaseLabel("custom-phase", ""); got != "custom-phase" {
 		t.Fatalf("%q", got)
 	}
 }
