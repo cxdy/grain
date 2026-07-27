@@ -1,38 +1,39 @@
 <footer class="site-footer">
   <div class="wrap footer-inner">
     <div>
-      <a class="brand" href="{{ '/' | relative_url }}" style="margin-bottom:0.5rem">
+      <a class="brand" href="{{ '/' | relative_url }}">
         <img class="brand-logo" src="{{ '/assets/img/logo.svg' | relative_url }}" width="28" height="28" alt="" />
         <span class="brand-name">grain</span>
       </a>
-      <p class="muted">A grain of sand — small Linux microVMs on your own hardware. Apache-2.0.</p>
+      <p class="footer-brand-blurb">A grain of sand — small Linux microVMs on your own hardware. Apache-2.0.</p>
     </div>
     <div class="footer-cols">
       <div>
-        <h4>Product</h4>
+        <h4>Learn</h4>
         <a href="{{ '/get-started/quickstart/' | relative_url }}">Quick start</a>
+        <a href="{{ '/get-started/first-sandbox/' | relative_url }}">First sandbox</a>
         <a href="{{ '/guides/recipes/act/' | relative_url }}">GitHub Actions (act)</a>
         <a href="{{ '/guides/recipes/k3s/' | relative_url }}">k3s lab</a>
-        <a href="{{ '/guides/' | relative_url }}">Guides</a>
       </div>
       <div>
         <h4>Build</h4>
+        <a href="{{ '/reference/cli/' | relative_url }}">CLI</a>
         <a href="{{ '/reference/api/' | relative_url }}">HTTP API</a>
+        <a href="{{ '/reference/openapi/' | relative_url }}">OpenAPI explorer</a>
         <a href="{{ '/reference/go-sdk/' | relative_url }}">Go SDK</a>
-        <a href="{{ '/reference/typescript-sdk/' | relative_url }}">TypeScript SDK</a>
         <a href="{{ '/reference/python-sdk/' | relative_url }}">Python SDK</a>
       </div>
       <div>
         <h4>Project</h4>
+        <a href="{{ '/explain/architecture/' | relative_url }}">Architecture</a>
         <a href="{{ '/get-started/contributing/' | relative_url }}">Contributing</a>
         <a href="https://github.com/cxdy/grain" rel="noopener" target="_blank">GitHub</a>
         <a href="https://github.com/cxdy/grain/releases" rel="noopener" target="_blank">Releases</a>
-        <a href="{{ '/explain/parity/' | relative_url }}">Feature surface</a>
       </div>
     </div>
   </div>
   <div class="wrap footer-bottom muted">
     <span>© {{ 'now' | date: '%Y' }} <a href="https://codykaczynski.com">Cody Kaczynski</a> · grainvm.com</span>
-    <span>Package managers (Homebrew, apt, …) are planned — install via script or binary today.</span>
+    <span>Install via script or binary today.</span>
   </div>
 </footer>

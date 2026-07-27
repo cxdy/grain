@@ -9,7 +9,9 @@
         {% if item.external %}
           <a href="{{ item.url }}" rel="noopener" target="_blank">{{ item.title }}</a>
         {% else %}
-          <a href="{{ item.url | relative_url }}" {% if page.url contains item.url %}aria-current="page"{% endif %}>{{ item.title }}</a>
+          {% assign is_current = false %}
+          {% if item.url != '/' and page.url contains item.url %}{% assign is_current = true %}{% endif %}
+          <a href="{{ item.url | relative_url }}" {% if is_current %}aria-current="page"{% endif %}>{{ item.title }}</a>
         {% endif %}
       {% endfor %}
     </nav>
