@@ -144,6 +144,12 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
+## Publishing
+
+Maintainers publish to PyPI via GitHub Actions Trusted Publishing (no API
+token in secrets). See [developer/releasing](https://grainvm.com/developer/releasing/)
+and workflow [`.github/workflows/publish-python.yml`](../../.github/workflows/publish-python.yml).
+
 ## API reference
 
 Daemon OpenAPI: [`api/openapi.yaml`](https://github.com/cxdy/grain/blob/main/api/openapi.yaml). Docs: [grainvm.com/reference/python-sdk](https://grainvm.com/reference/python-sdk/).

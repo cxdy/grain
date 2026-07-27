@@ -1,0 +1,76 @@
+# Publish sdk/python (cxdy-grain) to PyPI via Trusted Publishing (OIDC).
+# No long-lived PyPI API token — configure the publisher once on PyPI:
+#
+#   https://pypi.org/manage/project/cxdy-grain/settings/publishing/
+#
+#   Owner:        cxdy
+#   Repository:   grain
+#   Workflow:     publish-python.yml
+#   Environment:  pypi
+#
+# Also create a GitHub Actions environment named `pypi` on this repo
+# (Settings → Environments). Optional: require reviewers on that environment.
+#
+# Triggers:
+#   - Tag push: sdk-python-v*  (e.g. sdk-python-v0.1.1; must match pyproject version)
+#   - Manual:   workflow_dispatch (publishes version in sdk/python/pyproject.toml)
+name: Publish Python SDK
+
+on:
+  push:
+    tags:
+      - "sdk-python-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build and publish cxdy-grain
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cxdy-grain
+    permissions:
+      id-token: write # OIDC for PyPI trusted publishing
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Read package version
+        id: version
+        working-directory: sdk/python
+        run: |
+          ver=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Package version from pyproject.toml: $ver"
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/sdk-python-v')
+        run: |
+          tag="${GITHUB_REF_NAME#sdk-python-v}"
+          pkg="${{ steps.version.outputs.version }}"
+          if [[ "$tag" != "$pkg" ]]; then
+            echo "::error::Tag version ($tag) does not match pyproject.toml version ($pkg)"
+            exit 1
+          fi
+
+      - name: Install build
+        run: python -m pip install --upgrade pip build
+
+      - name: Build sdist and wheel
+        working-directory: sdk/python
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/python/dist/
