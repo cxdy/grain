@@ -81,6 +81,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 	root.AddCommand(
 		cmdUp(&cfgPath),
 		cmdDown(&cfgPath),
+		cmdUninstall(&cfgPath),
 		cmdNew(&cfgPath),
 		cmdAct(&cfgPath),
 		cmdStop(&cfgPath),
