@@ -34,7 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Default embedded version string tracks the release line (set via GoReleaser ldflags on release builds).
 - Installer “next steps” mention `grain act` and the k3s preset.
 - GitHub **issue templates** (bug / feature) and **CODEOWNERS**.
 

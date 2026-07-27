@@ -9,8 +9,9 @@ import (
 	"github.com/cxdy/grain/internal/cli"
 )
 
-// Set via -ldflags "-X main.version=..."
-var version = "0.1.4"
+// Default for plain `go build`. Release and `just build` inject the real
+// version via -ldflags "-X main.version=...".
+var version = "dev"
 
 // exitCoder is implemented by *exec.ExitError and cli exitCodeError.
 type exitCoder interface {
