@@ -197,3 +197,66 @@ func TestMockDisk(t *testing.T) {
 		t.Fatalf("CloneCount=%d", d.CloneCount())
 	}
 }
+
+func TestMockRuntimeFailFlags(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	m := NewMockRuntime()
+	inst := &vm.Instance{Name: "ff"}
+	if err := m.Start(ctx, inst, ""); err != nil {
+		t.Fatal(err)
+	}
+	m.FailPause = true
+	if err := m.Pause(ctx, inst); err == nil {
+		t.Fatal("expected FailPause")
+	}
+	m.FailPause = false
+	if err := m.Pause(ctx, inst); err != nil {
+		t.Fatal(err)
+	}
+	m.FailResume = true
+	if err := m.Resume(ctx, inst); err == nil {
+		t.Fatal("expected FailResume")
+	}
+	m.FailResume = false
+	if err := m.Resume(ctx, inst); err != nil {
+		t.Fatal(err)
+	}
+	m.FailSaveVM = true
+	if err := m.SaveVM(ctx, inst, "t"); err == nil {
+		t.Fatal("expected FailSaveVM")
+	}
+	m.FailSaveVM = false
+	m.FailStop = true
+	if err := m.Stop(ctx, inst); err == nil {
+		t.Fatal("expected FailStop")
+	}
+}
+
+func TestMockDiskFailAndQcow2(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	d := NewMockDisk()
+	d.FailEnsureBase = true
+	if _, err := d.EnsureBase(ctx, "x"); err == nil {
+		t.Fatal("expected FailEnsureBase")
+	}
+	d.FailEnsureBase = false
+	d.FailClone = true
+	if err := d.Clone(ctx, "base", filepath.Join(t.TempDir(), "d.img"), 1); err == nil {
+		t.Fatal("expected FailClone")
+	}
+	d.FailClone = false
+	d.WriteQcow2 = true
+	dest := filepath.Join(t.TempDir(), "disk.img")
+	if err := d.Clone(ctx, "base", dest, 1); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) < 4 || b[0] != 'Q' || b[1] != 'F' || b[2] != 'I' || b[3] != 0xfb {
+		t.Fatalf("want qcow2 magic, got %q", b)
+	}
+}
