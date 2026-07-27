@@ -10,10 +10,11 @@ Default path: `~/.grain/config.yaml`. Override with `grain --config path …`.
 ```yaml
 data_dir: ~/.grain
 socket: ~/.grain/grain.sock
-api: 127.0.0.1:7474          # TCP API + metrics; empty for unix-only
-api_token: ""                # or auth_token — Bearer required when set
+api: 127.0.0.1:7474          # daemon TCP listen (empty = unix only)
+api_url: ""                  # CLI-only: remote daemon base URL (or env GRAIN_API / --api)
+api_token: ""                # or auth_token — Bearer when set; required for non-loopback api bind
 # env GRAIN_TOKEN also accepted by CLI
-# Team / remote host: keep bind on loopback, set api_token, see guides/remote-host
+# Remote team host: prefer api: 127.0.0.1:7474 + token + SSH tunnel; see guides/remote-host
 cpus: 2
 memory_mb: 2048
 disk_gb: 8
@@ -24,6 +25,16 @@ ssh_user: ubuntu
 ready_timeout: 2m
 log_level: info
 ```
+
+### Daemon listen vs CLI remote URL
+
+| Field / env | Who uses it | Meaning |
+|-------------|-------------|---------|
+| `api` | **Daemon** | TCP **listen** address (`127.0.0.1:7474`, `0.0.0.0:7474`, …) |
+| `api_url` / `GRAIN_API` / `--api` | **CLI client** | Base URL to dial (`http://host:7474`) |
+| `api_token` / `GRAIN_TOKEN` | Both | Shared Bearer secret |
+
+Non-loopback `api` without `api_token` → daemon **refuses to start**. Non-loopback `api_url` without a token → CLI errors.
 
 ## Images & mounts
 

@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,11 +20,18 @@ type Config struct {
 	DataDir string `yaml:"data_dir"`
 	// Socket is the daemon unix socket path.
 	Socket string `yaml:"socket"`
-	// API is optional TCP bind for metrics/API (empty = unix only).
+	// API is the daemon TCP listen address for the HTTP API (empty = unix only).
+	// Example: "127.0.0.1:7474". Not the same as APIURL (client dial target).
 	API string `yaml:"api"`
+	// APIURL is an optional CLI client base URL for a remote daemon
+	// (e.g. "http://sandbox.example:7474"). Empty = use local unix Socket.
+	// Overridden by env GRAIN_API or CLI flag --api. Ignored by the daemon.
+	APIURL string `yaml:"api_url"`
 	// APIToken, when non-empty, requires Authorization: Bearer on all daemon
 	// routes except GET /healthz. Empty (default) means no auth — suitable for
 	// localhost / unix socket. CLI also reads env GRAIN_TOKEN.
+	// Required when API binds a non-loopback address (daemon refuses to start
+	// without a token) and when the CLI targets a non-loopback APIURL.
 	APIToken string `yaml:"api_token"`
 	// AuthToken is an alias for APIToken (either field may be set).
 	AuthToken string `yaml:"auth_token"`
@@ -247,6 +256,79 @@ func (c Config) ResolvedAPIToken() string {
 		return c.APIToken
 	}
 	return c.AuthToken
+}
+
+// ResolvedAPIURL returns the CLI remote API base URL from config only
+// (env GRAIN_API and --api are applied by the CLI layer).
+// Empty means use the local unix socket.
+func (c Config) ResolvedAPIURL() string {
+	return NormalizeAPIURL(c.APIURL)
+}
+
+// IsRemoteClient is true when the CLI should dial a TCP/HTTP APIURL
+// instead of the local unix socket.
+func (c Config) IsRemoteClient() bool {
+	return c.ResolvedAPIURL() != ""
+}
+
+// NormalizeAPIURL trims and strips a trailing slash. Empty stays empty.
+// Bare host:port becomes http://host:port.
+func NormalizeAPIURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	s = strings.TrimRight(s, "/")
+	if !strings.Contains(s, "://") {
+		s = "http://" + s
+	}
+	return s
+}
+
+// APIURLIsLoopback reports whether u (http URL or host:port) targets loopback.
+func APIURLIsLoopback(u string) bool {
+	u = NormalizeAPIURL(u)
+	if u == "" {
+		return true
+	}
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return false
+	}
+	if host == "localhost" || host == "grain" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// ListenAddrIsLoopback reports whether a daemon listen addr (host:port) is loopback-only.
+// Empty host (":7474") binds all interfaces → not loopback.
+func ListenAddrIsLoopback(addr string) bool {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return true
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		// bare port or invalid — treat as non-loopback to be safe
+		if strings.HasPrefix(addr, ":") {
+			return false
+		}
+		return false
+	}
+	if host == "" {
+		return false // :port → all interfaces
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // Defaults returns developer-friendly defaults for local Mac/Linux use.

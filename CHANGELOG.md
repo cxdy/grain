@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Boot benchmark** — `scripts/bench-create.sh` times N creates and prints p50/p95/avg.
 - Install script, recipes (coding-agent, k3s, docker-socket, ci-ephemeral, act), grainvm.com Diátaxis site, and feature docs (agent, images, proxy, firecracker, mounts, networking, profiles).
 - **Remote sandbox host guide** — run grain as a systemd service for a team box (API token, caps, SSH tunnels, SDKs); example unit under `deploy/systemd/`.
+- **Remote CLI** — `GRAIN_API` / `--api` / config `api_url` dial a remote daemon over HTTP; agent shell/exec/cp/fs proxy through the API; non-loopback API bind requires `api_token` (daemon refuses insecure open binds).
 
 ### Changed
 

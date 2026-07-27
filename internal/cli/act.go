@@ -97,7 +97,10 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 	if err != nil {
 		return err
 	}
-	c := clientFrom(cfg)
+	c, err := clientFrom(cfg)
+	if err != nil {
+		return err
+	}
 
 	hctx, hcancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer hcancel()
@@ -232,7 +235,7 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 	})
 	if err != nil {
 		// Fall back to buffered exec via agent dial
-		if err2 := execViaAgent(c, vmName, []string{"bash", "-lc", shellCmd}, true); err2 != nil {
+		if err2 := execViaAgent(c, vmName, []string{"bash", "-lc", shellCmd}, true, true); err2 != nil {
 			return fmt.Errorf("act: %w (stream: %v)", err2, err)
 		}
 		return nil

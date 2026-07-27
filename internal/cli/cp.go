@@ -58,17 +58,21 @@ func cmdCp(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			src := parseCPSpec(args[0])
 			dst := parseCPSpec(args[1])
 
 			// Prefer agent when one side is guest and agent is available.
+			viaDaemon := remoteMode(cfg)
 			if !forceSSH && (src.Guest || dst.Guest) {
-				err := cpViaAgent(c, src, dst, forceAgent)
+				err := cpViaAgent(c, src, dst, forceAgent, viaDaemon)
 				if err == nil {
 					return nil
 				}
-				if forceAgent {
+				if forceAgent || viaDaemon {
 					return err
 				}
 				// Fall back to scp only when agent is missing/unhealthy.
@@ -76,6 +80,9 @@ func cmdCp(cfgPath *string) *cobra.Command {
 				if !isAgentUnavailable(err) {
 					return err
 				}
+			}
+			if viaDaemon {
+				return fmt.Errorf("remote API: file copy needs the guest agent (scp uses hostfwd on the daemon host)")
 			}
 
 			return cpViaSCP(cfg, c, src, dst)
@@ -97,7 +104,7 @@ func isAgentUnavailable(err error) bool {
 	return strings.Contains(msg, "agent not available") || strings.Contains(msg, "agent skip")
 }
 
-func cpViaAgent(c *api.Client, src, dst cpSpec, force bool) error {
+func cpViaAgent(c *api.Client, src, dst cpSpec, force bool, viaDaemon bool) error {
 	if src.Guest && dst.Guest {
 		if src.Name == dst.Name {
 			return fmt.Errorf("guest-to-guest copy on the same VM is not supported via agent; use a two-step host path or grain x")
@@ -116,19 +123,94 @@ func cpViaAgent(c *api.Client, src, dst cpSpec, force bool) error {
 		guestName = dst.Name
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	if viaDaemon {
+		if !src.Guest && dst.Guest {
+			return daemonPut(ctx, c, guestName, src.Path, dst.Path)
+		}
+		return daemonGet(ctx, c, guestName, src.Path, dst.Path)
+	}
+
 	ac, err := dialGuestAgent(c, guestName, force)
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
 
 	if !src.Guest && dst.Guest {
 		return agentPut(ctx, ac, src.Path, dst.Path)
 	}
 	// src.Guest && !dst.Guest
 	return agentGet(ctx, ac, src.Path, dst.Path)
+}
+
+func daemonPut(ctx context.Context, c *api.Client, vmName, hostPath, guestPath string) error {
+	fi, err := os.Lstat(hostPath)
+	if err != nil {
+		return fmt.Errorf("src: %w", err)
+	}
+	if strings.HasSuffix(guestPath, "/") || guestPath == "" {
+		guestPath = strings.TrimRight(guestPath, "/")
+		if guestPath == "" {
+			guestPath = "/"
+		}
+		guestPath = filepath.ToSlash(filepath.Join(guestPath, filepath.Base(hostPath)))
+	}
+	if fi.IsDir() {
+		pr, pw := io.Pipe()
+		go func() {
+			err := writeLocalTar(pw, hostPath)
+			_ = pw.CloseWithError(err)
+		}()
+		return c.PutTar(ctx, vmName, guestPath, pr)
+	}
+	f, err := os.Open(hostPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	mode := fmt.Sprintf("%04o", fi.Mode().Perm())
+	return c.PutFile(ctx, vmName, guestPath, f, fi.Size(), agent.CPOpts{Mode: mode})
+}
+
+func daemonGet(ctx context.Context, c *api.Client, vmName, guestPath, hostPath string) error {
+	info, err := c.Stat(ctx, vmName, guestPath)
+	if err != nil {
+		return err
+	}
+	if strings.HasSuffix(hostPath, string(os.PathSeparator)) || strings.HasSuffix(hostPath, "/") {
+		hostPath = filepath.Join(hostPath, info.Name)
+	} else if st, err := os.Stat(hostPath); err == nil && st.IsDir() {
+		hostPath = filepath.Join(hostPath, info.Name)
+	}
+	if info.Type == "directory" {
+		if err := os.MkdirAll(hostPath, 0o755); err != nil {
+			return err
+		}
+		pr, pw := io.Pipe()
+		errCh := make(chan error, 1)
+		go func() {
+			err := c.GetTar(ctx, vmName, guestPath, pw)
+			_ = pw.CloseWithError(err)
+			errCh <- err
+		}()
+		extErr := extractTar(pr, hostPath)
+		getErr := <-errCh
+		if getErr != nil {
+			return getErr
+		}
+		return extErr
+	}
+	if err := os.MkdirAll(filepath.Dir(hostPath), 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(hostPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return c.GetFile(ctx, vmName, guestPath, f)
 }
 
 func agentPut(ctx context.Context, ac *agent.Client, hostPath, guestPath string) error {

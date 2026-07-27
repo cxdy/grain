@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -65,6 +66,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /vms/{name}/forwards", s.addForward)
 	mux.HandleFunc("DELETE /vms/{name}/forwards/{hostPort}", s.removeForward)
 	mux.HandleFunc("POST /vms/{name}/exec", s.execVM)
+	// Interactive PTY shell (WebSocket) — required for remote CLI `grain sh`
+	mux.HandleFunc("GET /vms/{name}/shell", s.shellVM)
 	mux.HandleFunc("GET /vms/{name}/agent/health", s.agentHealth)
 	mux.HandleFunc("GET /vms/{name}/stats", s.vmStats)
 	mux.HandleFunc("PUT /vms/{name}/cp", s.putCP)
@@ -562,6 +565,54 @@ func agentLongHTTP(ac *agent.Client) *http.Client {
 		return &clone
 	}
 	return &http.Client{}
+}
+
+// shellVM reverse-proxies GET /vms/{name}/shell (WebSocket) to the guest agent /shell.
+// Remote CLI clients use this instead of dialing the hostfwd agent port on loopback.
+func (s *Server) shellVM(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	target, err := url.Parse(strings.TrimRight(ac.BaseURL, "/"))
+	if err != nil || target.Scheme == "" || target.Host == "" {
+		writeErr(w, http.StatusBadGateway, fmt.Errorf("agent base URL: %w", err))
+		return
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	// Use the agent transport (TCP hostfwd or vsock) with no overall timeout.
+	proxy.Transport = agentLongHTTP(ac).Transport
+	if proxy.Transport == nil {
+		proxy.Transport = agentLongHTTP(ac).Transport
+	}
+	// Ensure the dialer from agent.Client is used when HTTP has a custom Transport.
+	if ac.HTTP != nil && ac.HTTP.Transport != nil {
+		proxy.Transport = ac.HTTP.Transport
+	}
+	origDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		origDirector(req)
+		req.URL.Path = "/shell"
+		req.URL.RawPath = "/shell"
+		req.URL.RawQuery = r.URL.RawQuery
+		req.Host = target.Host
+	}
+	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, e error) {
+		s.log.Error("shell proxy", "vm", name, "err", e)
+		if !headersSent(rw) {
+			writeErr(rw, http.StatusBadGateway, fmt.Errorf("shell proxy: %w", e))
+		}
+	}
+	proxy.ServeHTTP(w, r)
+}
+
+// headersSent is a best-effort check; ReverseProxy may have already written.
+func headersSent(w http.ResponseWriter) bool {
+	// http.ResponseWriter does not expose this; ErrorHandler is only called
+	// before a successful upgrade in practice. Always try writeErr carefully.
+	return false
 }
 
 // putCP proxies file/tar upload to the guest agent (agent POST /cp).

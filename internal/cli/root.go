@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -63,10 +61,18 @@ func Root(version string) *cobra.Command {
   grain new --publish-socket H:G  SSH streamlocal socket forward
   grain logs            guest serial / qemu logs
   grain doctor          check dependencies
-  grain down            stop daemon`,
+  grain down            stop daemon
+
+Remote team host (CLI dials HTTP instead of local socket):
+
+  export GRAIN_API=http://127.0.0.1:7474   # after ssh -L 7474:127.0.0.1:7474 host
+  export GRAIN_TOKEN=…                     # required when API is not loopback
+  grain --api http://sandbox:7474 ls       # or flag instead of env
+  # see https://grainvm.com/guides/remote-host/`,
 		SilenceUsage: true,
 	}
 	root.PersistentFlags().StringVar(&cfgPath, "config", "", "config file (default ~/.grain/config.yaml)")
+	root.PersistentFlags().StringVar(&apiURLFlag, "api", "", "remote daemon API URL (e.g. http://host:7474); overrides GRAIN_API and config api_url")
 
 	root.AddCommand(
 		cmdUp(&cfgPath),
@@ -113,28 +119,6 @@ func loadCfg(path *string) (config.Config, error) {
 	return config.Load(*path)
 }
 
-func clientFrom(cfg config.Config) *api.Client {
-	sock := cfg.Socket
-	token := os.Getenv("GRAIN_TOKEN")
-	if token == "" {
-		token = cfg.ResolvedAPIToken()
-	}
-	return &api.Client{
-		Base:  "http://grain",
-		Token: token,
-		HTTP: &http.Client{
-			// No global Timeout — create waits for SSH; use request context instead.
-			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-					var d net.Dialer
-					return d.DialContext(ctx, "unix", sock)
-				},
-				ResponseHeaderTimeout: 5 * time.Minute,
-			},
-		},
-	}
-}
-
 func cmdUp(cfgPath *string) *cobra.Command {
 	fg := false
 	cmd := &cobra.Command{
@@ -143,6 +127,9 @@ func cmdUp(cfgPath *string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
+				return err
+			}
+			if err := requireLocalDaemon(cfg, "grain up"); err != nil {
 				return err
 			}
 			log := observability.NewLogger(cfg.LogLevel)
@@ -186,10 +173,13 @@ func cmdUp(cfgPath *string) *cobra.Command {
 func cmdDown(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "down",
-		Short: "Stop the grain daemon",
+		Short: "Stop the grain daemon (local only)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
+				return err
+			}
+			if err := requireLocalDaemon(cfg, "grain down"); err != nil {
 				return err
 			}
 			pidPath := filepath.Join(cfg.DataDir, "grain.pid")
@@ -235,7 +225,10 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			// Allow boot + cloud-init (ReadyTimeout defaults to 2m; give API room).
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
@@ -418,7 +411,10 @@ func cmdLs(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			list, err := c.List(ctx)
@@ -453,7 +449,10 @@ func cmdRm(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			name, err := resolveVMName(c, args, false)
 			if err != nil {
 				return err
@@ -479,7 +478,10 @@ func cmdStop(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			name, err := resolveVMName(c, args, false)
 			if err != nil {
 				return err
@@ -505,7 +507,10 @@ func cmdStart(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			name, err := resolveVMName(c, args, false)
 			if err != nil {
 				return err
@@ -543,7 +548,10 @@ func cmdPause(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			name, err := resolveVMName(c, args, false)
 			if err != nil {
 				return err
@@ -572,7 +580,10 @@ func cmdResume(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			name, err := resolveVMName(c, args, false)
 			if err != nil {
 				return err
@@ -606,7 +617,10 @@ persistent VM. When the disk is qcow2, grain best-effort savevm's a snapshot
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			name, err := resolveVMName(c, args, false)
 			if err != nil {
 				return err
@@ -635,7 +649,10 @@ func cmdRestore(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			name, err := resolveVMName(c, args, false)
 			if err != nil {
 				return err
@@ -665,36 +682,15 @@ func cmdRestore(cfgPath *string) *cobra.Command {
 func getVMSSH(c *api.Client, name string) (host string, port int, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Base+"/vms/"+name, nil)
+	inst, err := c.Get(ctx, name)
 	if err != nil {
 		return "", 0, err
-	}
-	res, err := c.HTTP.Do(req)
-	if err != nil {
-		return "", 0, err
-	}
-	defer res.Body.Close()
-	var inst struct {
-		SSHPort int    `json:"ssh_port"`
-		IP      string `json:"ip"`
-		Error   string `json:"error"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&inst); err != nil {
-		return "", 0, err
-	}
-	if res.StatusCode >= 300 {
-		if inst.Error != "" {
-			return "", 0, fmt.Errorf("%s", inst.Error)
-		}
-		return "", 0, fmt.Errorf("status %d", res.StatusCode)
 	}
 	if inst.SSHPort == 0 {
 		return "", 0, fmt.Errorf("vm has no ssh port yet (need a bootable image + qemu)")
 	}
-	host = inst.IP
-	if host == "" {
-		host = "127.0.0.1"
-	}
+	// Hostfwd is bound on the grain host loopback (not the guest IP).
+	host = "127.0.0.1"
 	return host, inst.SSHPort, nil
 }
 
@@ -768,7 +764,10 @@ func cmdSh(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			// Auto-create when no name given and no VMs — common first-run path.
 			createIfEmpty := len(args) == 0
 			name, err := resolveVMName(c, args, createIfEmpty)
@@ -777,18 +776,24 @@ func cmdSh(cfgPath *string) *cobra.Command {
 			}
 
 			// Prefer guest agent PTY when available (unless --ssh).
+			// Remote CLI must use the daemon shell proxy (hostfwd is on the server).
+			viaDaemon := remoteMode(cfg)
 			if !forceSSH {
-				err := shellViaAgent(c, name, forceAgent)
+				err := shellViaAgent(c, name, forceAgent, viaDaemon)
 				if err == nil {
 					return nil
 				}
-				if forceAgent {
+				if forceAgent || viaDaemon {
+					// Remote: no useful SSH fallback to hostfwd ports on the server.
 					return err
 				}
 				// Only fall back to SSH when agent is missing/unhealthy.
 				if !isAgentUnavailable(err) {
 					return err
 				}
+			}
+			if viaDaemon {
+				return fmt.Errorf("remote API: interactive shell needs the guest agent (or SSH to the grain host and run grain sh there); --ssh uses hostfwd on the daemon host, not your laptop")
 			}
 
 			host, port, err := getVMSSH(c, name)
@@ -808,9 +813,11 @@ func cmdSh(cfgPath *string) *cobra.Command {
 	return cmd
 }
 
-// shellViaAgent dials the guest agent and opens an interactive WebSocket PTY shell.
-// force requires agent; otherwise returns errAgentSkip when unavailable.
-func shellViaAgent(c *api.Client, name string, force bool) error {
+// shellViaAgent opens an interactive PTY. Local: dial agent hostfwd; remote: daemon /shell proxy.
+func shellViaAgent(c *api.Client, name string, force bool, viaDaemon bool) error {
+	if viaDaemon {
+		return shellViaDaemon(c, name)
+	}
 	ac, err := dialGuestAgent(c, name, force)
 	if err != nil {
 		return err
@@ -835,7 +842,10 @@ func cmdX(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 
 			// Split name vs remote command. If first arg is a known VM, use it.
 			var name string
@@ -876,8 +886,9 @@ func cmdX(cfgPath *string) *cobra.Command {
 			}
 
 			// Prefer guest agent when available (unless --ssh).
+			viaDaemon := remoteMode(cfg)
 			if !forceSSH {
-				err := execViaAgent(c, name, remote, forceAgent)
+				err := execViaAgent(c, name, remote, forceAgent, viaDaemon)
 				if err == nil {
 					return nil
 				}
@@ -886,13 +897,16 @@ func cmdX(cfgPath *string) *cobra.Command {
 				if errors.As(err, &ec) {
 					return err
 				}
-				if forceAgent {
+				if forceAgent || viaDaemon {
 					return err
 				}
 				// Only fall back to SSH when agent is missing/unhealthy.
 				if !isAgentUnavailable(err) {
 					return err
 				}
+			}
+			if viaDaemon {
+				return fmt.Errorf("remote API: exec needs the guest agent (or SSH to the grain host); --ssh uses hostfwd on the daemon host")
 			}
 
 			host, port, err := getVMSSH(c, name)
@@ -926,7 +940,10 @@ func cmdAgent(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			name, err := resolveVMName(c, args, false)
 			if err != nil {
 				return err
@@ -961,7 +978,14 @@ func cmdVersion(v string) *cobra.Command {
 func cmdImage(cfgPath *string) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "image",
-		Short: "Manage base images",
+		Short: "Manage base images (local host data dir)",
+	}
+	c.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		cfg, err := loadCfg(cfgPath)
+		if err != nil {
+			return err
+		}
+		return requireLocalDaemon(cfg, "grain image")
 	}
 	c.AddCommand(
 		&cobra.Command{

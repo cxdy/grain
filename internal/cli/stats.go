@@ -19,7 +19,10 @@ func cmdStats(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			name, err := resolveVMName(c, args, false)
 			if err != nil {
 				return err

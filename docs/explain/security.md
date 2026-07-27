@@ -40,7 +40,15 @@ You (operator)
 
 ### Shared / remote hosts
 
-Running grain on a team machine so developers create sandboxes remotely is a supported **ops pattern**, not multi-tenant SaaS. Always set `api_token`, prefer loopback + SSH tunnel or TLS reverse proxy, set resource caps, and remember published ports stay on host loopback. Full guide: [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}).
+Running grain on a team machine so developers create sandboxes remotely is a supported **ops pattern**, not multi-tenant SaaS.
+
+- Set `api_token`; daemon **will not** bind a non-loopback `api` without one  
+- Prefer `api: 127.0.0.1:7474` + SSH tunnel or TLS reverse proxy  
+- **Firewall** port 7474 (and egress proxy 3128) — do not leave control plane open to the internet  
+- Remote CLI: `GRAIN_API` / `--api` + `GRAIN_TOKEN`  
+- Resource caps; published ports stay on host loopback  
+
+Full guide: [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}).
 
 ## Images
 

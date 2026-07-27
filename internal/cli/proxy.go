@@ -38,6 +38,13 @@ so VMs can use HTTPS_PROXY=http://TOKEN@10.0.2.2:3128.
 
 See docs/proxy.md for the security model.`,
 	}
+	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		cfg, err := loadCfg(cfgPath)
+		if err != nil {
+			return err
+		}
+		return requireLocalDaemon(cfg, "grain proxy")
+	}
 	root.AddCommand(
 		cmdProxyUp(cfgPath),
 		cmdProxyDown(cfgPath),

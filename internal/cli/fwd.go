@@ -127,7 +127,10 @@ func cmdFwdLs(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
@@ -204,7 +207,10 @@ func cmdFwdAdd(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
@@ -247,7 +253,10 @@ func cmdFwdRm(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {

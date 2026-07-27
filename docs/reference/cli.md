@@ -3,7 +3,25 @@ title: CLI reference
 description: Complete grain command reference for interactive use.
 ---
 
-Global flag: `--config path` (default `~/.grain/config.yaml`).
+Global flags:
+
+| Flag / env | Meaning |
+|------------|---------|
+| `--config path` | Config file (default `~/.grain/config.yaml`) |
+| `--api URL` | Remote daemon HTTP base (overrides `GRAIN_API` and config `api_url`) |
+| `GRAIN_API` | Same as `--api` |
+| `GRAIN_TOKEN` | Bearer token (or config `api_token`) |
+
+Local default: unix socket. Remote example:
+
+```bash
+export GRAIN_API=http://127.0.0.1:7474   # after ssh -L …
+export GRAIN_TOKEN=…
+grain ls
+grain --api http://sandbox:7474 ls
+```
+
+See [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}) for firewall and systemd.
 
 ## Daemon
 

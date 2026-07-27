@@ -52,20 +52,53 @@ func cmdFsLs(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
-			name, path, err := resolveVMAndPath(c, args)
+			c, err := clientFrom(cfg)
 			if err != nil {
 				return err
 			}
-			ac, err := dialGuestAgent(c, name, true)
+			name, path, err := resolveVMAndPath(c, args)
 			if err != nil {
 				return err
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			entries, err := ac.ReadDir(ctx, path)
-			if err != nil {
-				return err
+			var entries []struct {
+				Name  string
+				Type  string
+				Mode  string
+				Size  int64
+			}
+			// Prefer daemon-proxied API when remote (or always for simplicity).
+			if remoteMode(cfg) {
+				list, err := c.ReadDir(ctx, name, path)
+				if err != nil {
+					return err
+				}
+				for _, e := range list {
+					entries = append(entries, struct {
+						Name  string
+						Type  string
+						Mode  string
+						Size  int64
+					}{e.Name, e.Type, e.Mode, e.Size})
+				}
+			} else {
+				ac, err := dialGuestAgent(c, name, true)
+				if err != nil {
+					return err
+				}
+				list, err := ac.ReadDir(ctx, path)
+				if err != nil {
+					return err
+				}
+				for _, e := range list {
+					entries = append(entries, struct {
+						Name  string
+						Type  string
+						Mode  string
+						Size  int64
+					}{e.Name, e.Type, e.Mode, e.Size})
+				}
 			}
 			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 			for _, e := range entries {
@@ -90,27 +123,41 @@ func cmdFsStat(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
-			name, path, err := resolveVMAndPath(c, args)
+			c, err := clientFrom(cfg)
 			if err != nil {
 				return err
 			}
-			ac, err := dialGuestAgent(c, name, true)
+			name, path, err := resolveVMAndPath(c, args)
 			if err != nil {
 				return err
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			info, err := ac.Stat(ctx, path)
-			if err != nil {
-				return err
+			var nameOut, typeOut, modeOut string
+			var sizeOut, mtimeOut int64
+			if remoteMode(cfg) {
+				info, err := c.Stat(ctx, name, path)
+				if err != nil {
+					return err
+				}
+				nameOut, typeOut, modeOut, sizeOut, mtimeOut = info.Name, info.Type, info.Mode, info.Size, info.Mtime
+			} else {
+				ac, err := dialGuestAgent(c, name, true)
+				if err != nil {
+					return err
+				}
+				info, err := ac.Stat(ctx, path)
+				if err != nil {
+					return err
+				}
+				nameOut, typeOut, modeOut, sizeOut, mtimeOut = info.Name, info.Type, info.Mode, info.Size, info.Mtime
 			}
-			fmt.Printf("name:  %s\n", info.Name)
-			fmt.Printf("type:  %s\n", info.Type)
-			fmt.Printf("size:  %d\n", info.Size)
-			fmt.Printf("mode:  %s\n", info.Mode)
-			if info.Mtime > 0 {
-				fmt.Printf("mtime: %s\n", time.Unix(info.Mtime, 0).UTC().Format(time.RFC3339))
+			fmt.Printf("name:  %s\n", nameOut)
+			fmt.Printf("type:  %s\n", typeOut)
+			fmt.Printf("size:  %d\n", sizeOut)
+			fmt.Printf("mode:  %s\n", modeOut)
+			if mtimeOut > 0 {
+				fmt.Printf("mtime: %s\n", time.Unix(mtimeOut, 0).UTC().Format(time.RFC3339))
 			}
 			return nil
 		},
@@ -128,17 +175,23 @@ func cmdFsMkdir(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
-			name, path, err := resolveVMAndPath(c, args)
+			c, err := clientFrom(cfg)
 			if err != nil {
 				return err
 			}
-			ac, err := dialGuestAgent(c, name, true)
+			name, path, err := resolveVMAndPath(c, args)
 			if err != nil {
 				return err
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
+			if remoteMode(cfg) {
+				return c.Mkdir(ctx, name, path, parents, "")
+			}
+			ac, err := dialGuestAgent(c, name, true)
+			if err != nil {
+				return err
+			}
 			return ac.Mkdir(ctx, path, parents, "")
 		},
 	}
@@ -157,17 +210,23 @@ func cmdFsRm(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c := clientFrom(cfg)
-			name, path, err := resolveVMAndPath(c, args)
+			c, err := clientFrom(cfg)
 			if err != nil {
 				return err
 			}
-			ac, err := dialGuestAgent(c, name, true)
+			name, path, err := resolveVMAndPath(c, args)
 			if err != nil {
 				return err
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
+			if remoteMode(cfg) {
+				return c.Remove(ctx, name, path, recursive)
+			}
+			ac, err := dialGuestAgent(c, name, true)
+			if err != nil {
+				return err
+			}
 			return ac.Remove(ctx, path, recursive)
 		},
 	}

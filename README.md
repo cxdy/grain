@@ -133,7 +133,7 @@ Full site: **[grainvm.com](https://grainvm.com)** (this repo’s `docs/` is the 
 | [guides/mounts](https://grainvm.com/guides/mounts/) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
 | [guides/profiles](https://grainvm.com/guides/profiles/) | named profiles, docker / k3s / act presets |
 | [guides/troubleshooting](https://grainvm.com/guides/troubleshooting/) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
-| [guides/remote-host](https://grainvm.com/guides/remote-host/) | team box: systemd service, API token, SSH tunnels, SDKs |
+| [guides/remote-host](https://grainvm.com/guides/remote-host/) | team box: systemd, remote CLI (`GRAIN_API`), firewall, tokens |
 
 ### Recipes
 
@@ -190,8 +190,10 @@ data_dir: ~/.grain
 socket: ~/.grain/grain.sock
 api: 127.0.0.1:7474
 # Optional API auth (Bearer). Empty = no auth (default for local unix socket).
-# CLI also reads env GRAIN_TOKEN.
+# CLI also reads env GRAIN_TOKEN. Required when api binds non-loopback.
 api_token: ""
+# CLI-only: dial a remote daemon (or use env GRAIN_API / flag --api)
+# api_url: http://127.0.0.1:7474
 hypervisor: qemu          # or mock | firecracker (experimental, Linux)
 # firecracker_binary: firecracker
 # kernel_path: ""         # optional vmlinux for firecracker

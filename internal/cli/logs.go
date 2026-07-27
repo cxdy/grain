@@ -37,6 +37,9 @@ QEMU:    ~/.grain/logs/<name>.log`,
 			if err != nil {
 				return err
 			}
+			if err := requireLocalDaemon(cfg, "grain logs"); err != nil {
+				return err
+			}
 			name, err := resolveLogsVMName(cfg, args)
 			if err != nil {
 				return err
@@ -77,7 +80,10 @@ func resolveLogsVMName(cfg config.Config, args []string) (string, error) {
 		return args[0], nil
 	}
 	// Prefer daemon list (running/known VMs).
-	c := clientFrom(cfg)
+	c, err := clientFrom(cfg)
+	if err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if list, err := c.List(ctx); err == nil {

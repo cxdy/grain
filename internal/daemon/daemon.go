@@ -66,12 +66,20 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	srv.APIToken = cfg.ResolvedAPIToken()
 	handler := srv.Handler()
 
-	// TCP API (simple for curl + metrics scrape)
+	// TCP API (simple for curl + metrics scrape + remote CLI/SDK clients)
 	var httpSrv *http.Server
 	if cfg.API != "" {
+		// Refuse non-loopback binds without a token — open control planes are dangerous.
+		if !config.ListenAddrIsLoopback(cfg.API) && cfg.ResolvedAPIToken() == "" {
+			return fmt.Errorf("api listen %q is not loopback but api_token is empty — set api_token (or bind 127.0.0.1) before exposing the control plane; see https://grainvm.com/guides/remote-host/", cfg.API)
+		}
+		if !config.ListenAddrIsLoopback(cfg.API) {
+			log.Warn("api listen is not loopback — ensure host firewall and api_token; prefer 127.0.0.1 + SSH tunnel or TLS reverse proxy",
+				"addr", cfg.API)
+		}
 		httpSrv = &http.Server{Addr: cfg.API, Handler: handler}
 		go func() {
-			log.Info("api listen", "addr", cfg.API)
+			log.Info("api listen", "addr", cfg.API, "auth", cfg.ResolvedAPIToken() != "")
 			if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Error("api server", "err", err)
 			}
