@@ -27,8 +27,9 @@ See [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}) for firew
 
 | Command | Description |
 |---------|-------------|
-| `grain up [--fg]` | Start daemon (background by default) |
-| `grain down` | Stop daemon via pidfile |
+| `grain up [--fg]` | Start daemon (background by default; reports already up if healthy) |
+| `grain down` | Stop daemon via pidfile (cleans stale pid/socket) |
+| `grain uninstall [--purge] [-y]` | Remove CLI binary; `--purge` also deletes the data directory |
 | `grain doctor` | Dependency checks |
 | `grain version` | Print version |
 

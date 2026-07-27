@@ -81,6 +81,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 	root.AddCommand(
 		cmdUp(&cfgPath),
 		cmdDown(&cfgPath),
+		cmdUninstall(&cfgPath),
 		cmdNew(&cfgPath),
 		cmdAct(&cfgPath),
 		cmdStop(&cfgPath),
@@ -138,6 +139,19 @@ func cmdUp(cfgPath *string) *cobra.Command {
 				return err
 			}
 			log := observability.NewLogger(cfg.LogLevel)
+
+			// Already healthy — do not spawn a second daemon.
+			if err := probeDaemonHealth(cfg); err == nil {
+				printDaemonUp("grain already up", cfg)
+				return nil
+			}
+			// Live pid but unhealthy (half-up / stuck on port): force user to down first.
+			if pid, err := readPID(daemonPIDPath(cfg)); err == nil && pidAlive(pid) {
+				return fmt.Errorf("daemon pid %d is running but not healthy — try: grain down (then grain up)", pid)
+			}
+			// Dead pid file and/or orphan socket from a previous crash.
+			cleanupStaleDaemonFiles(cfg)
+
 			if !fg {
 				exe, err := os.Executable()
 				if err != nil {
@@ -147,24 +161,49 @@ func cmdUp(cfgPath *string) *cobra.Command {
 				if *cfgPath != "" {
 					c.Args = append(c.Args, "--config", *cfgPath)
 				}
+				// Detach from the controlling terminal's process group so a later
+				// shell Ctrl+C does not deliver SIGINT to the daemon.
+				c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 				if err := c.Start(); err != nil {
 					return err
 				}
-				// wait briefly for socket
-				deadline := time.Now().Add(3 * time.Second)
+				child := c.Process.Pid
+				// Wait until healthz works, or the child exits (bind failure, etc.).
+				deadline := time.Now().Add(5 * time.Second)
+				errCh := make(chan error, 1)
+				go func() { errCh <- c.Wait() }()
 				for time.Now().Before(deadline) {
-					if _, err := os.Stat(cfg.Socket); err == nil {
-						break
+					select {
+					case waitErr := <-errCh:
+						cleanupStaleDaemonFiles(cfg)
+						if waitErr != nil {
+							return fmt.Errorf("daemon exited during start: %w", waitErr)
+						}
+						return fmt.Errorf("daemon exited during start (check: grain up --fg)")
+					default:
+					}
+					if err := probeDaemonHealth(cfg); err == nil {
+						printDaemonUp(fmt.Sprintf("grain up  pid=%d", child), cfg)
+						// Reap in background so we do not leave a zombie if the daemon is long-lived.
+						// Wait already runs in errCh goroutine — process stays reaped when it exits.
+						return nil
 					}
 					time.Sleep(50 * time.Millisecond)
 				}
-				fmt.Printf("grain up  pid=%d\n", c.Process.Pid)
-				fmt.Printf("  socket  %s\n", cfg.Socket)
-				if cfg.API != "" {
-					fmt.Printf("  api     http://%s\n", cfg.API)
-					fmt.Printf("  metrics http://%s/metrics\n", cfg.API)
+				// Timeout: if child still alive but not healthy, leave it and report.
+				if pidAlive(child) {
+					return fmt.Errorf("daemon started (pid %d) but health check timed out — try: grain up --fg", child)
 				}
-				return nil
+				select {
+				case waitErr := <-errCh:
+					cleanupStaleDaemonFiles(cfg)
+					if waitErr != nil {
+						return fmt.Errorf("daemon exited during start: %w", waitErr)
+					}
+				default:
+					cleanupStaleDaemonFiles(cfg)
+				}
+				return fmt.Errorf("daemon failed to start (check: grain up --fg)")
 			}
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -187,14 +226,17 @@ func cmdDown(cfgPath *string) *cobra.Command {
 			if err := requireLocalDaemon(cfg, "grain down"); err != nil {
 				return err
 			}
-			pidPath := filepath.Join(cfg.DataDir, "grain.pid")
-			b, err := os.ReadFile(pidPath)
+			pidPath := daemonPIDPath(cfg)
+			pid, err := readPID(pidPath)
 			if err != nil {
+				// Still try to remove a stale socket.
+				_ = os.Remove(cfg.Socket)
 				return fmt.Errorf("daemon not running (%v)", err)
 			}
-			var pid int
-			if _, err := fmt.Sscanf(string(b), "%d", &pid); err != nil || pid <= 0 {
-				return fmt.Errorf("bad pid file")
+			if !pidAlive(pid) {
+				cleanupStaleDaemonFiles(cfg)
+				fmt.Println("grain down (stale pid cleaned up)")
+				return nil
 			}
 			p, err := os.FindProcess(pid)
 			if err != nil {
@@ -203,9 +245,54 @@ func cmdDown(cfgPath *string) *cobra.Command {
 			if err := p.Signal(syscall.SIGTERM); err != nil {
 				return err
 			}
+			// Wait briefly for exit, then SIGKILL if needed.
+			deadline := time.Now().Add(3 * time.Second)
+			for time.Now().Before(deadline) {
+				if !pidAlive(pid) {
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			if pidAlive(pid) {
+				_ = p.Signal(syscall.SIGKILL)
+			}
+			cleanupStaleDaemonFiles(cfg)
 			fmt.Println("grain down")
 			return nil
 		},
+	}
+}
+
+func daemonPIDPath(cfg config.Config) string {
+	return filepath.Join(cfg.DataDir, "grain.pid")
+}
+
+func probeDaemonHealth(cfg config.Config) error {
+	c, err := clientFrom(cfg)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	return c.Health(ctx)
+}
+
+// cleanupStaleDaemonFiles removes pid/socket left by a dead daemon process.
+func cleanupStaleDaemonFiles(cfg config.Config) {
+	pidPath := daemonPIDPath(cfg)
+	if pid, err := readPID(pidPath); err == nil && pidAlive(pid) {
+		return // live process owns these files
+	}
+	_ = os.Remove(pidPath)
+	_ = os.Remove(cfg.Socket)
+}
+
+func printDaemonUp(header string, cfg config.Config) {
+	fmt.Println(header)
+	fmt.Printf("  socket  %s\n", cfg.Socket)
+	if cfg.API != "" {
+		fmt.Printf("  api     http://%s\n", cfg.API)
+		fmt.Printf("  metrics http://%s/metrics\n", cfg.API)
 	}
 }
 
