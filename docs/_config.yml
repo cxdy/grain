@@ -1,5 +1,5 @@
 title: grain
-description: Fast Linux microVM sandboxes on your own hardware
+description: Linux microVM sandboxes on your own hardware — shells, GitHub Actions, and k3s labs.
 url: https://grainvm.com
 baseurl: ""
 
@@ -65,28 +65,22 @@ nav:
 
 docs_nav:
   get-started:
-    title: Get started
+    title: Learn
     links:
       - title: Quick start
         url: /get-started/quickstart/
-      - title: Install grain
+      - title: Install
         url: /get-started/install/
-      - title: Your first sandbox
+      - title: First sandbox
         url: /get-started/first-sandbox/
-      - title: GitHub Actions (act)
-        url: /guides/recipes/act/
-      - title: k3s lab
-        url: /guides/recipes/k3s/
       - title: Core concepts
         url: /get-started/concepts/
       - title: Contributing
         url: /get-started/contributing/
-      - title: Releasing
-        url: /developer/releasing/
   guides:
-    title: Guides
+    title: Do
     links:
-      - title: Overview
+      - title: Guides overview
         url: /guides/
       - title: GitHub Actions (act)
         url: /guides/recipes/act/
@@ -129,7 +123,7 @@ docs_nav:
       - title: CI ephemeral
         url: /guides/recipes/ci-ephemeral/
   reference:
-    title: Reference
+    title: Look up
     links:
       - title: CLI
         url: /reference/cli/
@@ -150,7 +144,7 @@ docs_nav:
       - title: Metrics
         url: /reference/metrics/
   explain:
-    title: Explain
+    title: Understand
     links:
       - title: Architecture
         url: /explain/architecture/
