@@ -59,7 +59,7 @@ svu next
    That recipe:
 
    - Fetches remote tags so `svu` sees the latest release
-   - Runs `svu next` (for example `v0.1.1`)
+   - Runs `svu next` (for example `v0.2.0`)
    - Creates the git tag
    - Pushes `HEAD` and the tag to `origin`
 
@@ -124,9 +124,9 @@ Import remains `import grain`. Workflow:
 2. Either:
 
    ```bash
-   # Tag-driven (version must match pyproject, e.g. 0.1.2 → sdk-python-v0.1.2)
-   git tag sdk-python-v0.1.2
-   git push origin sdk-python-v0.1.2
+   # Tag-driven (version must match pyproject, e.g. 0.2.0 → sdk-python-v0.2.0)
+   git tag sdk-python-v0.2.0
+   git push origin sdk-python-v0.2.0
    ```
 
    or run **Actions → Publish Python SDK → Run workflow** (`workflow_dispatch`).
@@ -173,9 +173,9 @@ installs a current npm).
 2. Either:
 
    ```bash
-   # Tag-driven (version must match package.json, e.g. 0.1.1 → sdk-ts-v0.1.1)
-   git tag sdk-ts-v0.1.1
-   git push origin sdk-ts-v0.1.1
+   # Tag-driven (version must match package.json, e.g. 0.2.0 → sdk-ts-v0.2.0)
+   git tag sdk-ts-v0.2.0
+   git push origin sdk-ts-v0.2.0
    ```
 
    or run **Actions → Publish TypeScript SDK → Run workflow** (`workflow_dispatch`).

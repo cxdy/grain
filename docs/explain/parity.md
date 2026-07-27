@@ -3,7 +3,7 @@ title: "Product surface"
 description: "What grain implements for local Linux microVM sandboxes."
 ---
 
-grain’s local microVM product surface as of the v0.1 line.
+grain’s local microVM product surface as of the v0.2 line.
 
 ## Complete for local sandboxes
 

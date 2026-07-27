@@ -31,4 +31,4 @@ Docs site source is this `docs/` tree. Product overview: [grainvm.com](https://g
 
 - [Security policy](https://github.com/cxdy/grain/blob/main/SECURITY.md) — private vulnerability reporting
 - [Code of conduct](https://github.com/cxdy/grain/blob/main/CODE_OF_CONDUCT.md)
-- [v0.1 release checklist](https://github.com/cxdy/grain/blob/main/docs/RELEASE.md) (maintainers)
+- [v0.2 release checklist](https://github.com/cxdy/grain/blob/main/docs/RELEASE.md) (maintainers)

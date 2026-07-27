@@ -17,17 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Overlay network** — `grain new --network overlay` / config `network: overlay` shares an L2 multicast segment between VMs (plus SLIRP for hostfwd).
 - Guides: tray, multi-arch, GPU, overlay networking. Product surface page cleaned up (no competitor comparison / deferred-feature table).
 - Dev tooling: mise (`.tool-versions`), pre-commit, golangci-lint, markdownlint-cli2, commitizen; `just init` / `just lint` / `just pre-commit`.
-- CI coverage: `just coverage` writes cobertura `coverage.xml`; PR comment workflow posts a per-file report (75% minimum, cmd/tray excluded).
+- CI coverage: `just coverage` writes Cobertura `coverage.xml`; PR comment posts a compact summary with the full per-file table under a collapsible details block (75% line minimum; cmd/tray excluded).
 - Broad unit-test expansion across client, API, manager, hypervisor, agent, CLI helpers, and related packages.
+- Interactive **OpenAPI explorer** on the docs site (`/reference/openapi/`).
+- **Field Manual** docs site redesign (layout, navigation, and visual system).
 
 ### Changed
 
 - **Python SDK** PyPI name is **`grainvm`** (`pip install grainvm`; import still `import grain`). Previous name `cxdy-grain` is not used for new publishes.
-- Docs site visual refresh (typography and cool ink/mint/steel palette).
+- TypeScript SDK **`@cxdy/grain`** and Python SDK **`grainvm`** published as **0.2.0** (aligned with the CLI tag).
+- Docs site visual refresh (typography and cool ink/mint/steel palette); OpenAPI explorer readable in light mode.
 
 ### Fixed
 
 - Release builds no longer fail on the tray dependency when `CGO_ENABLED=0` (tray is a CGO-only build path).
+- OpenAPI YAML descriptions quoted so Swagger UI can parse the published spec.
 
 ## [0.1.4] - 2026-07-27
 
@@ -120,5 +124,10 @@ First public release: local Linux microVM control plane for macOS and Linux.
 - Platforms: **macOS and Linux** only (amd64 / arm64). Golden images: `golden-latest` on GitHub Releases.
 - Install: `curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash` (or release assets for `v0.1.0`).
 
-[Unreleased]: https://github.com/cxdy/grain/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/cxdy/grain/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cxdy/grain/releases/tag/v0.2.0
+[0.1.4]: https://github.com/cxdy/grain/releases/tag/v0.1.4
+[0.1.3]: https://github.com/cxdy/grain/releases/tag/v0.1.3
+[0.1.2]: https://github.com/cxdy/grain/releases/tag/v0.1.2
+[0.1.1]: https://github.com/cxdy/grain/releases/tag/v0.1.1
 [0.1.0]: https://github.com/cxdy/grain/releases/tag/v0.1.0

@@ -33,7 +33,7 @@
     </div>
   </div>
   <div class="wrap footer-bottom muted">
-    <span>© {{ 'now' | date: '%Y' }} <a href="https://codykaczynski.com">Cody Kaczynski</a> · grainvm.com</span>
+    <span>© {{ 'now' | date: '%Y' }} <a href="https://codykaczynski.com">Cody Kaczynski</a> · grainvm.com{% if site.version %} · v{{ site.version }}{% endif %}</span>
     <span>Install via script or binary today.</span>
   </div>
 </footer>

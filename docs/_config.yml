@@ -2,6 +2,8 @@ title: grain
 description: Linux microVM sandboxes on your own hardware — shells, GitHub Actions, and k3s labs.
 url: https://grainvm.com
 baseurl: ""
+# Site / product version shown in the footer and docs chrome.
+version: "0.2.0"
 
 
 markdown: kramdown

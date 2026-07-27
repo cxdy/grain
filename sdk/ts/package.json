@@ -1,6 +1,6 @@
 {
   "name": "@cxdy/grain",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "TypeScript client for the grain microVM daemon HTTP API",
   "type": "module",
   "main": "./dist/index.js",

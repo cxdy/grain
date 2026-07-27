@@ -180,7 +180,7 @@ just build && just agent-linux
 # ARTIFACT_DIR=./out CI_READY_TIMEOUT=15m ./scripts/bake-golden.sh --ci
 ```
 
-Every successful bake **always** updates the `golden-latest` release (create tag if missing, replace assets). Optional **workflow_dispatch** input `release_tag` (e.g. `v0.1.0`) *also* attaches the qcow2 + checksum to that existing code release. Code releases (`release.yml` on `v*`) stay binary-only — no golden coupling.
+Every successful bake **always** updates the `golden-latest` release (create tag if missing, replace assets). Optional **workflow_dispatch** input `release_tag` (e.g. `v0.2.0`) *also* attaches the qcow2 + checksum to that existing code release. Code releases (`release.yml` on `v*`) stay binary-only — no golden coupling.
 
 ### Bake manually
 

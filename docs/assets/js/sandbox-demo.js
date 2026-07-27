@@ -64,7 +64,7 @@
                 { text: "✓ installed /usr/local/bin/grain", cls: "ok", delay: 350 },
                 { text: "✓ guest agent → ~/.grain/agent/", cls: "ok", delay: 200 },
                 { text: "", delay: 80 },
-                { text: "grain 0.1.1", cls: "out", delay: 150 },
+                { text: "grain 0.2.0", cls: "out", delay: 150 },
               ]);
             },
           },
