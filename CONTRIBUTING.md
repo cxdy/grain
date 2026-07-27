@@ -21,12 +21,15 @@ Also read [SECURITY.md](SECURITY.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md
 just init          # mise install (if available) + pre-commit hooks
 just test          # unit tests (mock hypervisor — no QEMU required)
 just smoke-api     # CLI + daemon e2e without QEMU
+just coverage      # coverprofile + cobertura XML; fails under 75% (cmd/tray excluded)
 just build
 just lint          # golangci-lint
 ./bin/grain doctor # dependency check (QEMU, image, optional agent binary)
 ```
 
 Unit tests use a **mock hypervisor**. Live QEMU is optional for day-to-day development; run it when you change boot, networking, or guest paths.
+
+**Coverage:** CI runs `just coverage` and posts a cobertura PR comment (minimum **75%** statement coverage; `cmd/*` mains and `internal/tray` CGO UI are excluded from the gated profile).
 
 Commits should follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, …). With hooks installed, `commit-msg` is checked via commitizen.
 

@@ -46,19 +46,19 @@ type SocketForward struct {
 
 // Instance is a managed microVM as returned by the daemon API.
 type Instance struct {
-	Name           string            `json:"name"`
-	Status         Status            `json:"status"`
-	Persistent     bool              `json:"persistent"`
-	CPUs           int               `json:"cpus"`
-	MemoryMB       int               `json:"memory_mb"`
-	DiskGB         int               `json:"disk_gb"`
-	Image          string            `json:"image"`
-	IP             string            `json:"ip,omitempty"`
-	SSHPort        int               `json:"ssh_port,omitempty"`
-	AgentPort      int               `json:"agent_port,omitempty"`
+	Name       string `json:"name"`
+	Status     Status `json:"status"`
+	Persistent bool   `json:"persistent"`
+	CPUs       int    `json:"cpus"`
+	MemoryMB   int    `json:"memory_mb"`
+	DiskGB     int    `json:"disk_gb"`
+	Image      string `json:"image"`
+	IP         string `json:"ip,omitempty"`
+	SSHPort    int    `json:"ssh_port,omitempty"`
+	AgentPort  int    `json:"agent_port,omitempty"`
 	// AgentCID is the guest virtio-vsock context ID (0 = TCP hostfwd only).
-	AgentCID       int               `json:"agent_cid,omitempty"`
-	Forwards       []PortForward     `json:"forwards,omitempty"`
+	AgentCID int           `json:"agent_cid,omitempty"`
+	Forwards []PortForward `json:"forwards,omitempty"`
 	// LiveForwards are SSH -L tunnels added while running (cleared on stop).
 	LiveForwards   []LiveForward     `json:"live_forwards,omitempty"`
 	Mounts         []Mount           `json:"mounts,omitempty"`

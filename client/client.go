@@ -109,7 +109,7 @@ func (c *Client) Health(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		return errors.New("unhealthy")
 	}
@@ -126,7 +126,7 @@ func (c *Client) Info(ctx context.Context) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -147,7 +147,7 @@ func (c *Client) List(ctx context.Context) ([]*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -199,7 +199,7 @@ func (c *Client) Create(ctx context.Context, req CreateRequest) (*Instance, erro
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -232,7 +232,7 @@ func (c *Client) CreateStream(ctx context.Context, req CreateRequest, onEvent fu
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -293,7 +293,7 @@ func (c *Client) Get(ctx context.Context, name string) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -314,7 +314,7 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -331,7 +331,7 @@ func (c *Client) Start(ctx context.Context, name string) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -357,7 +357,7 @@ func (c *Client) Shutdown(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -374,7 +374,7 @@ func (c *Client) Pause(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -391,7 +391,7 @@ func (c *Client) Resume(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -409,7 +409,7 @@ func (c *Client) Suspend(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -426,7 +426,7 @@ func (c *Client) Restore(ctx context.Context, name string) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -457,7 +457,7 @@ func (c *Client) AddForward(ctx context.Context, name string, hostPort, guestPor
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -479,7 +479,7 @@ func (c *Client) RemoveForward(ctx context.Context, name string, hostPort int) e
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -512,7 +512,7 @@ func (c *Client) Exec(ctx context.Context, name, cmd string, args ...string) (*E
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 32<<20))
 	if err != nil {
 		return nil, err
@@ -571,7 +571,7 @@ func (c *Client) ExecStream(ctx context.Context, name string, opts ExecOpts, onF
 	if err != nil {
 		return -1, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return -1, decodeAPIError(res)
 	}
@@ -626,7 +626,7 @@ func (c *Client) AgentHealth(ctx context.Context, name string) (*Health, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -647,7 +647,7 @@ func (c *Client) Stats(ctx context.Context, name string) (*Stats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -668,7 +668,7 @@ func (c *Client) ListSecrets(ctx context.Context) ([]SecretMeta, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -694,7 +694,7 @@ func (c *Client) SetSecret(ctx context.Context, req SecretPut) (*SecretMeta, err
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -715,7 +715,7 @@ func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -744,7 +744,7 @@ func (c *Client) InjectSecret(ctx context.Context, vmName, secretName, guestPath
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -790,7 +790,7 @@ func (c *Client) PutFile(ctx context.Context, name, guestPath string, r io.Reade
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -819,7 +819,7 @@ func (c *Client) GetFile(ctx context.Context, name, guestPath string, w io.Write
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -850,7 +850,7 @@ func (c *Client) PutTar(ctx context.Context, name, guestPath string, r io.Reader
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -879,7 +879,7 @@ func (c *Client) GetTar(ctx context.Context, name, guestPath string, w io.Writer
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -908,7 +908,7 @@ func (c *Client) ReadDir(ctx context.Context, name, guestPath string) ([]FSInfo,
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -940,7 +940,7 @@ func (c *Client) Stat(ctx context.Context, name, guestPath string) (*FSInfo, err
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -973,7 +973,7 @@ func (c *Client) Mkdir(ctx context.Context, name, guestPath string, recursive bo
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}
@@ -1004,7 +1004,7 @@ func (c *Client) Remove(ctx context.Context, name, guestPath string, recursive b
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return decodeAPIError(res)
 	}

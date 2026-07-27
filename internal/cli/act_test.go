@@ -10,13 +10,13 @@ import (
 func TestSanitizeActName(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"hello":      "hello",
-		"My Repo!":   "my-repo",
-		"act-lab":    "act-lab",
-		"123foo":     "act-123foo",
-		"":           "act",
-		"---":        "act",
-		"Foo_Bar":    "foo-bar",
+		"hello":    "hello",
+		"My Repo!": "my-repo",
+		"act-lab":  "act-lab",
+		"123foo":   "act-123foo",
+		"":         "act",
+		"---":      "act",
+		"Foo_Bar":  "foo-bar",
 	}
 	for in, want := range cases {
 		got := sanitizeActName(in)

@@ -409,7 +409,7 @@ func buildProxyUserdata(cfg config.Config) (string, error) {
 			return "", err
 		}
 		token = c.Token
-		fmt.Fprintf(os.Stderr, "proxy: created client default  token=%s\n", token)
+		_, _ = fmt.Fprintf(os.Stderr, "proxy: created client default  token=%s\n", token)
 	}
 	listen := proxy.ListenFromConfig(cfg.ProxyListen)
 	return proxy.GuestProxyCloudConfig(token, listen), nil
@@ -550,7 +550,6 @@ func cmdStart(cfgPath *string) *cobra.Command {
 		},
 	}
 }
-
 
 func cmdPause(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
@@ -751,7 +750,7 @@ func resolveVMName(c *api.Client, args []string, createIfEmpty bool) (string, er
 		if err != nil {
 			return "", fmt.Errorf("auto-create failed: %w\n  try: grain image pull && grain new", err)
 		}
-		fmt.Fprintf(os.Stderr, "created %s  ssh=:%d  (%s)\n", inst.Name, inst.SSHPort, time.Since(start).Round(time.Second))
+		_, _ = fmt.Fprintf(os.Stderr, "created %s  ssh=:%d  (%s)\n", inst.Name, inst.SSHPort, time.Since(start).Round(time.Second))
 		return inst.Name, nil
 	}
 	if len(list) == 1 {
@@ -814,7 +813,7 @@ func cmdSh(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "connecting via ssh to %s …\n", name)
+			_, _ = fmt.Fprintf(os.Stderr, "connecting via ssh to %s …\n", name)
 			ssh := exec.Command("ssh", sshBaseArgs(cfg, host, port)...)
 			ssh.Stdin = os.Stdin
 			ssh.Stdout = os.Stdout
@@ -836,7 +835,7 @@ func shellViaAgent(c *api.Client, name string, force bool, viaDaemon bool) error
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "connecting via agent to %s …\n", name)
+	_, _ = fmt.Fprintf(os.Stderr, "connecting via agent to %s …\n", name)
 	// No overall timeout — interactive session lasts until the user exits.
 	return ac.Shell(context.Background(), agent.ShellOpts{})
 }

@@ -147,7 +147,7 @@ func wantsCreateStream(r *http.Request) bool {
 func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	var body createBody
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 	}
 
@@ -333,7 +333,6 @@ func (s *Server) startVM(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, inst)
 }
 
-
 func (s *Server) pauseVM(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := s.mgr.Pause(r.Context(), name); err != nil {
@@ -385,7 +384,7 @@ func (s *Server) addForward(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var body forwardBody
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
 			return
@@ -528,7 +527,7 @@ func (s *Server) execVMStream(w http.ResponseWriter, r *http.Request, ac *agent.
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
@@ -631,7 +630,7 @@ func (s *Server) putCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 	}
 
 	q := r.URL.Query()
@@ -729,7 +728,7 @@ func (s *Server) getCP(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode == http.StatusNotFound {
 		writeErr(w, http.StatusNotFound, errors.New("not found"))
@@ -810,7 +809,7 @@ func (s *Server) fsMkdir(w http.ResponseWriter, r *http.Request) {
 	}
 	var body agent.MkdirRequest
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
 			return
@@ -923,7 +922,7 @@ func (s *Server) createSecret(w http.ResponseWriter, r *http.Request) {
 	}
 	var body secrets.PutRequest
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		if err := json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
 			return
@@ -962,7 +961,7 @@ func (s *Server) patchSecret(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var body secrets.PutRequest
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		if err := json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
 			return
@@ -1017,7 +1016,7 @@ func (s *Server) injectSecret(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 	}
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
 	}
 	ac, code, err := s.agentClient(vmName)
@@ -1146,7 +1145,7 @@ func (c *Client) Health(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != 200 {
 		return errors.New("unhealthy")
 	}
@@ -1162,7 +1161,7 @@ func (c *Client) List(ctx context.Context) ([]*vm.Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		return nil, decodeAPIError(res)
 	}
@@ -1182,7 +1181,7 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		var e struct {
 			Error string `json:"error"`

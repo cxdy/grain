@@ -99,6 +99,42 @@ func TestAllocateForwardPorts(t *testing.T) {
 	}
 }
 
+func TestValidateForwardsInvalidGuestAndProto(t *testing.T) {
+	t.Parallel()
+	if err := ValidateForwards([]vm.PortForward{{GuestPort: 0, HostPort: 8080}}); err == nil {
+		t.Fatal("guest 0")
+	}
+	if err := ValidateForwards([]vm.PortForward{{GuestPort: 70000, HostPort: 8080}}); err == nil {
+		t.Fatal("guest too high")
+	}
+	if err := ValidateForwards([]vm.PortForward{{GuestPort: 80, HostPort: -1}}); err == nil {
+		t.Fatal("host -1")
+	}
+	if err := ValidateForwards([]vm.PortForward{{GuestPort: 80, HostPort: 70000}}); err == nil {
+		t.Fatal("host too high")
+	}
+	if err := ValidateForwards([]vm.PortForward{{GuestPort: 80, HostPort: 8080, Proto: "sctp"}}); err == nil {
+		t.Fatal("bad proto")
+	}
+	if err := ValidateForwards([]vm.PortForward{{GuestPort: 80, HostPort: 8080, Proto: "udp"}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBuildUserNetdevUDP(t *testing.T) {
+	t.Parallel()
+	s := buildUserNetdev(2222, 0, []vm.PortForward{
+		{HostPort: 5353, GuestPort: 53, Proto: "udp"},
+	})
+	if !strings.Contains(s, "hostfwd=udp:127.0.0.1:5353-:53") {
+		t.Fatalf("%s", s)
+	}
+	// agentPort 0 omits agent hostfwd
+	if strings.Contains(s, "7475") {
+		t.Fatalf("unexpected agent fwd: %s", s)
+	}
+}
+
 func TestAllocateForwardPortsPrivileged(t *testing.T) {
 	t.Parallel()
 	err := AllocateForwardPorts([]vm.PortForward{{HostPort: 443, GuestPort: 443}})

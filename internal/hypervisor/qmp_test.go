@@ -32,7 +32,7 @@ func mockQMPServer(t *testing.T, sock string, onCmd func(cmd string) map[string]
 			wg.Add(1)
 			go func(c net.Conn) {
 				defer wg.Done()
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				enc := json.NewEncoder(c)
 				dec := json.NewDecoder(c)
 				_ = enc.Encode(map[string]any{"QMP": map[string]any{"version": map[string]any{}, "capabilities": []any{}}})
@@ -92,7 +92,7 @@ func TestQMPNegotiateAndCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	if err := c.Powerdown(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -137,5 +137,57 @@ func TestQMPCommandError(t *testing.T) {
 	err := qmpCommand(ctx, sock, "stop")
 	if err == nil || !strings.Contains(err.Error(), "already stopped") {
 		t.Fatalf("%v", err)
+	}
+}
+
+func TestDialQMPEmptyAndCloseNil(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	if _, err := DialQMP(ctx, ""); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("empty path: %v", err)
+	}
+	var c *QMPClient
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&QMPClient{}).Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Dial missing socket
+	if _, err := DialQMP(ctx, filepath.Join(t.TempDir(), "nope.sock")); err == nil {
+		t.Fatal("expected dial error")
+	}
+}
+
+func TestQMPErrorWithoutDesc(t *testing.T) {
+	t.Parallel()
+	sock := filepath.Join(t.TempDir(), "qmp.sock")
+	cleanup := mockQMPServer(t, sock, func(cmd string) map[string]any {
+		if cmd == "quit" {
+			return map[string]any{"error": "raw-error-string"}
+		}
+		return map[string]any{"return": map[string]any{}}
+	})
+	defer cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := qmpCommand(ctx, sock, "quit")
+	if err == nil || !strings.Contains(err.Error(), "raw-error-string") {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestQMPHumanMonitor(t *testing.T) {
+	t.Parallel()
+	sock := filepath.Join(t.TempDir(), "qmp.sock")
+	cleanup := mockQMPServer(t, sock, nil)
+	defer cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := qmpHumanMonitor(ctx, sock, "info status"); err != nil {
+		t.Fatal(err)
+	}
+	if err := qmpHumanMonitor(ctx, filepath.Join(t.TempDir(), "missing.sock"), "x"); err == nil {
+		t.Fatal("expected dial error")
 	}
 }

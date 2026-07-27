@@ -61,6 +61,26 @@ cover:
     go test ./... -coverprofile=coverage.out -count=1
     go tool cover -func=coverage.out | tail -5
 
+# Profile without -race for cobertura (race + cover is slower / noisier in CI).
+# Writes coverage.out, coverage.html, and coverage.xml for PR comments.
+# Excludes cmd/* (main packages) and tray (CGO UI) from the profile + 75% gate.
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    env -u GOROOT GOTOOLCHAIN=auto go test -count=1 ./... \
+        -coverprofile coverage.raw.out -covermode count
+    # Drop mains and CGO tray from the gated profile (keep single mode header).
+    head -n1 coverage.raw.out > coverage.out
+    tail -n +2 coverage.raw.out | grep -vE '/cmd/grain|/cmd/grain-agent|/internal/tray/' >> coverage.out || true
+    rm -f coverage.raw.out
+    env -u GOROOT GOTOOLCHAIN=auto go tool cover -html=coverage.out -o coverage.html
+    env -u GOROOT GOTOOLCHAIN=auto go run github.com/boumenot/gocover-cobertura@v1.4.0 \
+        --by-files -ignore-gen-files < coverage.out > coverage.xml
+    total=$(env -u GOROOT GOTOOLCHAIN=auto go tool cover -func=coverage.out | awk '/^total:/{print $3}')
+    echo "total coverage: ${total} (cmd + tray excluded)"
+    pct=$(echo "$total" | tr -d '%')
+    awk -v p="$pct" 'BEGIN{ if ((p+0) < 75.0) { printf "coverage %.1f%% is below 75%% minimum\n", p+0; exit 1 } }'
+
 # gofmt all packages.
 fmt:
     go fmt ./...

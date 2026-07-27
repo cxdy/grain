@@ -21,6 +21,7 @@ type Rule struct {
 //   - "example.com" exact (case-insensitive)
 //   - "*.example.com" suffix match for subdomains (not the bare domain itself)
 //   - ".example.com" or "example.com" with leading "*." variants
+//
 // Also accepts "example.com:443" style by stripping port first in MatchRequest.
 func MatchHost(pattern, host string) bool {
 	pattern = strings.ToLower(strings.TrimSpace(pattern))

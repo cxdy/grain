@@ -9,13 +9,13 @@ import (
 func TestNormalizeAPIURL(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"":                          "",
-		"  ":                        "",
-		"http://127.0.0.1:7474":     "http://127.0.0.1:7474",
-		"http://127.0.0.1:7474/":    "http://127.0.0.1:7474",
-		"https://grain.example/":    "https://grain.example",
-		"127.0.0.1:7474":            "http://127.0.0.1:7474",
-		"sandbox.internal:7474":     "http://sandbox.internal:7474",
+		"":                       "",
+		"  ":                     "",
+		"http://127.0.0.1:7474":  "http://127.0.0.1:7474",
+		"http://127.0.0.1:7474/": "http://127.0.0.1:7474",
+		"https://grain.example/": "https://grain.example",
+		"127.0.0.1:7474":         "http://127.0.0.1:7474",
+		"sandbox.internal:7474":  "http://sandbox.internal:7474",
 	}
 	for in, want := range cases {
 		if got := config.NormalizeAPIURL(in); got != want {

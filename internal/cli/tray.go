@@ -33,7 +33,7 @@ and stop the tray. The grain daemon is separate — run grain up first.
 			}
 			if err := requireLocalDaemon(cfg, "grain tray"); err != nil {
 				// Soft: tray can still start and show "daemon down"
-				fmt.Fprintf(os.Stderr, "note: %v\n", err)
+				_, _ = fmt.Fprintf(os.Stderr, "note: %v\n", err)
 			}
 			return tray.Run(tray.Options{
 				Version: version,

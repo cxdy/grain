@@ -24,8 +24,8 @@ import (
 
 // Server is the guest-side grain-agent HTTP server.
 type Server struct {
-	Addr string // listen address, default DefaultListen
-	Log  *slog.Logger
+	Addr    string // listen address, default DefaultListen
+	Log     *slog.Logger
 	started time.Time
 
 	mu       sync.Mutex
@@ -74,7 +74,7 @@ func (s *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
-	httpSrv := &http.Server{Handler: s.Handler()}
+	httpSrv := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	s.mu.Lock()
 	s.listener = ln
 	s.httpSrv = httpSrv
@@ -521,7 +521,7 @@ func (s *Server) handleCPGet(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		w.Header().Set("Content-Type", "application/octet-stream")
 		if st.Size() >= 0 {
 			w.Header().Set("Content-Length", strconv.FormatInt(st.Size(), 10))
@@ -588,12 +588,12 @@ func copyFileReplace(src, dst string, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, perm)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	if _, err := io.Copy(out, in); err != nil {
 		return err
 	}
@@ -626,7 +626,7 @@ func putTar(dest string, r io.Reader, uid, gid *uint32) error {
 				_ = os.Chmod(target, DefaultDirMode)
 			}
 			_ = applyOwnership(target, uid, gid)
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(target), DefaultDirMode); err != nil {
 				return err
 			}
@@ -692,7 +692,7 @@ func safeTarPath(dest, name string) (string, error) {
 
 func writeTar(w io.Writer, src string) error {
 	tw := tar.NewWriter(w)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	info, err := os.Lstat(src)
 	if err != nil {
@@ -751,7 +751,7 @@ func addToTar(tw *tar.Writer, path, name string, fi os.FileInfo) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		if _, err := io.Copy(tw, f); err != nil {
 			return err
 		}
@@ -897,15 +897,13 @@ func (s *Server) handleFSRemove(w http.ResponseWriter, r *http.Request) {
 }
 
 func fsInfoFrom(name string, info os.FileInfo) FSInfo {
-	typ := "file"
 	mode := info.Mode()
+	var typ string
 	switch {
 	case mode&os.ModeSymlink != 0:
 		typ = "symlink"
 	case mode.IsDir():
 		typ = "directory"
-	case mode.IsRegular():
-		typ = "file"
 	default:
 		typ = "file"
 	}

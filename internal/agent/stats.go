@@ -40,15 +40,9 @@ func SetProcPathsForTest(uptime, meminfo, loadavg string) func() {
 // non-Linux GOOS so unit tests can inject temp /proc trees on darwin.
 func CollectStats() Stats {
 	st := Stats{}
-	if err := readUptime(&st); err != nil {
-		// fall through with zeros
-	}
-	if err := readMeminfo(&st); err != nil {
-		// fall through
-	}
-	if err := readLoadavg(&st); err != nil {
-		// fall through
-	}
+	_ = readUptime(&st)
+	_ = readMeminfo(&st)
+	_ = readLoadavg(&st)
 	// Best-effort root filesystem size via Statfs (works on linux + darwin).
 	var fs syscall.Statfs_t
 	if err := syscall.Statfs("/", &fs); err == nil {
@@ -86,7 +80,7 @@ func readMeminfo(st *Stats) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := sc.Text()

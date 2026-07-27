@@ -82,7 +82,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		if err != nil {
 			return fmt.Errorf("api listen %s: %w", cfg.API, err)
 		}
-		httpSrv = &http.Server{Handler: handler}
+		httpSrv = &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 		go func() {
 			log.Info("api listen", "addr", cfg.API, "auth", cfg.ResolvedAPIToken() != "")
 			if err := httpSrv.Serve(apiLn); err != nil && err != http.ErrServerClosed {
@@ -99,7 +99,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		return fmt.Errorf("socket %s: %w", cfg.Socket, err)
 	}
 	_ = os.Chmod(cfg.Socket, 0o600)
-	unixSrv := &http.Server{Handler: handler}
+	unixSrv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Info("socket listen", "path", cfg.Socket)
 		if err := unixSrv.Serve(ul); err != nil && err != http.ErrServerClosed {

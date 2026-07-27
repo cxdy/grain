@@ -57,7 +57,7 @@ func TestHTTPProxyAllowDenyAndSecret(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Auth", r.Header.Get("Authorization"))
 		w.Header().Set("X-Path", r.URL.Path)
-		fmt.Fprint(w, "ok")
+		_, _ = fmt.Fprint(w, "ok")
 	}))
 	defer upstream.Close()
 	u, _ := url.Parse(upstream.URL)
@@ -108,7 +108,7 @@ func TestHTTPProxyAllowDenyAndSecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("deny status %d", res.StatusCode)
 	}
@@ -121,7 +121,7 @@ func TestHTTPProxyAllowDenyAndSecret(t *testing.T) {
 	}
 	auth := res.Header.Get("X-Auth")
 	body, _ := io.ReadAll(res.Body)
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 200 {
 		t.Fatalf("allow status %d body %s", res.StatusCode, body)
 	}
@@ -135,7 +135,7 @@ func TestHTTPProxyAllowDenyAndSecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 200 {
 		t.Fatalf("public status %d", res.StatusCode)
 	}
@@ -143,7 +143,7 @@ func TestHTTPProxyAllowDenyAndSecret(t *testing.T) {
 
 func TestProxyClientAuth(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "ok")
+		_, _ = fmt.Fprint(w, "ok")
 	}))
 	defer upstream.Close()
 	u, _ := url.Parse(upstream.URL)
@@ -168,7 +168,7 @@ func TestProxyClientAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != http.StatusProxyAuthRequired {
 		t.Fatalf("want 407 got %d", res.StatusCode)
 	}
@@ -179,7 +179,7 @@ func TestProxyClientAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(res.Body)
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 200 || string(body) != "ok" {
 		t.Fatalf("status %d body %s", res.StatusCode, body)
 	}
@@ -191,7 +191,7 @@ func TestCONNECTAllowDeny(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -202,7 +202,7 @@ func TestCONNECTAllowDeny(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				_, _ = io.Copy(io.Discard, c)
 			}(c)
 		}
@@ -222,21 +222,21 @@ func TestCONNECTAllowDeny(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pln.Close()
-	go http.Serve(pln, srv.Handler())
+	defer func() { _ = pln.Close() }()
+	go func() { _ = http.Serve(pln, srv.Handler()) }()
 
 	// Deny CONNECT to other host
 	conn, err := net.Dial("tcp", pln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(conn, "CONNECT evil.example.com:443 HTTP/1.1\r\nHost: evil.example.com:443\r\n\r\n")
+	_, _ = fmt.Fprintf(conn, "CONNECT evil.example.com:443 HTTP/1.1\r\nHost: evil.example.com:443\r\n\r\n")
 	br := bufio.NewReader(conn)
 	status, err := br.ReadString('\n')
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn.Close()
+	_ = conn.Close()
 	if !strings.Contains(status, "403") {
 		t.Fatalf("deny status line %q", status)
 	}
@@ -246,7 +246,7 @@ func TestCONNECTAllowDeny(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(conn, "CONNECT %s:%s HTTP/1.1\r\nHost: %s:%s\r\n\r\n", host, port, host, port)
+	_, _ = fmt.Fprintf(conn, "CONNECT %s:%s HTTP/1.1\r\nHost: %s:%s\r\n\r\n", host, port, host, port)
 	br = bufio.NewReader(conn)
 	status, err = br.ReadString('\n')
 	if err != nil {
@@ -264,7 +264,7 @@ func TestCONNECTAllowDeny(t *testing.T) {
 			break
 		}
 	}
-	conn.Close()
+	_ = conn.Close()
 	_ = ln.Close()
 	wg.Wait()
 }

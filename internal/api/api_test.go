@@ -1,11 +1,13 @@
 package api_test
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -217,7 +219,6 @@ func TestShutdownAndStartPersistent(t *testing.T) {
 		t.Fatalf("want running, got %v", started["status"])
 	}
 }
-
 
 func TestCreateStreamNDJSON(t *testing.T) {
 	t.Parallel()
@@ -856,7 +857,7 @@ func TestCreateClientWaitQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	go http.Serve(ln, s.Handler()) //nolint:errcheck
 
 	c := &api.Client{Base: "http://" + ln.Addr().String()}
@@ -879,7 +880,6 @@ func TestCreateClientWaitQuery(t *testing.T) {
 		t.Fatalf("phases %v", phases)
 	}
 }
-
 
 func TestPauseResumeAPI(t *testing.T) {
 	t.Parallel()
@@ -1054,4 +1054,521 @@ func TestVMStatsAPI(t *testing.T) {
 	}
 	// On darwin without /proc, fields may be zero; just ensure JSON shape.
 	_ = stBody
+}
+
+func TestInfoAndMetrics(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/info", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("info %d", rr.Code)
+	}
+	var info map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info["name"] != "grain" || info["version"] == "" {
+		t.Fatalf("info %+v", info)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("metrics %d", rr.Code)
+	}
+}
+
+func TestNewNilDeps(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "mock"
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := manager.New(cfg, st, hypervisor.NewMockRuntime(), hypervisor.NewMockDisk(), nil)
+	s := api.New(mgr, nil, nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rr.Code != 200 {
+		t.Fatalf("health %d", rr.Code)
+	}
+}
+
+func TestCreateWaitFalseRejected(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms?wait=false", strings.NewReader(`{"name":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateWaitTrueLegacyAndTimeout(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms?wait=true&timeout=30s", strings.NewReader(`{"name":"legacy","persistent":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestGetVMNotFound(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/missing", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status %d", rr.Code)
+	}
+}
+
+func TestSecretsNotConfigured(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "mock"
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := manager.New(cfg, st, hypervisor.NewMockRuntime(), hypervisor.NewMockDisk(), nil)
+	s := api.New(mgr, observability.NewMetrics(), nil)
+	// Secrets left nil
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/secrets", nil))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestSecretsGetPatch(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+
+	body := `{"name":"gp","data_base64":"c2Vj","mode":"0600"}`
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/secrets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/secrets/gp", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/secrets/gp?data=1", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get data %d", rr.Code)
+	}
+	var sec map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &sec); err != nil {
+		t.Fatal(err)
+	}
+	if sec["data_base64"] == nil || sec["data_base64"] == "" {
+		t.Fatalf("want data_base64: %+v", sec)
+	}
+
+	rr = httptest.NewRecorder()
+	patch := `{"mode":"0640"}`
+	req = httptest.NewRequest(http.MethodPatch, "/secrets/gp", strings.NewReader(patch))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/secrets/missing", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("missing %d", rr.Code)
+	}
+}
+
+func TestInjectSecretAPI(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	agentPort := startLocalAgent(t)
+
+	// Create host secret
+	body := `{"name":"inj","data_base64":"aGVsbG8=","mode":"0600"}`
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/secrets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create secret %d %s", rr.Code, rr.Body.String())
+	}
+
+	createMockVM(t, h, "injvm")
+	setAgentPort(t, st, "injvm", agentPort)
+
+	guestPath := filepath.Join(t.TempDir(), "secret.txt")
+	injBody, _ := json.Marshal(map[string]string{"path": guestPath})
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/injvm/secrets/inj", bytes.NewReader(injBody))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("inject %d %s", rr.Code, rr.Body.String())
+	}
+	var out agent.MaterializeSecretResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Path != guestPath {
+		t.Fatalf("path %q", out.Path)
+	}
+	got, err := os.ReadFile(guestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("file %q", got)
+	}
+
+	// Missing secret
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/injvm/secrets/nope", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("want 404 got %d", rr.Code)
+	}
+
+	// No agent
+	setAgentPort(t, st, "injvm", 0)
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/injvm/secrets/inj", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 got %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPIClientHealthStatsSecrets(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	agentPort := startLocalAgent(t)
+
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(ts.Close)
+
+	createMockVM(t, s.Handler(), "cli3")
+	setAgentPort(t, st, "cli3", agentPort)
+
+	c := &api.Client{Base: ts.URL, HTTP: ts.Client()}
+	ctx := context.Background()
+
+	if err := c.Health(ctx); err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+	list, err := c.List(ctx)
+	if err != nil || len(list) == 0 {
+		t.Fatalf("List: %v %v", err, list)
+	}
+
+	stStats, err := c.Stats(ctx, "cli3")
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	_ = stStats
+
+	meta, err := c.SetSecret(ctx, secrets.PutRequest{Name: "csec", DataBase64: "eHg=", Mode: "0600"})
+	if err != nil {
+		t.Fatalf("SetSecret: %v", err)
+	}
+	if meta.Name != "csec" {
+		t.Fatalf("meta %+v", meta)
+	}
+	secs, err := c.ListSecrets(ctx)
+	if err != nil || len(secs) == 0 {
+		t.Fatalf("ListSecrets: %v %v", err, secs)
+	}
+
+	guestPath := filepath.Join(t.TempDir(), "s")
+	inj, err := c.InjectSecret(ctx, "cli3", "csec", guestPath)
+	if err != nil {
+		t.Fatalf("InjectSecret: %v", err)
+	}
+	if inj.Path != guestPath {
+		t.Fatalf("path %q", inj.Path)
+	}
+	if err := c.DeleteSecret(ctx, "csec"); err != nil {
+		t.Fatalf("DeleteSecret: %v", err)
+	}
+
+	// Lifecycle via client
+	if err := c.Pause(ctx, "cli3"); err != nil {
+		t.Fatalf("Pause: %v", err)
+	}
+	if err := c.Resume(ctx, "cli3"); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if err := c.Shutdown(ctx, "cli3"); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+}
+
+func TestAPIClientLifecyclePersistent(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(ts.Close)
+
+	c := &api.Client{Base: ts.URL, HTTP: ts.Client()}
+	ctx := context.Background()
+
+	inst, err := c.Create(ctx, api.CreateRequest{Name: "pers", Persistent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Suspend(ctx, inst.Name); err != nil {
+		t.Fatalf("Suspend: %v", err)
+	}
+	restored, err := c.Restore(ctx, inst.Name)
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if restored.Status != vm.StatusRunning {
+		t.Fatalf("status %s", restored.Status)
+	}
+	lf, err := c.AddForward(ctx, inst.Name, 0, 8080)
+	if err != nil {
+		t.Fatalf("AddForward: %v", err)
+	}
+	if err := c.RemoveForward(ctx, inst.Name, lf.HostPort); err != nil {
+		t.Fatalf("RemoveForward: %v", err)
+	}
+	if err := c.Shutdown(ctx, inst.Name); err != nil {
+		t.Fatal(err)
+	}
+	started, err := c.Start(ctx, inst.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.Status != vm.StatusRunning {
+		t.Fatalf("status %s", started.Status)
+	}
+	if err := c.Delete(ctx, inst.Name); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAPIClientPutGetTar(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	agentPort := startLocalAgent(t)
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(ts.Close)
+
+	createMockVM(t, s.Handler(), "tar1")
+	setAgentPort(t, st, "tar1", agentPort)
+
+	c := &api.Client{Base: ts.URL, HTTP: ts.Client()}
+	ctx := context.Background()
+
+	if err := c.PutTar(ctx, "tar1", "", strings.NewReader("x")); err == nil {
+		t.Fatal("expected empty path")
+	}
+	if err := c.GetTar(ctx, "tar1", "", io.Discard); err == nil {
+		t.Fatal("expected empty path")
+	}
+
+	// Minimal tar archive with one file.
+	dir := t.TempDir()
+	var tarBuf bytes.Buffer
+	tw := tar.NewWriter(&tarBuf)
+	hdr := &tar.Header{Name: "hello.txt", Mode: 0o644, Size: 5}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	extractTo := filepath.Join(dir, "extract")
+	if err := os.MkdirAll(extractTo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.PutTar(ctx, "tar1", extractTo, bytes.NewReader(tarBuf.Bytes())); err != nil {
+		t.Fatalf("PutTar: %v", err)
+	}
+	// GetTar of the extracted file or dir
+	var out bytes.Buffer
+	if err := c.GetTar(ctx, "tar1", extractTo, &out); err != nil {
+		t.Fatalf("GetTar: %v", err)
+	}
+	if out.Len() == 0 {
+		t.Fatal("expected tar bytes")
+	}
+}
+
+func TestAddForwardBadJSONAndMissingGuest(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	createMockVM(t, h, "fwd")
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms/fwd/forwards", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad json %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/fwd/forwards", strings.NewReader(`{"host_port":1}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("missing guest %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/vms/fwd/forwards/notanint", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad hostPort %d", rr.Code)
+	}
+}
+
+func TestExecWithUIDGIDCwd(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	agentPort := startLocalAgent(t)
+	createMockVM(t, h, "execopts")
+	setAgentPort(t, st, "execopts", agentPort)
+
+	rr := httptest.NewRecorder()
+	u := "/vms/execopts/exec?cmd=echo&args=hi&uid=0&gid=0&cwd=/tmp"
+	req := httptest.NewRequest(http.MethodPost, u, nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("exec %d %s", rr.Code, rr.Body.String())
+	}
+
+	// invalid uid
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/execopts/exec?cmd=echo&uid=nope", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad uid %d", rr.Code)
+	}
+}
+
+func TestCPModeTarAndInvalid(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	agentPort := startLocalAgent(t)
+	createMockVM(t, h, "cpmode")
+	setAgentPort(t, st, "cpmode", agentPort)
+
+	// invalid mode
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/vms/cpmode/cp?path=/tmp/x&mode=zip", strings.NewReader("x"))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad mode put %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/vms/cpmode/cp?path=/tmp/x&mode=zip", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad mode get %d", rr.Code)
+	}
+
+	// tar put via API
+	dir := t.TempDir()
+	extractTo := filepath.Join(dir, "ex")
+	if err := os.MkdirAll(extractTo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var tarBuf bytes.Buffer
+	tw := tar.NewWriter(&tarBuf)
+	_ = tw.WriteHeader(&tar.Header{Name: "a.txt", Mode: 0o644, Size: 1})
+	_, _ = tw.Write([]byte("a"))
+	_ = tw.Close()
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/vms/cpmode/cp?path="+url.QueryEscape(extractTo)+"&mode=tar", bytes.NewReader(tarBuf.Bytes()))
+	req.Header.Set("Content-Type", "application/x-tar")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("put tar %d %s", rr.Code, rr.Body.String())
+	}
+
+	// invalid uid on put
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/vms/cpmode/cp?path="+url.QueryEscape(filepath.Join(dir, "b"))+"&mode=binary&uid=x", strings.NewReader("z"))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad uid %d", rr.Code)
+	}
+}
+
+func TestShellAgentUnavailable(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	createMockVM(t, h, "sh1")
+	setAgentPort(t, st, "sh1", 0)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/sh1/shell", nil))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 got %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateSecretInvalidJSON(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/secrets", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	s.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status %d", rr.Code)
+	}
+}
+
+func TestCreateAcceptNDJSONHeader(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	body := []byte(`{"name":"accept-nd","persistent":false}`)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stream via Accept %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Header().Get("Content-Type"), "ndjson") {
+		t.Fatalf("ct %q", rr.Header().Get("Content-Type"))
+	}
 }

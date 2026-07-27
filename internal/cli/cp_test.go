@@ -4,10 +4,10 @@ import "testing"
 
 func TestParseCPSpec(t *testing.T) {
 	tests := []struct {
-		in      string
-		guest   bool
-		name    string
-		path    string
+		in    string
+		guest bool
+		name  string
+		path  string
 	}{
 		{"sbox-1:/tmp/x", true, "sbox-1", "/tmp/x"},
 		{"vm:/home/ubuntu/file.txt", true, "vm", "/home/ubuntu/file.txt"},

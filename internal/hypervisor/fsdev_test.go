@@ -1,6 +1,8 @@
 package hypervisor
 
 import (
+	"io"
+	"log/slog"
 	"runtime"
 	"strings"
 	"testing"
@@ -101,12 +103,17 @@ func TestResolveMountDriver(t *testing.T) {
 	if got := ResolveMountDriver("virtiofs", nil); got != MountDriver9p {
 		t.Fatalf("virtiofs without binary → %s", got)
 	}
+	// With logger (covers warn branches)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if got := ResolveMountDriver("virtiofs", log); got != MountDriver9p {
+		t.Fatalf("virtiofs without binary + log → %s", got)
+	}
 
 	// virtiofs available
 	lookPathVirtiofsd = func() (string, error) {
 		return "/usr/libexec/virtiofsd", nil
 	}
-	got := ResolveMountDriver("virtiofs", nil)
+	got := ResolveMountDriver("virtiofs", log)
 	if runtime.GOOS == "darwin" {
 		if got != MountDriver9p {
 			t.Fatalf("darwin virtiofs must fall back to 9p, got %s", got)

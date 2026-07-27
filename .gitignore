@@ -4,6 +4,7 @@
 *.test
 coverage.out
 coverage.html
+coverage.xml
 .DS_Store
 .idea/
 .vscode/

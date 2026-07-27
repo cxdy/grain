@@ -33,7 +33,7 @@ func TestShellControlResizeJSON(t *testing.T) {
 }
 
 func TestShellEndpoint(t *testing.T) {
-	srv, c := startTestServer(t)
+	c := startTestServer(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -47,7 +47,7 @@ func TestShellEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 
 	if runtime.GOOS != "linux" {
@@ -63,14 +63,13 @@ func TestShellEndpoint(t *testing.T) {
 	if res.StatusCode == http.StatusNotFound {
 		t.Fatalf("shell route missing: %d %s", res.StatusCode, body)
 	}
-	_ = srv
 }
 
 func TestShellClientDialNonLinux(t *testing.T) {
 	if runtime.GOOS == "linux" {
 		t.Skip("stub behavior is for non-linux hosts")
 	}
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	err := c.Shell(ctx, agent.ShellOpts{

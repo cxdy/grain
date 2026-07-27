@@ -59,7 +59,7 @@ func EnsureAgent(ctx context.Context, host string, sshPort int, user, privKey, a
 	if err != nil {
 		return fmt.Errorf("ensure agent: temp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	unitLocal := filepath.Join(tmpDir, "grain-agent.service")
 	if err := os.WriteFile(unitLocal, []byte(AgentServiceUnit), 0o644); err != nil {

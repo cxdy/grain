@@ -45,7 +45,7 @@ type ExecResult struct {
 // Order: started (pid) → zero+ stdout/stderr → final exit (exit_code).
 // On failure to start: single error frame.
 type ExecFrame struct {
-	Type      string `json:"type"` // started|stdout|stderr|exit|error
+	Type      string `json:"type"`                // started|stdout|stderr|exit|error
 	Timestamp string `json:"timestamp,omitempty"` // RFC3339
 	PID       int    `json:"pid,omitempty"`
 	Data      string `json:"data,omitempty"` // stdout/stderr chunk
@@ -103,10 +103,10 @@ const DefaultSecretsDir = "/run/grain/secrets"
 
 // MaterializeSecretRequest is the JSON body for POST /secrets/materialize.
 type MaterializeSecretRequest struct {
-	Name       string  `json:"name"`                  // secret name (used for default path)
-	DataBase64 string  `json:"data_base64"`           // secret payload
-	Path       string  `json:"path,omitempty"`        // guest path; default /run/grain/secrets/NAME
-	Mode       string  `json:"mode,omitempty"`        // octal file mode; default 0600
+	Name       string  `json:"name"`           // secret name (used for default path)
+	DataBase64 string  `json:"data_base64"`    // secret payload
+	Path       string  `json:"path,omitempty"` // guest path; default /run/grain/secrets/NAME
+	Mode       string  `json:"mode,omitempty"` // octal file mode; default 0600
 	UID        *uint32 `json:"uid,omitempty"`
 	GID        *uint32 `json:"gid,omitempty"`
 }

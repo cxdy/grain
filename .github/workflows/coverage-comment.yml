@@ -1,0 +1,123 @@
+name: Coverage comment
+
+# Posts the cobertura PR comment using the base repository's GITHUB_TOKEN.
+# That works for PRs from forks, where the pull_request workflow itself only
+# has a read-only token and cannot create comments.
+#
+# Security: this workflow must NOT checkout or execute code from the PR.
+# It only downloads the coverage artifact produced by CI and comments on the PR.
+# pr-number.txt is untrusted only as an integer we pass to the GitHub API;
+# we never execute PR code.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: read # download artifacts from the CI run
+  contents: read
+  pull-requests: write
+  issues: write # PR comments use the issues comments API
+  checks: write
+
+jobs:
+  comment:
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .
+
+      - name: Resolve pull request number
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          # Often empty for fork (cross-repo) PRs.
+          PR_FROM_EVENT: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          set -euo pipefail
+          pr=""
+
+          # 1) Preferred: written by CI from github.event.pull_request.number
+          #    (reliable for same-repo and fork PRs).
+          if [ -f pr-number.txt ]; then
+            pr="$(tr -d '[:space:]' < pr-number.txt || true)"
+            if [[ -n "$pr" && "$pr" =~ ^[0-9]+$ ]]; then
+              echo "Resolved PR from artifact pr-number.txt: #${pr}"
+            else
+              echo "Ignoring invalid pr-number.txt content: ${pr:-<empty>}"
+              pr=""
+            fi
+          fi
+
+          # 2) workflow_run.pull_requests (works for many same-repo PRs).
+          if [ -z "$pr" ] && [ -n "${PR_FROM_EVENT:-}" ]; then
+            pr="$PR_FROM_EVENT"
+            echo "Resolved PR from workflow_run.pull_requests: #${pr}"
+          fi
+
+          # 3) head owner:branch listing (works for fork PRs when API has the PR).
+          if [ -z "$pr" ] && [ -n "${HEAD_REPO:-}" ] && [ -n "${HEAD_BRANCH:-}" ]; then
+            head_owner="${HEAD_REPO%%/*}"
+            pr="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${REPO}/pulls?state=open&head=${head_owner}:${HEAD_BRANCH}" \
+              --jq '.[0].number // empty')"
+            if [ -n "$pr" ]; then
+              echo "Resolved PR from head=${head_owner}:${HEAD_BRANCH}: #${pr}"
+            fi
+          fi
+
+          # 4) commits/{sha}/pulls (often empty for fork head SHAs).
+          if [ -z "$pr" ]; then
+            pr="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${REPO}/commits/${HEAD_SHA}/pulls" \
+              --jq '.[0].number // empty')"
+            if [ -n "$pr" ]; then
+              echo "Resolved PR from commits/${HEAD_SHA}/pulls: #${pr}"
+            fi
+          fi
+
+          if [ -z "$pr" ]; then
+            echo "No pull request found for sha=${HEAD_SHA} head=${HEAD_REPO:-?}:${HEAD_BRANCH:-?}; skipping comment."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! [[ "$pr" =~ ^[0-9]+$ ]]; then
+            echo "Refusing non-numeric PR number: ${pr}"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "number=${pr}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Commenting on PR #${pr}"
+
+      - name: Coverage report
+        if: steps.pr.outputs.skip != 'true'
+        uses: 5monkeys/cobertura-action@v14
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          report_name: coverage
+          path: coverage.xml
+          pull_request_number: ${{ steps.pr.outputs.number }}
+          minimum_coverage: 75
+          fail_below_threshold: false
+          skip_covered: true
+          show_line: true
+          show_branch: false
+          show_class_names: false
+          show_missing: true
+          link_missing_lines: true
+          only_changed_files: false

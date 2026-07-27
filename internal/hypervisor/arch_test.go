@@ -13,6 +13,9 @@ func TestResolveGuestArch(t *testing.T) {
 	if got := resolveGuestArch("aarch64"); got != "arm64" {
 		t.Fatalf("aarch64: %s", got)
 	}
+	if got := resolveGuestArch("host"); got != hostArch() {
+		t.Fatalf("host: %s", got)
+	}
 }
 
 func TestMachineTypeCross(t *testing.T) {
@@ -22,5 +25,11 @@ func TestMachineTypeCross(t *testing.T) {
 	}
 	if got := cpuTypeFor("amd64", true); got != "qemu64" {
 		t.Fatalf("cross cpu: %s", got)
+	}
+	if got := machineTypeFor("arm64", true); got != "virt,accel=tcg,highmem=on" {
+		t.Fatalf("cross arm64: %s", got)
+	}
+	if got := cpuTypeFor("arm64", true); got != "max" {
+		t.Fatalf("cross arm64 cpu: %s", got)
 	}
 }

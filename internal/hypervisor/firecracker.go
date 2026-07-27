@@ -170,7 +170,7 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 	}
 	// Keep open for the child process; closed after Start returns via defer on failure
 	// or left to OS on success after cmd inherits fd — we Close after Start succeeds.
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	// No SLIRP/TAP in experimental FC backend: SSH/port-forwards unavailable.
 	// Agent reaches the host via Firecracker vsock (UDS + CONNECT protocol).
@@ -514,7 +514,7 @@ func fcAPIRequest(ctx context.Context, apiSock, method, path string, body []byte
 	if err != nil {
 		return fmt.Errorf("firecracker API %s %s: %w", method, path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("firecracker API %s %s: status %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(respBody)))

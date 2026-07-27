@@ -35,7 +35,7 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Close status set by bridge; ensure cleanup on early return.
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 
 	ctx := r.Context()
 	cmd, ptmx, err := startLoginShell(shellPath, cols, rows)
@@ -221,7 +221,7 @@ func lookupUserShell(username string) string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, 1<<20))
 	if err != nil {
 		return ""

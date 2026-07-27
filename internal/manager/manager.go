@@ -277,7 +277,6 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	return inst, nil
 }
 
-
 // NormalizeWaitMode validates WaitMode.
 // Empty or "auto" leave the mode unresolved (caller should use resolveWaitMode).
 func NormalizeWaitMode(mode string) (string, error) {
@@ -619,7 +618,6 @@ func (m *Manager) Shutdown(ctx context.Context, name string) error {
 func (m *Manager) Stop(ctx context.Context, name string) error {
 	return m.Shutdown(ctx, name)
 }
-
 
 // Pause freezes guest vCPUs via QMP stop (mock tracks paused state).
 func (m *Manager) Pause(ctx context.Context, name string) error {
