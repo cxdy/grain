@@ -49,4 +49,4 @@ See CHANGELOG “Explicitly deferred”. Do not block 0.1.0 on tray apps, multi-
 
 - [ ] GitHub Release notes summarize highlights + link grainvm.com
 - [ ] Confirm install one-liner pulls the new tag
-- [ ] Optional: announce; watch issues for install/doctor regressions
+- [ ] Announce (optional); watch issues for install/doctor/act/k3s regressions

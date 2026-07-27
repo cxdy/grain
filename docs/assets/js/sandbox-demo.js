@@ -1,4 +1,260 @@
 (function () {
+  function commonPrelude() {
+    return [
+      {
+        id: "up",
+        title: "Start the daemon",
+        hint: "Start the local control plane with grain up",
+        expect: ["grain up"],
+        suggest: "grain up",
+        run: function (ctx) {
+          return ctx.typeLines([
+            { text: "grain up  pid=4242", cls: "out", delay: 250 },
+            { text: "  socket  ~/.grain/grain.sock", cls: "dim", delay: 180 },
+            { text: "  api     http://127.0.0.1:7474", cls: "dim", delay: 150 },
+          ]);
+        },
+      },
+      {
+        id: "pull",
+        title: "Pull a base image",
+        hint: "Download the golden image once (simulated)",
+        expect: ["grain image pull grain-ubuntu", "grain image pull", "image pull"],
+        suggest: "grain image pull grain-ubuntu",
+        run: function (ctx) {
+          return ctx.typeLines([
+            { text: "pulling grain-ubuntu …", cls: "out", delay: 200 },
+            { text: "  64 / 320 MB", cls: "dim", delay: 260 },
+            { text: "  192 / 320 MB", cls: "dim", delay: 260 },
+            { text: "  320 / 320 MB", cls: "dim", delay: 240 },
+            { text: "ok grain-ubuntu in 4s  (sha256 verified)", cls: "ok", delay: 220 },
+            { text: "ssh user: ubuntu · agent: baked-in", cls: "dim", delay: 150 },
+          ]);
+        },
+      },
+    ];
+  }
+
+  var scenarios = {
+    shell: {
+      id: "shell",
+      label: "Shell",
+      title: "~ — grain — first sandbox",
+      blurb: "Install → create → shell in a microVM",
+      doneHtml:
+        'Demo complete. <a href="#install">Install grain</a> · <a href="/get-started/quickstart/">Quick start</a>',
+      guest: true,
+      steps: function () {
+        return [
+          {
+            id: "install",
+            title: "Install grain",
+            hint: "Type the install command, or press Run step →",
+            expect: [
+              "curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash",
+              "curl | bash",
+              "install.sh",
+            ],
+            suggest:
+              "curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash",
+            run: function (ctx) {
+              return ctx.typeLines([
+                { text: "→ detecting os=darwin arch=arm64", cls: "dim", delay: 200 },
+                { text: "→ downloading grain_darwin_arm64 …", cls: "dim", delay: 400 },
+                { text: "✓ installed /usr/local/bin/grain", cls: "ok", delay: 350 },
+                { text: "✓ guest agent → ~/.grain/agent/", cls: "ok", delay: 200 },
+                { text: "", delay: 80 },
+                { text: "grain 0.1.1", cls: "out", delay: 150 },
+              ]);
+            },
+          },
+        ]
+          .concat(commonPrelude())
+          .concat([
+            {
+              id: "new",
+              title: "Create a sandbox",
+              hint: "Launch an ephemeral VM (grain new)",
+              expect: ["grain new", "new"],
+              suggest: "grain new",
+              run: function (ctx) {
+                return ctx.typeLines([
+                  { text: "  ⠹ creating  image         0s", cls: "dim", delay: 200 },
+                  { text: "  ⠸ creating  disk          1s", cls: "dim", delay: 350 },
+                  { text: "  ⠼ creating  boot          2s", cls: "dim", delay: 400 },
+                  { text: "  ⠴ creating  waiting agent 4s", cls: "dim", delay: 500 },
+                  {
+                    text: "created sbox-1  status=running  image=grain-ubuntu  persist=false  ssh=:2201  (6s)",
+                    cls: "ok",
+                    delay: 280,
+                  },
+                  { text: "next:  grain sh sbox-1", cls: "out", delay: 160 },
+                ]);
+              },
+            },
+            {
+              id: "sh",
+              title: "Open a shell",
+              hint: "Connect with grain sh — agent PTY by default",
+              expect: ["grain sh", "grain sh sbox-1", "sh"],
+              suggest: "grain sh",
+              run: function (ctx) {
+                return ctx
+                  .typeLines([
+                    { text: "connecting via agent to sbox-1 …", cls: "dim", delay: 300 },
+                    { text: "", delay: 100 },
+                    { text: "Welcome to Ubuntu 24.04 LTS (grain sandbox)", cls: "out", delay: 200 },
+                    { text: "  agent 0.2.0 · ephemeral · sbox-1", cls: "dim", delay: 160 },
+                  ])
+                  .then(function () {
+                    ctx.enterGuest({
+                      name: "sbox-1",
+                      prompt: "ubuntu@sbox-1:~$",
+                      title: "ubuntu@sbox-1: ~",
+                      hint: "You're in the VM. Try uname -a, ls, or exit when done.",
+                    });
+                  });
+              },
+            },
+          ]);
+      },
+    },
+
+    act: {
+      id: "act",
+      label: "act",
+      title: "~ — grain act — GitHub Actions",
+      blurb: "Run workflows in an isolated microVM",
+      doneHtml:
+        'Demo complete. <a href="/guides/recipes/act/">act recipe</a> · <a href="#install">Install</a>',
+      guest: false,
+      steps: function () {
+        return commonPrelude().concat([
+          {
+            id: "cd",
+            title: "Enter your repo",
+            hint: "act runs from a project with .github/workflows",
+            expect: ["cd ", "cd my-app", "cd ./my-app"],
+            suggest: "cd ~/src/my-app",
+            run: function (ctx) {
+              return ctx.typeLines([
+                { text: "", delay: 80 },
+                { text: "# .github/workflows/ci.yml present", cls: "dim", delay: 180 },
+              ]);
+            },
+          },
+          {
+            id: "list",
+            title: "List workflows",
+            hint: "grain act -- -l lists jobs (args after -- go to act)",
+            expect: ["grain act -- -l", "grain act -l", "act -- -l"],
+            suggest: "grain act -- -l",
+            run: function (ctx) {
+              return ctx.typeLines([
+                { text: "grain act  creating ephemeral sandbox (preset act) …", cls: "dim", delay: 280 },
+                { text: "  ⠹ boot + docker + act   8s", cls: "dim", delay: 450 },
+                { text: "  mounting $PWD → /work", cls: "dim", delay: 220 },
+                { text: "", delay: 80 },
+                { text: "Stage  Job ID  Job name  Workflow name  Workflow file  Events", cls: "out", delay: 200 },
+                { text: "0      test    test      CI             ci.yml         push", cls: "out", delay: 160 },
+                { text: "0      lint    lint      CI             ci.yml         push", cls: "out", delay: 140 },
+                { text: "", delay: 80 },
+                { text: "sandbox deleted (ephemeral)", cls: "dim", delay: 180 },
+              ]);
+            },
+          },
+          {
+            id: "run",
+            title: "Run a job",
+            hint: "Run one job in a fresh microVM",
+            expect: ["grain act -- -j test", "grain act -j test", "-j test"],
+            suggest: "grain act -- -j test",
+            run: function (ctx) {
+              return ctx.typeLines([
+                { text: "grain act  sandbox act-7f3a  (docker + act)", cls: "dim", delay: 260 },
+                { text: "[act/test] ⭐ Run Main actions/checkout@v4", cls: "out", delay: 320 },
+                { text: "[act/test]   ✅  Success - Main actions/checkout@v4", cls: "ok", delay: 280 },
+                { text: "[act/test] ⭐ Run Main npm test", cls: "out", delay: 300 },
+                { text: "[act/test]   ✅  Success - Main npm test", cls: "ok", delay: 320 },
+                { text: "", delay: 80 },
+                { text: "Job succeeded.", cls: "ok", delay: 200 },
+                { text: "sandbox deleted — host Docker untouched", cls: "dim", delay: 220 },
+              ]);
+            },
+          },
+        ]);
+      },
+    },
+
+    k3s: {
+      id: "k3s",
+      label: "k3s",
+      title: "~ — grain — k3s lab",
+      blurb: "Single-node Kubernetes in a microVM",
+      doneHtml:
+        'Demo complete. <a href="/guides/recipes/k3s/">k3s recipe</a> · <a href="#install">Install</a>',
+      guest: false,
+      steps: function () {
+        return commonPrelude().concat([
+          {
+            id: "new-k3s",
+            title: "Create with k3s preset",
+            hint: "Persistent disk + wait for userdata (k3s install)",
+            expect: [
+              "grain new --preset k3s -n lab -p --wait userdata",
+              "grain new --preset k3s",
+              "--preset k3s",
+            ],
+            suggest: "grain new --preset k3s -n lab -p --wait userdata",
+            run: function (ctx) {
+              return ctx.typeLines([
+                { text: "  ⠹ creating  image           0s", cls: "dim", delay: 200 },
+                { text: "  ⠙ creating  disk (20G)      2s", cls: "dim", delay: 320 },
+                { text: "  ⠹ creating  boot            5s", cls: "dim", delay: 360 },
+                { text: "  ⠸ creating  waiting userdata  45s", cls: "dim", delay: 500 },
+                {
+                  text: "created lab  status=running  image=grain-ubuntu  persist=true  ssh=:2204  tcp=:6443→6443",
+                  cls: "ok",
+                  delay: 300,
+                },
+                { text: "preset=k3s  cpus=2  memory=4096MiB", cls: "dim", delay: 160 },
+              ]);
+            },
+          },
+          {
+            id: "fwd",
+            title: "Check API forward",
+            hint: "See the published Kubernetes API port",
+            expect: ["grain fwd ls lab", "grain fwd ls", "fwd ls"],
+            suggest: "grain fwd ls lab",
+            run: function (ctx) {
+              return ctx.typeLines([
+                { text: "NAME  HOST  GUEST  PROTO", cls: "out", delay: 160 },
+                { text: "ssh   2204  22     tcp", cls: "out", delay: 120 },
+                { text: "api   6443  6443   tcp   ← k3s", cls: "ok", delay: 180 },
+              ]);
+            },
+          },
+          {
+            id: "kubectl",
+            title: "Talk to the cluster",
+            hint: "After copying kubeconfig (see recipe), use kubectl on the host",
+            expect: ["kubectl get nodes", "kubectl get node", "get nodes"],
+            suggest: "kubectl get nodes",
+            run: function (ctx) {
+              return ctx.typeLines([
+                { text: "NAME   STATUS   ROLES                  AGE   VERSION", cls: "out", delay: 200 },
+                { text: "lab    Ready    control-plane,master   2m    v1.30.2+k3s1", cls: "ok", delay: 240 },
+                { text: "", delay: 80 },
+                { text: "# disposable lab: grain rm lab when done", cls: "dim", delay: 200 },
+              ]);
+            },
+          },
+        ]);
+      },
+    },
+  };
+
   function initDemo(root) {
     if (!root || root.getAttribute("data-demo-ready") === "1") return;
     root.setAttribute("data-demo-ready", "1");
@@ -15,111 +271,13 @@
     var restartBtn = root.querySelector("[data-demo-restart]");
     var titleEl = root.querySelector("[data-demo-title]");
     var term = root.querySelector("[data-demo-term]");
+    var scenarioEl = root.querySelector("[data-demo-scenarios]");
+    var blurbEl = root.querySelector("[data-demo-blurb]");
 
     if (!outputEl || !inputEl || !promptEl || !stepsEl || !hintEl || !nextBtn || !skipBtn || !term) {
       console.warn("grain demo: missing DOM nodes", root);
       return;
     }
-
-    var steps = [
-      {
-        id: "install",
-        title: "Install grain",
-        hint: "Type the install command, or press Run step →",
-        expect: [
-          "curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash",
-          "curl | bash",
-          "install.sh",
-        ],
-        suggest: "curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash",
-        run: function () {
-          return typeLines([
-            { text: "→ detecting os=darwin arch=arm64", cls: "dim", delay: 200 },
-            { text: "→ downloading grain_darwin_arm64 …", cls: "dim", delay: 400 },
-            { text: "✓ installed /usr/local/bin/grain", cls: "ok", delay: 350 },
-            { text: "✓ guest agent → ~/.grain/agent/", cls: "ok", delay: 200 },
-            { text: "", delay: 80 },
-            { text: "grain 0.1.0", cls: "out", delay: 150 },
-          ]);
-        },
-      },
-      {
-        id: "up",
-        title: "Start the daemon",
-        hint: "Start the local control plane with grain up",
-        expect: ["grain up"],
-        suggest: "grain up",
-        run: function () {
-          return typeLines([
-            { text: "grain up  pid=4242", cls: "out", delay: 250 },
-            { text: "  socket  ~/.grain/grain.sock", cls: "dim", delay: 180 },
-            { text: "  api     http://127.0.0.1:7474", cls: "dim", delay: 150 },
-            { text: "  metrics http://127.0.0.1:7474/metrics", cls: "dim", delay: 120 },
-          ]);
-        },
-      },
-      {
-        id: "pull",
-        title: "Pull a base image",
-        hint: "Download the golden image once (simulated)",
-        expect: ["grain image pull grain-ubuntu", "grain image pull", "image pull"],
-        suggest: "grain image pull grain-ubuntu",
-        run: function () {
-          return typeLines([
-            { text: "pulling grain-ubuntu …", cls: "out", delay: 200 },
-            { text: "  64 / 320 MB", cls: "dim", delay: 280 },
-            { text: "  192 / 320 MB", cls: "dim", delay: 280 },
-            { text: "  320 / 320 MB", cls: "dim", delay: 260 },
-            { text: "ok grain-ubuntu in 4s  (sha256 verified)", cls: "ok", delay: 220 },
-            { text: "ssh user: ubuntu · agent: baked-in", cls: "dim", delay: 150 },
-          ]);
-        },
-      },
-      {
-        id: "new",
-        title: "Create a sandbox",
-        hint: "Launch an ephemeral VM (grain new)",
-        expect: ["grain new", "new"],
-        suggest: "grain new",
-        run: function () {
-          return typeLines([
-            { text: "  ⠹ creating  image         0s", cls: "dim", delay: 200 },
-            { text: "  ⠸ creating  disk          1s", cls: "dim", delay: 350 },
-            { text: "  ⠼ creating  boot          2s", cls: "dim", delay: 400 },
-            { text: "  ⠴ creating  waiting agent 4s", cls: "dim", delay: 500 },
-            {
-              text: "created sbox-1  status=running  image=grain-ubuntu  persist=false  ssh=:2201  (6s)",
-              cls: "ok",
-              delay: 280,
-            },
-            { text: "next:  grain sh sbox-1", cls: "out", delay: 160 },
-            { text: "       grain x sbox-1 -- uname -a", cls: "dim", delay: 120 },
-          ]);
-        },
-      },
-      {
-        id: "sh",
-        title: "Open a shell",
-        hint: "Connect with grain sh — agent PTY by default",
-        expect: ["grain sh", "grain sh sbox-1", "sh"],
-        suggest: "grain sh",
-        run: function () {
-          return typeLines([
-            { text: "connecting via agent to sbox-1 …", cls: "dim", delay: 300 },
-            { text: "", delay: 100 },
-            { text: "Welcome to Ubuntu 24.04 LTS (grain sandbox)", cls: "out", delay: 200 },
-            { text: "  agent 0.2.0 · ephemeral · sbox-1", cls: "dim", delay: 160 },
-          ]).then(function () {
-            state.mode = "guest";
-            setPrompt("ubuntu@sbox-1:~$", true);
-            setTitle("ubuntu@sbox-1: ~");
-            setGhost("uname -a");
-            hintEl.textContent = "You're in the VM. Try uname -a, ls, or exit when done.";
-            nextBtn.textContent = "Finish demo";
-          });
-        },
-      },
-    ];
 
     var guestCmds = {
       "uname -a": "Linux sbox-1 6.8.0-grain #1 SMP PREEMPT_DYNAMIC aarch64 GNU/Linux",
@@ -139,9 +297,17 @@
     };
 
     var state = {
+      scenarioId: "shell",
+      steps: [],
+      scenario: null,
       step: 0,
       mode: "host",
       busy: false,
+    };
+
+    var ctx = {
+      typeLines: typeLines,
+      enterGuest: enterGuest,
     };
 
     function sleep(ms) {
@@ -219,19 +385,50 @@
       ghostEl.textContent = text || "";
     }
 
+    function enterGuest(opts) {
+      state.mode = "guest";
+      setPrompt(opts.prompt, true);
+      setTitle(opts.title);
+      setGhost("uname -a");
+      hintEl.textContent = opts.hint;
+      nextBtn.textContent = "Finish demo";
+      renderSteps();
+    }
+
     function currentSuggest() {
       if (state.mode === "guest") return "uname -a";
       if (state.mode === "done") return "";
-      var step = steps[state.step];
+      var step = state.steps[state.step];
       return step ? step.suggest : "";
     }
 
+    function renderScenarioTabs() {
+      if (!scenarioEl) return;
+      scenarioEl.innerHTML = Object.keys(scenarios)
+        .map(function (id) {
+          var s = scenarios[id];
+          var on = id === state.scenarioId ? " active" : "";
+          return (
+            '<button type="button" class="demo-scenario-tab' +
+            on +
+            '" data-demo-scenario="' +
+            id +
+            '" aria-pressed="' +
+            (id === state.scenarioId ? "true" : "false") +
+            '">' +
+            escapeHtml(s.label) +
+            "</button>"
+          );
+        })
+        .join("");
+    }
+
     function renderSteps() {
-      stepsEl.innerHTML = steps
+      stepsEl.innerHTML = state.steps
         .map(function (s, i) {
           var cls = i < state.step ? "done" : i === state.step ? "current" : "todo";
           if (state.mode === "guest") {
-            cls = i < steps.length - 1 ? "done" : "current";
+            cls = i < state.steps.length - 1 ? "done" : "current";
           } else if (state.mode === "done") {
             cls = "done";
           }
@@ -279,7 +476,7 @@
 
     function runHostStep(force) {
       if (state.busy || state.mode !== "host") return;
-      var step = steps[state.step];
+      var step = state.steps[state.step];
       if (!step) return;
       var cmd = force ? step.suggest : inputEl.value;
       if (!force && !matchesExpect(cmd, step.expect)) {
@@ -292,21 +489,20 @@
       echoCommand(shown);
       inputEl.value = "";
       setGhost("");
-      step
-        .run()
+      Promise.resolve(step.run(ctx))
         .then(function () {
           if (state.mode === "guest") {
             renderSteps();
             return;
           }
           state.step++;
-          if (state.step >= steps.length) {
+          if (state.step >= state.steps.length) {
             finish();
             return;
           }
           renderSteps();
-          hintEl.textContent = steps[state.step].hint;
-          setGhost(steps[state.step].suggest);
+          hintEl.textContent = state.steps[state.step].hint;
+          setGhost(state.steps[state.step].suggest);
           nextBtn.textContent = "Run step →";
         })
         .catch(function (err) {
@@ -378,42 +574,24 @@
       state.mode = "done";
       state.busy = false;
       setPrompt("$", false);
-      setTitle("~ — grain — demo complete");
+      setTitle((state.scenario && state.scenario.title) || "~ — grain — demo complete");
       setGhost("");
       inputLine.hidden = true;
       hintEl.innerHTML =
-        'Demo complete. <a href="#install">Install grain</a> or read the <a href="/get-started/first-sandbox/">full tutorial</a>.';
+        (state.scenario && state.scenario.doneHtml) ||
+        'Demo complete. <a href="#install">Install grain</a> or read the <a href="/get-started/quickstart/">quick start</a>.';
       nextBtn.textContent = "Replay";
       skipBtn.hidden = true;
       renderSteps();
       appendLine("\u00a0");
-      appendLine("✓ You're ready for a real sandbox on your machine.", "ok");
+      appendLine("✓ Ready for a real run on your machine.", "ok");
     }
 
-    function setTitle(t) {
-      if (titleEl) titleEl.textContent = t;
-    }
-
-    function setPrompt(p, guest) {
-      promptEl.textContent = p;
-      promptEl.classList.toggle("is-guest", !!guest);
-      requestAnimationFrame(function () {
-        if (!inputLine) return;
-        var w = promptEl.getBoundingClientRect().width;
-        inputLine.style.setProperty("--ghost-pad", Math.ceil(w + 8) + "px");
-      });
-    }
-
-    function setGhost(text) {
-      if (!ghostEl) return;
-      if (inputEl.value) {
-        ghostEl.textContent = "";
-        return;
-      }
-      ghostEl.textContent = text || "";
-    }
-
-    function restart() {
+    function loadScenario(id) {
+      var sc = scenarios[id] || scenarios.shell;
+      state.scenarioId = sc.id;
+      state.scenario = sc;
+      state.steps = sc.steps();
       state.step = 0;
       state.mode = "host";
       state.busy = false;
@@ -422,16 +600,22 @@
       inputEl.disabled = false;
       inputEl.value = "";
       setPrompt("$", false);
-      setTitle("~ — grain — interactive demo");
+      setTitle(sc.title);
       nextBtn.textContent = "Run step →";
       skipBtn.hidden = false;
-      hintEl.textContent = steps[0].hint;
-      setGhost(steps[0].suggest);
+      if (blurbEl) blurbEl.textContent = sc.blurb;
+      hintEl.textContent = state.steps[0].hint;
+      setGhost(state.steps[0].suggest);
       appendLine("Last login: demo session on ttys000", "dim");
-      appendLine("grain interactive demo — simulated terminal", "dim");
+      appendLine("grain interactive demo — simulated · scenario: " + sc.label, "dim");
       appendLine("\u00a0");
+      renderScenarioTabs();
       renderSteps();
       focusDemoInput(inputEl);
+    }
+
+    function restart() {
+      loadScenario(state.scenarioId);
     }
 
     function onNextClick(e) {
@@ -464,6 +648,15 @@
       });
     }
 
+    if (scenarioEl) {
+      scenarioEl.addEventListener("click", function (e) {
+        var btn = e.target.closest && e.target.closest("[data-demo-scenario]");
+        if (!btn || state.busy) return;
+        var id = btn.getAttribute("data-demo-scenario");
+        if (id && id !== state.scenarioId) loadScenario(id);
+      });
+    }
+
     inputEl.addEventListener("input", function () {
       setGhost(inputEl.value ? "" : currentSuggest());
     });
@@ -485,7 +678,17 @@
       focusDemoInput(inputEl);
     });
 
-    restart();
+    // Deep-link: #demo-act / #demo-k3s / #demo-shell
+    var initial = "shell";
+    var hash = (location.hash || "").replace(/^#/, "");
+    if (hash === "demo-act" || hash === "workloads") {
+      /* workloads section is separate; demo defaults shell unless act/k3s hash */
+    }
+    if (hash === "demo-act") initial = "act";
+    if (hash === "demo-k3s") initial = "k3s";
+    if (hash === "demo-shell" || hash === "demo" || hash === "demo-section") initial = "shell";
+
+    loadScenario(initial);
   }
 
   /** Focus without re-scrolling the page (avoids hiding the demo under the sticky header). */
@@ -525,9 +728,12 @@
       initDemo(nodes[i]);
     }
 
-    // Hero / in-page links: custom scroll (native #hash ignores sticky header).
     document.addEventListener("click", function (e) {
-      var a = e.target.closest && e.target.closest('a[href="#demo"], a[href="#demo-section"], [data-scroll-demo]');
+      var a =
+        e.target.closest &&
+        e.target.closest(
+          'a[href="#demo"], a[href="#demo-section"], a[href="#demo-act"], a[href="#demo-k3s"], a[href="#demo-shell"], [data-scroll-demo]'
+        );
       if (!a) return;
       var href = a.getAttribute("href") || "#demo-section";
       if (href.charAt(0) !== "#" && !a.hasAttribute("data-scroll-demo")) return;
@@ -538,15 +744,31 @@
       } else {
         location.hash = hash;
       }
-      scrollToDemo(true);
+
       var demoRoot = document.querySelector("[data-sandbox-demo]");
+      var scenarioId = null;
+      if (hash === "#demo-act") scenarioId = "act";
+      if (hash === "#demo-k3s") scenarioId = "k3s";
+      if (hash === "#demo-shell") scenarioId = "shell";
+      if (scenarioId && demoRoot) {
+        var tab = demoRoot.querySelector('[data-demo-scenario="' + scenarioId + '"]');
+        if (tab) tab.click();
+      }
+
+      scrollToDemo(true);
       var input = demoRoot && demoRoot.querySelector("[data-demo-input]");
       setTimeout(function () {
         focusDemoInput(input);
       }, 400);
     });
 
-    if (location.hash === "#demo" || location.hash === "#demo-section") {
+    if (
+      location.hash === "#demo" ||
+      location.hash === "#demo-section" ||
+      location.hash === "#demo-act" ||
+      location.hash === "#demo-k3s" ||
+      location.hash === "#demo-shell"
+    ) {
       setTimeout(function () {
         scrollToDemo(true);
       }, 60);

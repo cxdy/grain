@@ -64,8 +64,11 @@ description: Local Linux microVMs for GitHub Actions (grain act) and throwaway k
   <div class="wrap">
     <div class="demo-section-head">
       <div>
-        <h2 class="section-title">Try it: install → shell</h2>
-        <p class="section-lead" style="margin-bottom:0">A guided simulation of the first-sandbox path. Type commands or click <strong>Run step</strong>.</p>
+        <h2 class="section-title">Try it: shell · act · k3s</h2>
+        <p class="section-lead" style="margin-bottom:0">
+          Simulated terminal — switch scenarios above the prompt. Type commands or click <strong>Run step</strong>.
+          <a href="#demo-act">act</a> · <a href="#demo-k3s">k3s</a> · <a href="#demo-shell">shell</a>
+        </p>
       </div>
       <a class="btn btn-sm btn-ghost" href="{{ '/get-started/first-sandbox/' | relative_url }}">Open full tutorial →</a>
     </div>
@@ -126,6 +129,7 @@ description: Local Linux microVMs for GitHub Actions (grain act) and throwaway k
 <span class="line"><span class="prompt">$</span> grain act -- -j test</span></code></pre>
         <div class="workload-actions">
           <button type="button" class="btn btn-sm btn-ghost copy-btn-inline" data-copy="#workload-act">Copy commands</button>
+          <a class="btn btn-sm btn-ghost" href="#demo-act">Try demo</a>
           <a class="btn btn-sm btn-primary" href="{{ '/guides/recipes/act/' | relative_url }}">act recipe →</a>
         </div>
       </article>
@@ -145,6 +149,7 @@ description: Local Linux microVMs for GitHub Actions (grain act) and throwaway k
 <span class="line"><span class="prompt">$</span> grain fwd ls lab</span></code></pre>
         <div class="workload-actions">
           <button type="button" class="btn btn-sm btn-ghost copy-btn-inline" data-copy="#workload-k3s">Copy commands</button>
+          <a class="btn btn-sm btn-ghost" href="#demo-k3s">Try demo</a>
           <a class="btn btn-sm btn-primary" href="{{ '/guides/recipes/k3s/' | relative_url }}">k3s recipe →</a>
         </div>
       </article>
