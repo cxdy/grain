@@ -65,6 +65,15 @@ grain act --keep -- -j build
 
 First boot installs packages and act (needs network); later runs on a warm image are faster. Prefer a golden image with the agent baked in for snappier create.
 
+**Guest agent:** `grain act` uses `--wait agent`. Without a golden image, the host deploys `grain-agent` over SSH — you need a linux agent binary on the host:
+
+```bash
+make agent-linux
+# or install release agent under ~/.grain/agent/
+```
+
+If create hangs on “waiting agent” for a long time, check that binary exists (`grain doctor`) and that you are on a recent grain (WaitAgent must not burn the full timeout before SSH deploy).
+
 ## Manual equivalent
 
 ```bash

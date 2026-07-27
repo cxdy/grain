@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default image selection prefers local **`grain-ubuntu`** when Ready (`image: auto`).
 - Create readiness auto-selects **agent wait** for golden / HasAgent images.
 - Release binaries can ship the guest agent for multi-arch deploys.
+- **WaitAgent** short-probes then SSH-deploys instead of spending the full create timeout probing a missing agent (fixes `grain act` / non-golden `--wait agent` hangs).
 
 ### Explicitly deferred (out of scope for v0.1)
 

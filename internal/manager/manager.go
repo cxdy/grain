@@ -341,8 +341,13 @@ func (m *Manager) waitSSHMode(
 	return nil
 }
 
-// waitAgentMode requires agent health. Tries agent first (golden images), then
-// SSH deploy fallback. Hard-fails when the agent is not ready in time.
+// waitAgentMode requires agent health. Short-probes first (longer for golden
+// images that bake the agent), then SSH-deploys grain-agent if needed.
+//
+// Important: do NOT spend the full ReadyTimeout on the initial probe — without a
+// baked agent that would burn the budget before SSH deploy ever runs (e.g. grain
+// act on ubuntu-cloud timed out at 25m waiting for an agent that was never
+// installed). Deploy + post-deploy wait use the remaining deadline.
 // Mock hypervisor treats agent wait as success after start.
 func (m *Manager) waitAgentMode(
 	ctx context.Context,
@@ -353,10 +358,14 @@ func (m *Manager) waitAgentMode(
 	isMock bool,
 ) error {
 	if emit != nil {
+		msg := "waiting for guest agent"
+		if m.imageHasAgent(inst.Image) {
+			msg = "waiting for baked-in guest agent"
+		}
 		emit(vm.CreateEvent{
 			Phase:   vm.PhaseWaitAgent,
 			Name:    inst.Name,
-			Message: "waiting for guest agent",
+			Message: msg,
 			SSHPort: inst.SSHPort,
 		})
 	}
@@ -367,11 +376,15 @@ func (m *Manager) waitAgentMode(
 		return fmt.Errorf("wait agent: no agent endpoint allocated")
 	}
 
-	waitFor := time.Until(readyDeadline)
-	if waitFor <= 0 {
-		waitFor = agentWaitFallback
+	// Short probe only — full budget is for SSH + deploy + wait below.
+	probeFor := agentProbeTimeout
+	if m.imageHasAgent(inst.Image) {
+		probeFor = agentBakedWait
 	}
-	probeCtx, probeCancel := context.WithTimeout(ctx, waitFor)
+	if rem := time.Until(readyDeadline); rem > 0 && rem < probeFor {
+		probeFor = rem
+	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, probeFor)
 	client, dialErr := agent.Dial(probeCtx, agentTarget(inst))
 	var probeErr error
 	if dialErr != nil {
@@ -405,6 +418,7 @@ func (m *Manager) waitAgentMode(
 			}
 			return nil
 		}
+		return fmt.Errorf("wait agent: guest agent not ready and ssh never came up (initial probe: %v)", probeErr)
 	}
 
 	return fmt.Errorf("wait agent: guest agent not ready: %w", probeErr)

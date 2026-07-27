@@ -167,6 +167,12 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 		return err
 	}
 
+	// WaitAgent deploys grain-agent over SSH when the base image is not golden.
+	// Fail fast if neither a deploy binary nor a golden image is available.
+	if _, err := agent.LinuxBinaryPath(cfg.DataDir); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: no grain-agent linux binary — WaitAgent will need a golden image or: make agent-linux\n  (%v)\n", err)
+	}
+
 	fmt.Fprintf(os.Stderr, "grain act  project=%s  vm=%s  cpus=%d mem=%d\n", workDir, vmName, cpus, mem)
 
 	createCtx, createCancel := context.WithTimeout(context.Background(), timeout)
@@ -183,6 +189,8 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 		Mounts: []vm.Mount{
 			{Host: workDir, Guest: "/work"},
 		},
+		// agent: short probe, then SSH-deploy grain-agent (requires make agent-linux
+		// or a golden grain-ubuntu image). Docker/act packages install via cloud-init.
 		Wait:    "agent",
 		Timeout: timeout.String(),
 		Tags:    map[string]string{"preset": "act", "grain": "act"},
@@ -211,7 +219,9 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 		return err
 	}
 
-	shellCmd := "cd /work && act " + shellJoin(actArgs)
+	// Guest agent exec has a minimal env (no login shell). act requires HOME;
+	// docker/act may live under /usr/local/bin.
+	shellCmd := "export HOME=\"${HOME:-/home/ubuntu}\" PATH=\"/usr/local/bin:/usr/bin:/bin:$PATH\"; cd /work && act " + shellJoin(actArgs)
 	fmt.Fprintf(os.Stderr, "grain act  exec: %s\n", shellCmd)
 
 	execCtx, execCancel := context.WithTimeout(context.Background(), time.Until(readyDeadline))
