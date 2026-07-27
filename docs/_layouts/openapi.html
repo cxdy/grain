@@ -285,32 +285,28 @@
       border: 1px solid var(--border);
     }
 
-    /* Light-mode: dial back pastel GET panel so body text stays dark-on-light */
+    /* Light-mode: readable panels on paper background */
     [data-theme="light"] #swagger-ui .swagger-ui .opblock.opblock-get {
-      background: #f0f6fc;
-      border-color: #b6d0ea;
+      background: var(--sand-soft);
+      border-color: color-mix(in srgb, var(--sand) 28%, var(--border));
     }
     [data-theme="light"] #swagger-ui .swagger-ui .opblock.opblock-get .tab-header,
     [data-theme="light"] #swagger-ui .swagger-ui .opblock.opblock-get .opblock-section-header {
-      background: #e8f1fa;
-    }
-    [data-theme="light"] #swagger-ui .swagger-ui .opblock-body,
-    [data-theme="light"] #swagger-ui .swagger-ui .opblock-body * {
-      /* children re-set intentionally below; keep inherited text dark */
+      background: color-mix(in srgb, var(--sand-soft) 70%, var(--bg-elev));
     }
     [data-theme="light"] #swagger-ui .swagger-ui .responses-wrapper,
     [data-theme="light"] #swagger-ui .swagger-ui .parameters-container {
-      color: #121820;
+      color: var(--text);
     }
     [data-theme="light"] #swagger-ui .swagger-ui .response-col_description__inner p,
     [data-theme="light"] #swagger-ui .swagger-ui .response-col_description p {
-      color: #121820 !important;
+      color: var(--text) !important;
     }
     [data-theme="light"] #swagger-ui {
-      background: #ffffff;
+      background: var(--bg-elev);
     }
     [data-theme="light"] #swagger-ui .swagger-ui .btn.execute {
-      color: #04120c !important;
+      color: var(--brand-ink) !important;
     }
   </style>
 </head>

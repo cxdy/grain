@@ -59,6 +59,8 @@ nav:
     url: /guides/
   - title: Reference
     url: /reference/cli/
+  - title: API
+    url: /reference/openapi/
   - title: GitHub
     url: https://github.com/cxdy/grain
     external: true

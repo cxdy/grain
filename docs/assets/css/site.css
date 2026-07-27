@@ -894,6 +894,10 @@ button:focus-visible,
   margin-top: 0.25rem;
 }
 
+.map-card a + a {
+  margin-top: 0.15rem;
+}
+
 .map-card a:hover {
   text-decoration: underline;
 }

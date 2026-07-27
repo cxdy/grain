@@ -208,7 +208,7 @@ description: Local Linux microVMs for shells, GitHub Actions (grain act), and th
       </div>
       <div class="spec-item">
         <dt>Automate it</dt>
-        <dd>Unix socket API, OpenAPI, Go, TypeScript, and Python SDKs for agents and CI.</dd>
+        <dd>Unix socket API, <a href="{{ '/reference/openapi/' | relative_url }}">OpenAPI explorer</a>, Go, TypeScript, and Python SDKs for agents and CI.</dd>
       </div>
     </dl>
   </div>
@@ -234,8 +234,9 @@ description: Local Linux microVMs for shells, GitHub Actions (grain act), and th
       <div class="map-card">
         <p class="map-kind">Reference</p>
         <h3>Look up</h3>
-        <p>CLI flags, config keys, HTTP API, agent protocol, and SDKs.</p>
+        <p>CLI, config, HTTP API, interactive OpenAPI explorer, and SDKs.</p>
         <a href="{{ '/reference/cli/' | relative_url }}">Reference →</a>
+        <a href="{{ '/reference/openapi/' | relative_url }}">OpenAPI explorer →</a>
       </div>
       <div class="map-card">
         <p class="map-kind">Explanation</p>
