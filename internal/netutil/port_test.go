@@ -1,9 +1,10 @@
 package netutil_test
 
 import (
-	"github.com/cxdy/grain/internal/netutil"
 	"net"
 	"testing"
+
+	"github.com/cxdy/grain/internal/netutil"
 )
 
 func TestFreeTCPPort(t *testing.T) {

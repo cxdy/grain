@@ -1,12 +1,13 @@
 package observability_test
 
 import (
-	"github.com/cxdy/grain/internal/observability"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/cxdy/grain/internal/observability"
 )
 
 func TestMetricsPrometheus(t *testing.T) {

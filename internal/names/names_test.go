@@ -1,8 +1,9 @@
 package names_test
 
 import (
-	"github.com/cxdy/grain/internal/names"
 	"testing"
+
+	"github.com/cxdy/grain/internal/names"
 )
 
 func TestValid(t *testing.T) {
