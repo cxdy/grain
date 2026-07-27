@@ -341,11 +341,38 @@ a:hover {
   line-height: 1.55;
   overflow-x: auto;
   color: var(--text);
+  margin: 0;
+}
+
+.code-block code {
+  font: inherit;
+  color: inherit;
+  background: none;
+  padding: 0;
+  white-space: inherit;
+}
+
+/* Install card: keep each shell command on one line; scroll horizontally if needed */
+.install-code {
+  white-space: pre;
+  tab-size: 2;
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+.install-code .line {
+  display: block;
+  white-space: pre;
 }
 
 .code-block .prompt {
   color: var(--brand);
   user-select: none;
+  -webkit-user-select: none;
+}
+
+.code-block .faint {
+  color: var(--faint);
 }
 
 .copy-btn {

@@ -23,7 +23,7 @@ description: grain runs disposable Linux sandboxes locally — install in one co
     <div class="install-card" id="install" data-tabs>
       <div class="install-card-head">
         <h2>Install</h2>
-        <button type="button" class="copy-btn" data-copy="#install-cmd-active">Copy</button>
+        <button type="button" class="copy-btn" data-copy="#install-cmd-macos">Copy</button>
       </div>
       <div class="tabs" role="tablist" aria-label="Operating system">
         <button type="button" class="tab active" role="tab" data-tab="macos" aria-selected="true">macOS</button>
@@ -32,51 +32,28 @@ description: grain runs disposable Linux sandboxes locally — install in one co
       </div>
 
       <div class="panel" data-panel="macos" id="panel-macos">
-        <div class="code-block" id="install-cmd-macos">
-          <div><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash</div>
-          <div><span class="prompt">$</span> brew install qemu</div>
-          <div><span class="prompt">$</span> grain doctor</div>
-        </div>
+        <pre class="code-block install-code" id="install-cmd-macos" data-copy-text="curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash&#10;brew install qemu&#10;grain doctor"><code><span class="line"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash</span>
+<span class="line"><span class="prompt">$</span> brew install qemu</span>
+<span class="line"><span class="prompt">$</span> grain doctor</span></code></pre>
         <p class="panel-note">Installer places the CLI on your PATH and the guest agent under <code>~/.grain/agent/</code>. QEMU is required for real VMs.</p>
       </div>
 
       <div class="panel" data-panel="linux" id="panel-linux" hidden>
-        <div class="code-block" id="install-cmd-linux">
-          <div><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash</div>
-          <div><span class="prompt">$</span> sudo apt-get install -y qemu-system qemu-utils   <span class="faint"># Debian/Ubuntu</span></div>
-          <div><span class="prompt">$</span> grain doctor</div>
-        </div>
+        <pre class="code-block install-code" id="install-cmd-linux" data-copy-text="curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash&#10;sudo apt-get install -y qemu-system qemu-utils&#10;grain doctor"><code><span class="line"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash</span>
+<span class="line"><span class="prompt">$</span> sudo apt-get install -y qemu-system qemu-utils   <span class="faint"># Debian/Ubuntu</span></span>
+<span class="line"><span class="prompt">$</span> grain doctor</span></code></pre>
         <p class="panel-note">On Fedora use <code>dnf install qemu-system-x86 qemu-img</code>. KVM improves performance when available.</p>
       </div>
 
       <div class="panel" data-panel="source" id="panel-source" hidden>
-        <div class="code-block" id="install-cmd-source">
-          <div><span class="prompt">$</span> go install github.com/cxdy/grain/cmd/grain@latest</div>
-          <div><span class="prompt">$</span> # or from a checkout:</div>
-          <div><span class="prompt">$</span> just build && just agent-linux && ./bin/grain doctor</div>
-        </div>
+        <pre class="code-block install-code" id="install-cmd-source" data-copy-text="go install github.com/cxdy/grain/cmd/grain@latest&#10;# or from a checkout:&#10;just build &amp;&amp; just agent-linux &amp;&amp; ./bin/grain doctor"><code><span class="line"><span class="prompt">$</span> go install github.com/cxdy/grain/cmd/grain@latest</span>
+<span class="line"><span class="prompt">$</span> <span class="faint"># or from a checkout:</span></span>
+<span class="line"><span class="prompt">$</span> just build &amp;&amp; just agent-linux &amp;&amp; ./bin/grain doctor</span></code></pre>
         <p class="panel-note">Requires Go 1.23+. Release binaries also ship on <a href="https://github.com/cxdy/grain/releases">GitHub Releases</a>.</p>
       </div>
     </div>
   </div>
 </section>
-
-<script>
-  /* Keep copy button targeting the visible panel’s code block */
-  document.addEventListener('DOMContentLoaded', function () {
-    var card = document.querySelector('#install[data-tabs]');
-    if (!card) return;
-    var btn = card.querySelector('[data-copy]');
-    card.querySelectorAll('[data-tab]').forEach(function (t) {
-      t.addEventListener('click', function () {
-        var id = t.getAttribute('data-tab');
-        var map = { macos: '#install-cmd-macos', linux: '#install-cmd-linux', source: '#install-cmd-source' };
-        if (btn && map[id]) btn.setAttribute('data-copy', map[id]);
-      });
-    });
-    btn && btn.setAttribute('data-copy', '#install-cmd-macos');
-  });
-</script>
 
 <section class="section home-demo" id="demo-section">
   <div class="wrap">
