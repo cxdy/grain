@@ -43,6 +43,16 @@ mount_driver: 9p             # 9p | virtiofs (virtiofs Linux-only when virtiofsd
 agent_transport: auto        # auto | tcp | vsock
 ```
 
+## Guest arch, GPU, network
+
+```yaml
+guest_arch: ""               # empty = host | arm64 | amd64 (x86_64 on Apple Silicon = QEMU TCG)
+gpu: ""                      # empty | virtio (virtio-gpu-pci)
+network: slirp               # slirp (isolated) | overlay (shared L2 between VMs on this host)
+```
+
+CLI: `grain new --arch amd64 --gpu virtio --network overlay`.
+
 ## Firecracker (experimental)
 
 ```yaml

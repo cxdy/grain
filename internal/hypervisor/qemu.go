@@ -45,9 +45,14 @@ func NewQEMURuntime(binary, dataDir string) *QEMURuntime {
 }
 
 func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath string) error {
-	bin, err := hostbin.LookPath(q.Binary)
+	guestArch := resolveGuestArch(inst.Arch)
+	binName := q.Binary
+	if binName == "" || guestArch != hostArch() {
+		binName = qemuBinaryForArch(guestArch)
+	}
+	bin, err := hostbin.LookPath(binName)
 	if err != nil {
-		return fmt.Errorf("%s not found — install qemu (brew install qemu) and ensure it is on PATH", q.Binary)
+		return fmt.Errorf("%s not found — install qemu (brew install qemu) and ensure it is on PATH", binName)
 	}
 
 	// Prefer qcow2 overlay next to requested path
@@ -77,7 +82,9 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	inst.AgentPort = agentPort
 
 	// Prefer virtio-vsock when host supports it; always keep TCP hostfwd as fallback.
-	transport := ResolveAgentTransport(q.AgentTransport, vhostVsockAvailable(q.VhostVsockPath))
+	// Cross-arch TCG guests: keep TCP only (vsock host device is host-native).
+	useVsock := guestArch == hostArch()
+	transport := ResolveAgentTransport(q.AgentTransport, useVsock && vhostVsockAvailable(q.VhostVsockPath))
 	if transport == AgentTransportVsock {
 		inst.AgentCID = AllocateGuestCID(inst.Name)
 	} else {
@@ -101,11 +108,12 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		driveFmt = "qcow2"
 	}
 
+	cross := guestArch != hostArch()
 	// -daemonize is incompatible with -nographic; use -display none instead.
 	args := []string{
 		"-name", inst.Name,
-		"-machine", machineType(),
-		"-cpu", cpuType(),
+		"-machine", machineTypeFor(guestArch, cross),
+		"-cpu", cpuTypeFor(guestArch, cross),
 		"-smp", strconv.Itoa(inst.CPUs),
 		"-m", strconv.Itoa(inst.MemoryMB),
 		"-drive", fmt.Sprintf("file=%s,if=virtio,format=%s,cache=writeback", diskPath, driveFmt),
@@ -115,6 +123,17 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		"-serial", "file:" + filepath.Join(vmDir, "serial.log"),
 		"-pidfile", pidFile,
 		"-qmp", "unix:"+qmpPath+",server,nowait",
+	}
+	// Shared L2 between grain VMs (multicast socket). Keeps SLIRP for hostfwd.
+	if strings.EqualFold(inst.Network, "overlay") {
+		args = append(args,
+			"-netdev", "socket,id=net1,mcast=230.0.0.1:4242",
+			"-device", "virtio-net-pci,netdev=net1",
+		)
+	}
+	// Virtio GPU (guest display backend; headless host still uses -display none).
+	if strings.EqualFold(inst.GPU, "virtio") {
+		args = append(args, "-device", "virtio-gpu-pci")
 	}
 	// Restore qcow2 internal snapshot taken at suspend (best-effort full memory state).
 	if tag := strings.TrimSpace(inst.LoadVM); tag != "" {
@@ -151,7 +170,7 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	}
 
 	// UEFI firmware for cloud images (aarch64 always; amd64 Ubuntu cloud prefers OVMF).
-	code, varsTemplate := findFirmware()
+	code, varsTemplate := findFirmwareFor(guestArch)
 	if code != "" {
 		vars := filepath.Join(vmDir, "flash-vars.fd")
 		if _, err := os.Stat(vars); err != nil {
@@ -391,21 +410,69 @@ func cleanupQEMUFiles(inst *vm.Instance) {
 
 
 
+func hostArch() string {
+	if runtime.GOARCH == "amd64" {
+		return "amd64"
+	}
+	return "arm64"
+}
+
+func resolveGuestArch(arch string) string {
+	a := strings.ToLower(strings.TrimSpace(arch))
+	switch a {
+	case "", "host", "native", "auto":
+		return hostArch()
+	case "arm64", "aarch64":
+		return "arm64"
+	case "amd64", "x86_64", "x86-64", "x64":
+		return "amd64"
+	default:
+		return hostArch()
+	}
+}
+
+func qemuBinaryForArch(guestArch string) string {
+	if guestArch == "amd64" {
+		return "qemu-system-x86_64"
+	}
+	return "qemu-system-aarch64"
+}
+
 func machineType() string {
-	if runtime.GOARCH == "arm64" {
-		if runtime.GOOS == "darwin" {
+	return machineTypeFor(hostArch(), false)
+}
+
+func machineTypeFor(guestArch string, cross bool) string {
+	if guestArch == "arm64" {
+		if !cross && runtime.GOOS == "darwin" {
 			return "virt,accel=hvf,highmem=on"
 		}
-		return "virt,accel=kvm:tcg"
+		if !cross && runtime.GOOS == "linux" {
+			return "virt,accel=kvm:tcg"
+		}
+		return "virt,accel=tcg,highmem=on"
 	}
-	if runtime.GOOS == "darwin" {
+	if !cross && runtime.GOOS == "darwin" {
 		return "q35,accel=hvf"
 	}
-	return "q35,accel=kvm:tcg"
+	if !cross && runtime.GOOS == "linux" {
+		return "q35,accel=kvm:tcg"
+	}
+	// Cross-arch (e.g. x86_64 guest on Apple Silicon): TCG, not Apple Rosetta.
+	return "q35,accel=tcg"
 }
 
 func cpuType() string {
-	// -cpu host requires KVM (Linux) or HVF (macOS). Fall back for pure TCG.
+	return cpuTypeFor(hostArch(), false)
+}
+
+func cpuTypeFor(guestArch string, cross bool) string {
+	if cross {
+		if guestArch == "amd64" {
+			return "qemu64"
+		}
+		return "max"
+	}
 	if runtime.GOOS == "linux" {
 		if st, err := os.Stat("/dev/kvm"); err != nil || st.Mode()&0o200 == 0 {
 			return "max"
@@ -414,11 +481,15 @@ func cpuType() string {
 	return "host"
 }
 
-// findFirmware returns UEFI code and vars templates for the host arch.
-// Cloud images (Ubuntu minimal) expect UEFI on both aarch64 and x86_64.
+// findFirmware returns UEFI for the host arch.
 func findFirmware() (code, vars string) {
+	return findFirmwareFor(hostArch())
+}
+
+// findFirmwareFor returns UEFI code and vars templates for the guest arch.
+func findFirmwareFor(guestArch string) (code, vars string) {
 	var codeCands, varsCands []string
-	switch runtime.GOARCH {
+	switch guestArch {
 	case "arm64":
 		codeCands = []string{
 			"/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
@@ -431,7 +502,7 @@ func findFirmware() (code, vars string) {
 			"/usr/local/share/qemu/edk2-arm-vars.fd",
 			"/usr/share/AAVMF/AAVMF_VARS.fd",
 		}
-	default: // amd64 and others
+	default: // amd64
 		codeCands = []string{
 			"/opt/homebrew/share/qemu/edk2-x86_64-code.fd",
 			"/usr/local/share/qemu/edk2-x86_64-code.fd",
@@ -442,7 +513,7 @@ func findFirmware() (code, vars string) {
 			"/usr/share/qemu/OVMF.fd",
 		}
 		varsCands = []string{
-			"/opt/homebrew/share/qemu/edk2-i386-vars.fd", // shared vars store used with x86_64 code on Homebrew
+			"/opt/homebrew/share/qemu/edk2-i386-vars.fd",
 			"/usr/local/share/qemu/edk2-i386-vars.fd",
 			"/usr/share/OVMF/OVMF_VARS_4M.fd",
 			"/usr/share/OVMF/OVMF_VARS.fd",

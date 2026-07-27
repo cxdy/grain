@@ -98,6 +98,14 @@ docs_nav:
         url: /guides/agent/
       - title: Networking & ports
         url: /guides/networking/
+      - title: Overlay network
+        url: /guides/networking-overlay/
+      - title: Guest architecture
+        url: /guides/multi-arch/
+      - title: Virtio GPU
+        url: /guides/gpu/
+      - title: Menu bar tray
+        url: /guides/tray/
       - title: Mounts & shares
         url: /guides/mounts/
       - title: Profiles & presets

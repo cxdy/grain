@@ -132,6 +132,36 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		return nil, err
 	}
 
+	archIn := strings.TrimSpace(opts.Arch)
+	if archIn == "" {
+		archIn = strings.TrimSpace(m.cfg.GuestArch)
+	}
+	arch, err := parseGuestArch(archIn)
+	if err != nil {
+		return nil, err
+	}
+
+	gpu := strings.TrimSpace(opts.GPU)
+	if gpu == "" {
+		gpu = strings.TrimSpace(m.cfg.GPU)
+	}
+	gpu = strings.ToLower(gpu)
+	if gpu != "" && gpu != "virtio" {
+		return nil, fmt.Errorf("unsupported gpu %q (want empty or virtio)", gpu)
+	}
+
+	network := strings.TrimSpace(opts.Network)
+	if network == "" {
+		network = strings.TrimSpace(m.cfg.Network)
+	}
+	if network == "" {
+		network = "slirp"
+	}
+	network = strings.ToLower(network)
+	if network != "slirp" && network != "overlay" {
+		return nil, fmt.Errorf("unsupported network %q (want slirp or overlay)", network)
+	}
+
 	inst := &vm.Instance{
 		Name:           name,
 		Status:         vm.StatusCreating,
@@ -140,6 +170,9 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		MemoryMB:       mem,
 		DiskGB:         diskGB,
 		Image:          img,
+		Arch:           arch,
+		GPU:            gpu,
+		Network:        network,
 		Tags:           opts.Tags,
 		Forwards:       fwds,
 		Mounts:         mounts,
@@ -1411,4 +1444,18 @@ func (m *Manager) checkResourceCaps(cpus, mem int, excludeName string) error {
 		return fmt.Errorf("resource cap: max_memory_mb_total is %d (already %d in use, requested %d)", cfg.MaxMemoryMBTotal, totalMem, mem)
 	}
 	return nil
+}
+
+// parseGuestArch maps user arch strings to arm64|amd64|"" (host default).
+func parseGuestArch(a string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(a)) {
+	case "", "host", "native", "auto":
+		return "", nil
+	case "arm64", "aarch64":
+		return "arm64", nil
+	case "amd64", "x86_64", "x86-64", "x64":
+		return "amd64", nil
+	default:
+		return "", fmt.Errorf("unsupported arch %q (want arm64, amd64, or empty for host)", a)
+	}
 }

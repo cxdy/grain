@@ -126,6 +126,9 @@ type createBody struct {
 	MemoryMB       int                `json:"memory_mb"`
 	DiskGB         int                `json:"disk_gb"`
 	Image          string             `json:"image"`
+	Arch           string             `json:"arch"`
+	GPU            string             `json:"gpu"`
+	Network        string             `json:"network"`
 	Tags           map[string]string  `json:"tags"`
 	Userdata       string             `json:"userdata"`
 	Forwards       []vm.PortForward   `json:"forwards"`
@@ -191,6 +194,9 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		MemoryMB:       body.MemoryMB,
 		DiskGB:         body.DiskGB,
 		Image:          body.Image,
+		Arch:           body.Arch,
+		GPU:            body.GPU,
+		Network:        body.Network,
 		Tags:           body.Tags,
 		Userdata:       body.Userdata,
 		Forwards:       body.Forwards,

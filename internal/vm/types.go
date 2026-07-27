@@ -76,7 +76,14 @@ type Instance struct {
 	SocketForwards []SocketForward `json:"socket_forwards,omitempty"`
 	// Mounts are host directories shared into the guest via virtio-9p.
 	Mounts    []Mount           `json:"mounts,omitempty"`
-	Tags      map[string]string `json:"tags,omitempty"`
+	// Arch is the guest ISA: arm64 | amd64 (empty = host arch).
+	// On Apple Silicon, amd64 runs under QEMU TCG (not Apple Rosetta).
+	Arch string `json:"arch,omitempty"`
+	// GPU selects guest display: "" (none/headless) or "virtio".
+	GPU string `json:"gpu,omitempty"`
+	// Network: ""|"slirp" (default isolation) or "overlay" (shared L2 between VMs).
+	Network string `json:"network,omitempty"`
+	Tags    map[string]string `json:"tags,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
 	// SuspendedAt is set when the VM is suspended (process stopped; disk retained).
 	SuspendedAt time.Time `json:"suspended_at,omitempty"`
@@ -117,6 +124,12 @@ type CreateOpts struct {
 	Mounts []Mount
 	// SocketForwards are optional host→guest Unix socket forwards at create time.
 	SocketForwards []SocketForward
+	// Arch is guest ISA (arm64|amd64); empty = host.
+	Arch string
+	// GPU is "" or "virtio".
+	GPU string
+	// Network is ""|"slirp" or "overlay".
+	Network string
 	// WaitMode selects readiness: ssh (default), agent, or userdata.
 	WaitMode string
 	// WaitTimeout overrides ReadyTimeout when > 0.

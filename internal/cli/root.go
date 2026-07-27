@@ -45,8 +45,12 @@ func Root(version string) *cobra.Command {
   grain new -v HOST:GUEST  share host dir via virtio-9p
   grain new --profile agent   named profile from config
   grain new --preset docker|k3s|act   userdata presets
+  grain new --arch amd64      x86_64 guest (QEMU TCG on Apple Silicon)
+  grain new --gpu virtio      virtio-gpu for the guest
+  grain new --network overlay share L2 between VMs
   grain new --wait agent      wait for agent (ssh|agent|userdata)
   grain act -- [act-args]     run GitHub Actions via act in a sandbox
+  grain tray                  menu bar / system tray control
   grain stop / start    stop or restart a persistent VM
   grain pause / resume  QMP freeze/unfreeze guest vCPUs
   grain suspend / restore  stop process (free RAM); restore from disk/snapshot
@@ -100,6 +104,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 		cmdImage(&cfgPath),
 		cmdAgent(&cfgPath),
 		cmdDoctor(&cfgPath),
+		cmdTray(&cfgPath, version),
 		cmdVersion(version),
 	)
 	return root
@@ -209,6 +214,9 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var name string
 	var cpus, mem, disk int
 	var image string
+	var arch string
+	var gpu string
+	var network string
 	var userdataFile string
 	var profileName string
 	var presetName string
@@ -327,6 +335,9 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				MemoryMB:       resolved.MemoryMB,
 				DiskGB:         resolved.DiskGB,
 				Image:          resolved.Image,
+				Arch:           arch,
+				GPU:            gpu,
+				Network:        network,
 				Tags:           tags,
 				Userdata:       userdata,
 				Forwards:       fwds,
@@ -367,6 +378,9 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().IntVarP(&mem, "mem", "m", 0, "memory MiB")
 	cmd.Flags().IntVarP(&disk, "disk", "d", 0, "disk GiB")
 	cmd.Flags().StringVarP(&image, "image", "i", "", "base image id (default from config)")
+	cmd.Flags().StringVar(&arch, "arch", "", "guest arch: arm64|amd64 (default: host; amd64 on Apple Silicon uses QEMU TCG)")
+	cmd.Flags().StringVar(&gpu, "gpu", "", "guest GPU: virtio (virtio-gpu-pci) or empty for none")
+	cmd.Flags().StringVar(&network, "network", "", "slirp (default, isolated) or overlay (shared L2 between VMs)")
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
 	cmd.Flags().StringVar(&profileName, "profile", "", "named profile from config (flags override profile)")
 	cmd.Flags().StringVar(&presetName, "preset", "", "userdata preset: docker, k3s, act (merged into cloud-init)")

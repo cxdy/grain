@@ -1,10 +1,9 @@
 ---
 title: "Product surface"
-description: "What grain implements and what is intentionally deferred."
+description: "What grain implements for local Linux microVM sandboxes."
 ---
 
-
-This documents grain’s local microVM product surface as of the Unreleased / v0.1 line. Competitor product names are intentionally omitted.
+grain’s local microVM product surface as of the v0.1 line.
 
 ## Complete for local sandboxes
 
@@ -22,19 +21,14 @@ This documents grain’s local microVM product surface as of the Unreleased / v0
 | Resource caps, profiles, presets | Done |
 | Egress proxy (default-deny + secret inject) | Done |
 | Go / TypeScript / Python SDKs + OpenAPI | Done |
-| Install script, recipes, bench script | Done |
+| Install script, recipes, create bench | Done |
+| Menu bar tray (`grain tray`) | Done (macOS / Linux) |
+| Guest arch selection (`--arch`, incl. x86_64 on Apple Silicon via QEMU) | Done |
+| Virtio GPU (`--gpu` / `gpu: virtio`) | Done |
+| Shared overlay network between VMs (`network: overlay`) | Done |
 | Firecracker backend | Experimental (Linux) |
 
-## Intentionally not built
-
-| Area | Reason |
-|------|--------|
-| Menu bar tray | Polish; not required for CLI/API parity |
-| Rosetta | Requires Apple Virtualization.framework path |
-| GPU passthrough | Niche; QEMU-only stretch |
-| Multi-node overlay networking | Single-node labs covered by presets |
-| Sub-300ms marketing | Use `scripts/bench-create.sh` on real hardware |
-| Windows / WSL host | Nested microVMs need real KVM/HVF; WSL2 nested virt is unreliable — remote API/SDK instead |
+**Platforms:** macOS and Linux hosts only. Windows / WSL are not supported (use the remote API/SDKs against a supported host).
 
 ## Quick verification
 
@@ -45,3 +39,15 @@ just build && just agent-linux
 # live (optional):
 # ./bin/grain up && ./bin/grain image pull grain-ubuntu && ./scripts/bench-create.sh
 ```
+
+## Create latency
+
+Measure on your hardware (numbers vary by image, wait mode, and host):
+
+```bash
+grain up
+grain image pull grain-ubuntu
+./scripts/bench-create.sh -n 5 --wait agent
+```
+
+Use the reported p50/p95 when talking about boot speed — do not invent sub-300ms claims without a local run.
