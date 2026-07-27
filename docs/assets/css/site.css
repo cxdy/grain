@@ -1,24 +1,26 @@
-/* grainvm.com — desert-night craft design system
-   Warm ink + sand gold + mint (from logo). Editorial display type,
-   utilitarian body, terminal mono. Less SaaS-pill, more material. */
+/* grainvm.com — ink + mint craft design system
+   Cool near-black ink, logo mint as primary, steel secondary.
+   Distinct from warm slate/sage stacks. Editorial display type,
+   utilitarian body, terminal mono. */
 :root,
 [data-theme="dark"] {
-  --bg: #100e0c;
-  --bg-elev: #1a1714;
-  --bg-soft: #221e19;
-  --border: #3a342c;
-  --text: #f3ebe0;
-  --muted: #a89a88;
-  --faint: #7a6e60;
+  --bg: #090c11;
+  --bg-elev: #10151c;
+  --bg-soft: #171d27;
+  --border: #2a3342;
+  --text: #e6edf5;
+  --muted: #8b9aaf;
+  --faint: #66758c;
   --brand: #3ddea8;
-  --brand-dim: #2aab80;
-  --brand-soft: rgba(61, 222, 168, 0.11);
-  --sand: #e2c98a;
-  --sand-dim: #c4a86a;
-  --sand-soft: rgba(226, 201, 138, 0.12);
-  --accent: #e2c98a;
-  --danger: #e87a72;
-  --code-bg: #0c0a09;
+  --brand-dim: #2bb890;
+  --brand-soft: rgba(61, 222, 168, 0.12);
+  /* secondary highlight (not sand/gold) */
+  --sand: #8ec8ff;
+  --sand-dim: #6aaddf;
+  --sand-soft: rgba(142, 200, 255, 0.12);
+  --accent: #8ec8ff;
+  --danger: #ff7b8a;
+  --code-bg: #070a0e;
   --shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
   --radius: 8px;
   --radius-lg: 12px;
@@ -29,23 +31,23 @@
 }
 
 [data-theme="light"] {
-  --bg: #f7f1e8;
-  --bg-elev: #fffcf7;
-  --bg-soft: #efe6d8;
-  --border: #d9cdba;
-  --text: #1c1814;
-  --muted: #5c5348;
-  --faint: #8a7f70;
-  --brand: #0c8f66;
-  --brand-dim: #0a7353;
-  --brand-soft: rgba(12, 143, 102, 0.1);
-  --sand: #9a7b3c;
-  --sand-dim: #7d6330;
-  --sand-soft: rgba(154, 123, 60, 0.1);
-  --accent: #9a7b3c;
-  --danger: #b53d38;
-  --code-bg: #ebe3d6;
-  --shadow: 0 16px 36px rgba(40, 28, 12, 0.08);
+  --bg: #f3f6fa;
+  --bg-elev: #ffffff;
+  --bg-soft: #e8eef5;
+  --border: #cfd9e6;
+  --text: #121820;
+  --muted: #4d5c70;
+  --faint: #738396;
+  --brand: #0b9a6a;
+  --brand-dim: #087a54;
+  --brand-soft: rgba(11, 154, 106, 0.1);
+  --sand: #1a6fd4;
+  --sand-dim: #1557a8;
+  --sand-soft: rgba(26, 111, 212, 0.1);
+  --accent: #1a6fd4;
+  --danger: #c43d4e;
+  --code-bg: #e8eef5;
+  --shadow: 0 16px 36px rgba(18, 28, 45, 0.08);
   color-scheme: light;
 }
 
@@ -67,26 +69,26 @@ body {
   color: var(--text);
   background-color: var(--bg);
   background-image:
-    radial-gradient(ellipse 900px 520px at 8% -8%, var(--sand-soft), transparent 58%),
-    radial-gradient(ellipse 700px 420px at 96% 4%, var(--brand-soft), transparent 52%);
+    radial-gradient(ellipse 900px 520px at 8% -8%, var(--brand-soft), transparent 58%),
+    radial-gradient(ellipse 700px 420px at 96% 4%, var(--sand-soft), transparent 52%);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Fine sand grain — subtle, not a filter gimmick */
+/* Fine film grain — subtle depth without warm desert cast */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 1000;
-  opacity: 0.035;
-  mix-blend-mode: overlay;
+  opacity: 0.028;
+  mix-blend-mode: soft-light;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 [data-theme="light"] body::before {
-  opacity: 0.045;
+  opacity: 0.035;
   mix-blend-mode: multiply;
 }
 
@@ -146,7 +148,7 @@ a:hover {
   height: 1.65rem;
   display: block;
   border-radius: 6px;
-  box-shadow: 0 0 0 2px var(--sand-soft);
+  box-shadow: 0 0 0 2px var(--brand-soft);
   background: var(--bg-soft);
 }
 
@@ -176,7 +178,7 @@ a:hover {
 
 .nav-main a[aria-current="page"] {
   color: var(--text);
-  border-bottom-color: var(--sand);
+  border-bottom-color: var(--brand);
 }
 
 .header-actions {
@@ -200,7 +202,7 @@ a:hover {
 }
 
 .theme-toggle:hover {
-  border-color: var(--sand-dim);
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--border));
   background: var(--bg-soft);
 }
 
@@ -254,7 +256,7 @@ a:hover {
 .btn-ghost:hover {
   background: var(--bg-soft);
   color: var(--text);
-  border-color: color-mix(in srgb, var(--sand) 40%, var(--border));
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
 }
 
 /* Home */
@@ -287,9 +289,9 @@ a:hover {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--sand);
-  background: var(--sand-soft);
-  border: 1px solid color-mix(in srgb, var(--sand) 28%, var(--border));
+  color: var(--brand);
+  background: var(--brand-soft);
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--border));
   border-radius: var(--radius);
   padding: 0.28rem 0.65rem;
   margin-bottom: 1.1rem;
@@ -309,7 +311,7 @@ a:hover {
 .hero h1 .hero-line2 {
   font-style: italic;
   font-weight: 500;
-  color: color-mix(in srgb, var(--text) 72%, var(--sand));
+  color: color-mix(in srgb, var(--text) 70%, var(--brand));
 }
 
 .hero-lead {
@@ -348,7 +350,7 @@ a:hover {
 .hero-wedges a {
   color: var(--text);
   text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--sand) 50%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--brand) 45%, var(--border));
   padding-bottom: 0.05rem;
 }
 
@@ -361,7 +363,7 @@ a:hover {
   font-family: var(--mono);
   font-weight: 500;
   font-size: 0.9em;
-  color: var(--sand);
+  color: var(--accent);
 }
 
 .hero-wedge-sep {
@@ -384,7 +386,7 @@ a:hover {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: linear-gradient(180deg, var(--sand), var(--brand));
+  background: linear-gradient(180deg, var(--brand), var(--accent));
 }
 
 .install-card-head {
@@ -475,7 +477,7 @@ a:hover {
 }
 
 .code-block .prompt {
-  color: var(--sand);
+  color: var(--brand);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -502,7 +504,7 @@ a:hover {
 
 .copy-btn:hover {
   color: var(--text);
-  border-color: var(--sand-dim);
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--border));
 }
 
 .panel-note {
@@ -548,7 +550,7 @@ a:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 1.2rem 1.2rem 1.25rem;
-  border-top: 2px solid color-mix(in srgb, var(--sand) 55%, var(--border));
+  border-top: 2px solid color-mix(in srgb, var(--brand) 50%, var(--border));
 }
 
 .step-num {
@@ -558,8 +560,8 @@ a:hover {
   height: 1.65rem;
   padding: 0 0.35rem;
   border-radius: var(--radius);
-  background: var(--sand-soft);
-  color: var(--sand);
+  background: var(--brand-soft);
+  color: var(--brand);
   font-family: var(--mono);
   font-weight: 600;
   font-size: 0.78rem;
@@ -620,7 +622,7 @@ a:hover {
 /* Homepage: act + k3s workload cards */
 .section-workloads {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--sand-soft) 55%, var(--bg)), var(--bg));
+    linear-gradient(180deg, color-mix(in srgb, var(--brand-soft) 45%, var(--bg)), var(--bg));
   border-block: 1px solid var(--border);
 }
 
@@ -654,8 +656,8 @@ a:hover {
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  background: linear-gradient(90deg, var(--sand), var(--brand));
-  opacity: 0.85;
+  background: linear-gradient(90deg, var(--brand), var(--accent));
+  opacity: 0.9;
 }
 
 .workload-label {
@@ -665,7 +667,7 @@ a:hover {
   font-family: var(--mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--sand);
+  color: var(--brand);
 }
 
 .workload-head h3 {
@@ -738,8 +740,8 @@ a:hover {
   border-radius: var(--radius-lg);
   padding: 1.85rem 1.75rem;
   background:
-    radial-gradient(520px 180px at 0% 0%, var(--sand-soft), transparent 62%),
-    radial-gradient(420px 160px at 100% 100%, var(--brand-soft), transparent 55%),
+    radial-gradient(520px 180px at 0% 0%, var(--brand-soft), transparent 62%),
+    radial-gradient(420px 160px at 100% 100%, var(--sand-soft), transparent 55%),
     var(--bg-elev);
   display: flex;
   flex-wrap: wrap;
@@ -1185,16 +1187,16 @@ body.search-open {
 
 /* Interactive sandbox demo — always-dark Terminal window */
 .sandbox-demo {
-  --term-bg: #0c0a09;
-  --term-bg-elev: #161311;
-  --term-bar: linear-gradient(180deg, #3d3630 0%, #2a2520 12%, #1c1916 100%);
-  --term-border: #3a342c;
-  --term-text: #efe6d8;
-  --term-dim: #8a7f70;
+  --term-bg: #070a0e;
+  --term-bg-elev: #10151c;
+  --term-bar: linear-gradient(180deg, #2e3848 0%, #1e2633 12%, #141a24 100%);
+  --term-border: #2a3342;
+  --term-text: #d7e0ec;
+  --term-dim: #6b7a90;
   --term-green: #3ddea8;
-  --term-cyan: #c4a86a;
-  --term-amber: #e2c98a;
-  --term-red: #e87a72;
+  --term-cyan: #8ec8ff;
+  --term-amber: #8ec8ff;
+  --term-red: #ff7b8a;
   margin: 0 0 1.5rem;
   border: 1px solid var(--term-border);
   border-radius: var(--radius-lg);
