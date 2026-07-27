@@ -1,0 +1,33 @@
+<section class="sandbox-demo" id="demo" data-sandbox-demo aria-label="Interactive grain demo">
+  <div class="demo-chrome">
+    <div class="demo-chrome-dots" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <div class="demo-chrome-title">grain · interactive demo</div>
+    <div class="demo-chrome-actions">
+      <button type="button" class="demo-btn" data-demo-restart title="Restart demo">↻</button>
+    </div>
+  </div>
+
+  <div class="demo-body">
+    <div class="demo-sidebar">
+      <p class="demo-sidebar-label">Walkthrough</p>
+      <ol class="demo-steps" data-demo-steps></ol>
+      <p class="demo-hint" data-demo-hint></p>
+      <div class="demo-controls">
+        <button type="button" class="btn btn-sm btn-ghost" data-demo-skip>Skip step</button>
+        <button type="button" class="btn btn-sm btn-primary" data-demo-next>Run step →</button>
+      </div>
+      <p class="demo-footnote muted">Simulated terminal — nothing runs on your machine. Try the real flow after <a href="{{ '/get-started/install/' | relative_url }}">install</a>.</p>
+    </div>
+    <div class="demo-term-wrap">
+      <div class="demo-term" data-demo-term tabindex="0" role="log" aria-live="polite" aria-relevant="additions">
+        <div class="demo-term-scroll" data-demo-output></div>
+        <div class="demo-input-line" data-demo-input-line>
+          <span class="demo-prompt" data-demo-prompt>$</span>
+          <input type="text" class="demo-input" data-demo-input autocomplete="off" spellcheck="false" aria-label="Demo terminal input" />
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

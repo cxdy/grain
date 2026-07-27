@@ -927,3 +927,279 @@ body.search-open {
   margin-bottom: 0.85rem;
   box-shadow: 0 0 0 4px var(--brand-soft);
 }
+
+/* Interactive sandbox demo */
+.sandbox-demo {
+  margin: 0 0 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.demo-chrome {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.demo-chrome-dots {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.demo-chrome-dots span {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.demo-chrome-dots span:nth-child(1) {
+  background: #ff7b8a;
+}
+.demo-chrome-dots span:nth-child(2) {
+  background: #e2c98a;
+}
+.demo-chrome-dots span:nth-child(3) {
+  background: #3ddea8;
+}
+
+.demo-chrome-title {
+  flex: 1;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+}
+
+.demo-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--muted);
+  border-radius: 8px;
+  width: 2rem;
+  height: 1.75rem;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.demo-btn:hover {
+  color: var(--text);
+}
+
+.demo-body {
+  display: grid;
+  gap: 0;
+}
+
+@media (min-width: 860px) {
+  .demo-body {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+}
+
+.demo-sidebar {
+  padding: 1rem 1.1rem 1.15rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-soft) 70%, var(--bg-elev));
+}
+
+@media (min-width: 860px) {
+  .demo-sidebar {
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+  }
+}
+
+.demo-sidebar-label {
+  margin: 0 0 0.55rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  font-weight: 700;
+}
+
+.demo-steps {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.demo-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0.35rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.demo-steps li.current {
+  background: var(--brand-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.demo-steps li.done {
+  color: var(--faint);
+}
+
+.demo-step-idx {
+  display: inline-grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.demo-steps li.current .demo-step-idx {
+  background: var(--brand);
+  border-color: transparent;
+  color: #042018;
+}
+
+.demo-steps li.done .demo-step-idx {
+  background: transparent;
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--border));
+}
+
+.demo-hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+  min-height: 2.6em;
+}
+
+.demo-hint a {
+  font-weight: 600;
+}
+
+.demo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.demo-footnote {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.demo-term-wrap {
+  min-width: 0;
+  background: var(--code-bg);
+}
+
+.demo-term {
+  min-height: 280px;
+  max-height: 380px;
+  overflow: auto;
+  padding: 0.9rem 1rem 1rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  outline: none;
+}
+
+.demo-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.demo-line.dim {
+  color: var(--faint);
+}
+
+.demo-line.ok {
+  color: var(--brand);
+}
+
+.demo-line.warn {
+  color: #e2c98a;
+}
+
+.demo-line.out {
+  color: var(--text);
+}
+
+.demo-line.echo {
+  color: var(--muted);
+}
+
+.demo-echo-prompt {
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.demo-input-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+}
+
+.demo-prompt {
+  color: var(--brand);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.demo-input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  min-width: 0;
+  caret-color: var(--brand);
+}
+
+.demo-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.demo-section-head h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  letter-spacing: -0.03em;
+}
+
+.home-demo {
+  padding: 0 0 1rem;
+}
+
+/* Demo inside docs article — full bleed within prose card */
+.docs-content .sandbox-demo-embed {
+  margin: 0 0 1.5rem;
+}
+
+.docs-content .sandbox-demo {
+  margin: 0;
+}
+
+.docs-content .demo-term {
+  max-height: 320px;
+}

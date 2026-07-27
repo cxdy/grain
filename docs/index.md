@@ -16,7 +16,8 @@ description: grain runs disposable Linux sandboxes locally — install in one co
       </p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#install">Install grain</a>
-        <a class="btn btn-ghost" href="{{ '/get-started/first-sandbox/' | relative_url }}">First sandbox tutorial</a>
+        <a class="btn btn-ghost" href="#demo">Try interactive demo</a>
+        <a class="btn btn-ghost" href="{{ '/get-started/first-sandbox/' | relative_url }}">Full tutorial</a>
       </div>
       <p class="hero-meta">macOS Apple Silicon &amp; Linux · QEMU · optional Firecracker · Go &amp; TypeScript SDKs</p>
     </div>
@@ -78,6 +79,19 @@ description: grain runs disposable Linux sandboxes locally — install in one co
     btn && btn.setAttribute('data-copy', '#install-cmd-macos');
   });
 </script>
+
+<section class="section home-demo" id="demo-section">
+  <div class="wrap">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="section-title">Try it: install → shell</h2>
+        <p class="section-lead" style="margin-bottom:0">A guided simulation of the first-sandbox path. Type commands or click <strong>Run step</strong>.</p>
+      </div>
+      <a class="btn btn-sm btn-ghost" href="{{ '/get-started/first-sandbox/' | relative_url }}">Open full tutorial →</a>
+    </div>
+    {% include sandbox-demo.html %}
+  </div>
+</section>
 
 <section class="section">
   <div class="wrap">

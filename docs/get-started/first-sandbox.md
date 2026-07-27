@@ -1,11 +1,24 @@
 ---
 title: Your first sandbox
-description: Start the grain daemon, pull a base image, create a VM, and open a shell.
+description: Start the grain daemon, pull a base image, create a VM, and open a shell — with an interactive demo.
+sandbox_demo: true
 ---
 
-By the end of this lesson you will have a running Linux microVM and a working shell session.
+By the end of this lesson you will understand the real commands to run a Linux microVM and open a shell. Prefer the **interactive demo** first, then run the same steps on your machine.
 
-## 1. Start the daemon
+## Interactive demo
+
+Simulated terminal — nothing runs on your computer. Type the suggested commands or click **Run step**. After `grain sh`, try guest commands like `uname -a`, then `exit`.
+
+<div class="sandbox-demo-embed">
+{% include sandbox-demo.html %}
+</div>
+
+---
+
+## Do it for real
+
+### 1. Start the daemon
 
 ```bash
 grain up
@@ -20,7 +33,7 @@ grain ls
 # no vms — create one:  grain new
 ```
 
-## 2. Pull a base image (once)
+### 2. Pull a base image (once)
 
 Prefer the golden image with the guest agent baked in:
 
@@ -40,7 +53,7 @@ List what you have:
 grain image ls
 ```
 
-## 3. Create a sandbox
+### 3. Create a sandbox
 
 ```bash
 grain new
@@ -63,7 +76,7 @@ Useful flags later:
 | `-v $PWD:/work` | Share a host directory |
 | `--wait agent` | Fail create if agent never becomes healthy |
 
-## 4. Open a shell
+### 4. Open a shell
 
 ```bash
 grain sh
@@ -77,7 +90,7 @@ Run a non-interactive command:
 grain x -- uname -a
 ```
 
-## 5. Clean up
+### 5. Clean up
 
 ```bash
 grain rm          # or: grain stop  (ephemeral VMs are deleted on stop)
