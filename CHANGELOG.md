@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Community docs** — [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md); site page [get-started/contributing](https://grainvm.com/get-started/contributing/); maintainer [docs/RELEASE.md](docs/RELEASE.md) (v0.1.0 checklist).
 - **`grain act`** — run [nektos/act](https://github.com/nektos/act) inside an ephemeral microVM (`--preset act`: Docker Engine + act); mounts the project at `/work`, waits for docker/act, streams the run, deletes the sandbox unless `--keep`. Recipe: [guides/recipes/act](https://grainvm.com/guides/recipes/act/).
 - **Python client SDK** — `sdk/python` (`cxdy-grain`, `import grain`); stdlib-only TCP/Unix socket client with create/stream, exec, lifecycle, forwards, and guest fs/cp. Docs: [reference/python-sdk](https://grainvm.com/reference/python-sdk/).
 - **Guest agent (`grain-agent`)** — in-guest HTTP server for health, streaming/buffered exec, interactive shell (PTY), file copy, filesystem ops, stats, and secret materialization; deploy over SSH when missing; optional vsock transport with TCP hostfwd fallback.

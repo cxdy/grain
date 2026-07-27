@@ -13,7 +13,9 @@ kramdown:
 
 permalink: pretty
 # Keep CNAME in the site root for grainvm.com custom domain.
-exclude: []
+# RELEASE.md is maintainer-facing (GitHub); not a Jekyll docs page.
+exclude:
+  - RELEASE.md
 
 defaults:
   - scope:
@@ -64,6 +66,8 @@ docs_nav:
         url: /get-started/first-sandbox/
       - title: Core concepts
         url: /get-started/concepts/
+      - title: Contributing
+        url: /get-started/contributing/
   guides:
     title: Guides
     links:

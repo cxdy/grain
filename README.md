@@ -322,6 +322,16 @@ out = grain.exec(inst.name, "uname", ["-a"])
 
 See [`sdk/python/README.md`](sdk/python/README.md) and [grainvm.com/reference/python-sdk](https://grainvm.com/reference/python-sdk/).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, coding norms, and PR expectations.
+
+- **Platforms:** macOS and Linux only (not Windows/WSL)
+- **Tests:** `make test` (mock hypervisor), `make smoke-api`
+- **Doctor:** `grain doctor` after install; full docs at [grainvm.com](https://grainvm.com)
+- **Security:** [SECURITY.md](SECURITY.md) · **Conduct:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- **v0.1 release checklist:** [docs/RELEASE.md](docs/RELEASE.md)
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
