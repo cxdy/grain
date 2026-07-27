@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.1.4] - 2026-07-27
+
+### Fixed
+
+- **`grain act`** no longer dies on first job run waiting for act’s interactive Large/Medium/Micro image prompt. The act preset and `grain act` seed a non-interactive `actrc` (medium-class `catthehacker/ubuntu` images).
+
 ## [0.1.3] - 2026-07-27
 
 ### Fixed

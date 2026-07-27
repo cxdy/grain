@@ -221,7 +221,13 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 
 	// Guest agent exec has a minimal env (no login shell). act requires HOME;
 	// docker/act may live under /usr/local/bin.
-	shellCmd := "export HOME=\"${HOME:-/home/ubuntu}\" PATH=\"/usr/local/bin:/usr/bin:/bin:$PATH\"; cd /work && act " + shellJoin(actArgs)
+	// Seed actrc so first-run act does not prompt for Large/Medium/Micro (EOF under agent).
+	shellCmd := strings.Join([]string{
+		`export HOME="${HOME:-/home/ubuntu}" PATH="/usr/local/bin:/usr/bin:/bin:$PATH"`,
+		`mkdir -p "$HOME/.config/act"`,
+		`if [ ! -s "$HOME/.config/act/actrc" ]; then printf '%s\n' '-P ubuntu-latest=catthehacker/ubuntu:act-latest' '-P ubuntu-24.04=catthehacker/ubuntu:act-latest' '-P ubuntu-22.04=catthehacker/ubuntu:act-22.04' '-P ubuntu-20.04=catthehacker/ubuntu:act-20.04' > "$HOME/.config/act/actrc"; fi`,
+		`cd /work && act ` + shellJoin(actArgs),
+	}, "; ")
 	fmt.Fprintf(os.Stderr, "grain act  exec: %s\n", shellCmd)
 
 	execCtx, execCancel := context.WithTimeout(context.Background(), time.Until(readyDeadline))

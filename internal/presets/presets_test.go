@@ -36,6 +36,9 @@ func TestGetDockerK3sActNonEmpty(t *testing.T) {
 	if !strings.Contains(act, "nektos/act") && !strings.Contains(act, "/usr/local/bin") {
 		t.Fatalf("act preset should install act:\n%s", act)
 	}
+	if !strings.Contains(act, "actrc") {
+		t.Fatalf("act preset should seed actrc for non-interactive runs:\n%s", act)
+	}
 }
 
 func TestGetUnknown(t *testing.T) {

@@ -12,4 +12,6 @@ runcmd:
   - [ sh, -c, "usermod -aG docker grain 2>/dev/null || true" ]
   # Official install script → /usr/local/bin/act
   - [ sh, -c, "curl -fsSL https://raw.githubusercontent.com/nektos/act/master/install.sh | bash -s -- -b /usr/local/bin" ]
+  # Non-interactive defaults: first-run act otherwise prompts for Large/Medium/Micro.
+  - [ sh, -c, "mkdir -p /home/ubuntu/.config/act /root/.config/act && printf '%s\\n' '-P ubuntu-latest=catthehacker/ubuntu:act-latest' '-P ubuntu-24.04=catthehacker/ubuntu:act-latest' '-P ubuntu-22.04=catthehacker/ubuntu:act-22.04' '-P ubuntu-20.04=catthehacker/ubuntu:act-20.04' | tee /home/ubuntu/.config/act/actrc /root/.config/act/actrc >/dev/null && chown -R ubuntu:ubuntu /home/ubuntu/.config 2>/dev/null || true" ]
   - [ sh, -c, "mkdir -p /var/lib/grain && touch /var/lib/grain/userdata-ran" ]

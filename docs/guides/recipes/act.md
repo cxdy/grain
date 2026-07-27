@@ -31,7 +31,7 @@ From the repository root:
 # List workflows / jobs (default if no args)
 grain act -- -l
 
-# Run a job
+# Run a job (first run pulls a ~500MB act runner image; non-interactive)
 grain act -- -j test
 
 # Specific workflow file
@@ -42,6 +42,8 @@ grain act --keep -- -j build
 ```
 
 **Always put act flags after `--`** so the grain CLI does not consume them.
+
+grain seeds `~/.config/act/actrc` in the sandbox so act does not prompt for Large/Medium/Micro image size.
 
 ## Flags (grain)
 
