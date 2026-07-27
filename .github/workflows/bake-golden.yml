@@ -62,19 +62,20 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install QEMU
+      - name: Install QEMU + OVMF + ISO tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 qemu-utils
+          # OVMF: Ubuntu cloud images need UEFI. genisoimage/xorriso: cloud-init seed on Linux.
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils ovmf genisoimage
           qemu-system-x86_64 --version | head -1
           qemu-img --version | head -1
+          ls -la /usr/share/OVMF/ 2>/dev/null | head -20 || true
           if [[ -e /dev/kvm ]]; then
             echo "KVM: /dev/kvm present"
             ls -l /dev/kvm
-            # ensure runner user can use KVM when the device exists
             sudo chmod 666 /dev/kvm 2>/dev/null || true
           else
-            echo "::warning::/dev/kvm missing — bake may fail (grain -cpu host needs KVM). See docs/images.md"
+            echo "::warning::/dev/kvm missing — bake may be slow (TCG) or fail. See docs/images.md"
           fi
 
       - name: Build grain + agent-linux

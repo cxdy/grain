@@ -149,27 +149,24 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		args = append(args, "-device", fmt.Sprintf("vhost-vsock-pci,guest-cid=%d", inst.AgentCID))
 	}
 
-	// UEFI firmware for aarch64 cloud images
-	if runtime.GOARCH == "arm64" {
-		code, varsTemplate := findEDK()
-		if code != "" {
-			vars := filepath.Join(vmDir, "flash-vars.fd")
-			if _, err := os.Stat(vars); err != nil {
-				// copy template or create empty 64MiB vars store
-				if varsTemplate != "" {
-					if err := copyFile(varsTemplate, vars); err != nil {
-						// fall back to empty
-						_ = truncateFile(vars, 64*1024*1024)
-					}
-				} else {
+	// UEFI firmware for cloud images (aarch64 always; amd64 Ubuntu cloud prefers OVMF).
+	code, varsTemplate := findFirmware()
+	if code != "" {
+		vars := filepath.Join(vmDir, "flash-vars.fd")
+		if _, err := os.Stat(vars); err != nil {
+			// copy template or create empty 64MiB vars store
+			if varsTemplate != "" {
+				if err := copyFile(varsTemplate, vars); err != nil {
 					_ = truncateFile(vars, 64*1024*1024)
 				}
+			} else {
+				_ = truncateFile(vars, 64*1024*1024)
 			}
-			args = append(args,
-				"-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", code),
-				"-drive", fmt.Sprintf("if=pflash,format=raw,file=%s", vars),
-			)
 		}
+		args = append(args,
+			"-drive", fmt.Sprintf("if=pflash,format=raw,readonly=on,file=%s", code),
+			"-drive", fmt.Sprintf("if=pflash,format=raw,file=%s", vars),
+		)
 	}
 
 	cmd := exec.CommandContext(ctx, bin, args...)
@@ -179,11 +176,22 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		if driver == MountDriverVirtioFS {
 			StopVirtiofsDaemons(vmDir)
 		}
-		// include serial tail if any
+		// Include qemu log tail (args/errors often only land here).
+		qlog, _ := os.ReadFile(logPath)
+		qextra := strings.TrimSpace(string(qlog))
+		if len(qextra) > 800 {
+			qextra = qextra[len(qextra)-800:]
+		}
 		serial, _ := os.ReadFile(filepath.Join(vmDir, "serial.log"))
 		extra := strings.TrimSpace(string(serial))
 		if len(extra) > 500 {
 			extra = extra[len(extra)-500:]
+		}
+		if qextra != "" && extra != "" {
+			return fmt.Errorf("qemu: %w (see %s)\nqemu log: %s\nserial: %s", err, logPath, qextra, extra)
+		}
+		if qextra != "" {
+			return fmt.Errorf("qemu: %w (see %s)\nqemu log: %s", err, logPath, qextra)
 		}
 		if extra != "" {
 			return fmt.Errorf("qemu: %w (see %s)\nserial: %s", err, logPath, extra)
@@ -396,20 +404,50 @@ func machineType() string {
 }
 
 func cpuType() string {
+	// -cpu host requires KVM (Linux) or HVF (macOS). Fall back for pure TCG.
+	if runtime.GOOS == "linux" {
+		if st, err := os.Stat("/dev/kvm"); err != nil || st.Mode()&0o200 == 0 {
+			return "max"
+		}
+	}
 	return "host"
 }
 
-func findEDK() (code, vars string) {
-	codeCands := []string{
-		"/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
-		"/usr/local/share/qemu/edk2-aarch64-code.fd",
-		"/usr/share/AAVMF/AAVMF_CODE.fd",
-		"/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
-	}
-	varsCands := []string{
-		"/opt/homebrew/share/qemu/edk2-arm-vars.fd",
-		"/usr/local/share/qemu/edk2-arm-vars.fd",
-		"/usr/share/AAVMF/AAVMF_VARS.fd",
+// findFirmware returns UEFI code and vars templates for the host arch.
+// Cloud images (Ubuntu minimal) expect UEFI on both aarch64 and x86_64.
+func findFirmware() (code, vars string) {
+	var codeCands, varsCands []string
+	switch runtime.GOARCH {
+	case "arm64":
+		codeCands = []string{
+			"/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+			"/usr/local/share/qemu/edk2-aarch64-code.fd",
+			"/usr/share/AAVMF/AAVMF_CODE.fd",
+			"/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+		}
+		varsCands = []string{
+			"/opt/homebrew/share/qemu/edk2-arm-vars.fd",
+			"/usr/local/share/qemu/edk2-arm-vars.fd",
+			"/usr/share/AAVMF/AAVMF_VARS.fd",
+		}
+	default: // amd64 and others
+		codeCands = []string{
+			"/opt/homebrew/share/qemu/edk2-x86_64-code.fd",
+			"/usr/local/share/qemu/edk2-x86_64-code.fd",
+			"/usr/share/OVMF/OVMF_CODE_4M.fd",
+			"/usr/share/OVMF/OVMF_CODE.fd",
+			"/usr/share/edk2/ovmf/OVMF_CODE.fd",
+			"/usr/share/edk2-ovmf/x64/OVMF_CODE.fd",
+			"/usr/share/qemu/OVMF.fd",
+		}
+		varsCands = []string{
+			"/opt/homebrew/share/qemu/edk2-i386-vars.fd", // shared vars store used with x86_64 code on Homebrew
+			"/usr/local/share/qemu/edk2-i386-vars.fd",
+			"/usr/share/OVMF/OVMF_VARS_4M.fd",
+			"/usr/share/OVMF/OVMF_VARS.fd",
+			"/usr/share/edk2/ovmf/OVMF_VARS.fd",
+			"/usr/share/edk2-ovmf/x64/OVMF_VARS.fd",
+		}
 	}
 	for _, p := range codeCands {
 		if _, err := os.Stat(p); err == nil {
@@ -424,6 +462,11 @@ func findEDK() (code, vars string) {
 		}
 	}
 	return code, vars
+}
+
+// findEDK is kept as an alias for older call sites/tests.
+func findEDK() (code, vars string) {
+	return findFirmware()
 }
 
 func truncateFile(path string, size int64) error {
