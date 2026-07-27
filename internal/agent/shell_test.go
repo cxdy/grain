@@ -1,4 +1,4 @@
-package agent_test
+package agent
 
 import (
 	"context"
@@ -9,17 +9,15 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/cxdy/grain/internal/agent"
 )
 
 func TestShellControlResizeJSON(t *testing.T) {
-	ctrl := agent.ShellControl{Type: "resize", Cols: 120, Rows: 40}
+	ctrl := ShellControl{Type: "resize", Cols: 120, Rows: 40}
 	b, err := json.Marshal(ctrl)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got agent.ShellControl
+	var got ShellControl
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +70,7 @@ func TestShellClientDialNonLinux(t *testing.T) {
 	c := startTestServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	err := c.Shell(ctx, agent.ShellOpts{
+	err := c.Shell(ctx, ShellOpts{
 		Cols: 80, Rows: 24,
 		Stdin:  strings.NewReader(""),
 		Stdout: io.Discard,

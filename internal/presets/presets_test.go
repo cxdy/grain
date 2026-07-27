@@ -114,3 +114,112 @@ func TestNeedsAPIServerPort(t *testing.T) {
 		t.Fatal("act should not force 6443")
 	}
 }
+
+func TestGetAndListAndResources(t *testing.T) {
+	t.Parallel()
+	if _, err := presets.Get(""); err == nil {
+		t.Fatal("empty")
+	}
+	if _, err := presets.Get("../etc/passwd"); err == nil {
+		t.Fatal("path")
+	}
+	if _, err := presets.Get("nope-xyz"); err == nil {
+		t.Fatal("unknown")
+	}
+	for _, name := range []string{"docker", "k3s", "act"} {
+		s, err := presets.Get(name)
+		if err != nil || s == "" {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if s[len(s)-1] != '\n' {
+			t.Fatalf("%s missing trailing newline", name)
+		}
+	}
+	list := presets.List()
+	if len(list) < 3 {
+		t.Fatalf("%v", list)
+	}
+	// preferred order
+	if list[0] != "docker" {
+		t.Fatalf("order %v", list)
+	}
+	cpus, mem := presets.DefaultResources("k3s")
+	if cpus == 0 || mem == 0 {
+		t.Fatal(cpus, mem)
+	}
+	cpus, mem = presets.DefaultResources("act")
+	if cpus == 0 || mem == 0 {
+		t.Fatal(cpus, mem)
+	}
+	cpus, mem = presets.DefaultResources("docker")
+	if cpus != 0 || mem != 0 {
+		t.Fatal(cpus, mem)
+	}
+	if !presets.NeedsAPIServerPort("k3s") {
+		t.Fatal("k3s")
+	}
+	if presets.NeedsAPIServerPort("act") {
+		t.Fatal("act")
+	}
+}
+
+func TestGetPathTricksRejected(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"../etc/passwd", "a/b", "x\\y", "foo.bar", "docker/../k3s"} {
+		_, err := presets.Get(name)
+		if err == nil {
+			t.Fatalf("expected reject for %q", name)
+		}
+	}
+}
+
+func TestGetCaseAndSpaceNormalize(t *testing.T) {
+	t.Parallel()
+	ud, err := presets.Get("  Docker  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ud, "#cloud-config") {
+		t.Fatalf("%s", ud)
+	}
+	ud2, err := presets.Get("K3S")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ud2, "k3s") {
+		t.Fatalf("%s", ud2)
+	}
+}
+
+func TestDefaultResourcesAndNeedsPortWhitespace(t *testing.T) {
+	t.Parallel()
+	c, m := presets.DefaultResources("  ACT ")
+	if c != 2 || m != 4096 {
+		t.Fatalf("%d %d", c, m)
+	}
+	c, m = presets.DefaultResources("")
+	if c != 0 || m != 0 {
+		t.Fatalf("%d %d", c, m)
+	}
+	if !presets.NeedsAPIServerPort("  K3s ") {
+		t.Fatal("k3s whitespace")
+	}
+	if presets.NeedsAPIServerPort("  ") {
+		t.Fatal("empty")
+	}
+}
+
+func TestListStablePreferredOrder(t *testing.T) {
+	t.Parallel()
+	// Call twice — order stable
+	a := presets.List()
+	b := presets.List()
+	if len(a) != len(b) {
+		t.Fatalf("%v vs %v", a, b)
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("order drift %v vs %v", a, b)
+		}
+	}
+}

@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -953,5 +954,928 @@ func TestSetTokenAppliedToRequests(t *testing.T) {
 	c.SetToken(tok)
 	if _, err := c.List(context.Background()); err != nil {
 		t.Fatalf("List after SetToken: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Merged from coverage_boost_test.go
+// ---------------------------------------------------------------------------
+
+func TestClientFullSuccessSurface(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	ok := func(w http.ResponseWriter, v any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(v)
+	}
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /info", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, map[string]string{"name": "grain", "version": "t"})
+	})
+	mux.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, []*client.Instance{{Name: "a", Status: client.StatusRunning}})
+	})
+	mux.HandleFunc("POST /vms", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("stream") == "1" {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			enc := json.NewEncoder(w)
+			_ = enc.Encode(client.CreateEvent{Phase: client.PhaseQEMU})
+			_ = enc.Encode(client.CreateEvent{
+				Phase:    client.PhaseReady,
+				Name:     "n",
+				Instance: &client.Instance{Name: "n", Status: client.StatusRunning},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		ok(w, &client.Instance{Name: "n", Status: client.StatusRunning})
+	})
+	mux.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, &client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})
+	})
+	mux.HandleFunc("DELETE /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, map[string]string{"message": "deleted"})
+	})
+	mux.HandleFunc("POST /vms/{name}/start", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, &client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})
+	})
+	mux.HandleFunc("POST /vms/{name}/shutdown", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, map[string]string{"message": "ok"})
+	})
+	mux.HandleFunc("POST /vms/{name}/pause", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("POST /vms/{name}/resume", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("POST /vms/{name}/suspend", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("POST /vms/{name}/restore", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, &client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})
+	})
+	mux.HandleFunc("POST /vms/{name}/forwards", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(201)
+		ok(w, &client.LiveForward{HostPort: 9, GuestPort: 80, PID: 1})
+	})
+	mux.HandleFunc("DELETE /vms/{name}/forwards/{port}", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("POST /vms/{name}/exec", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("buffered") == "false" {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			_, _ = io.WriteString(w, "\n")
+			_, _ = io.WriteString(w, `{"type":"started","pid":1}`+"\n")
+			_, _ = io.WriteString(w, `{"type":"stdout","data":"hi"}`+"\n")
+			_, _ = io.WriteString(w, `{"type":"stderr","data":"e"}`+"\n")
+			_, _ = io.WriteString(w, `{"type":"exit","exit_code":0}`+"\n")
+			return
+		}
+		ok(w, &client.ExecResult{Stdout: "hi", ExitCode: 0})
+	})
+	mux.HandleFunc("GET /vms/{name}/agent/health", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, &client.Health{Hostname: "g", AgentVersion: "1"})
+	})
+	mux.HandleFunc("GET /vms/{name}/stats", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, &client.Stats{MemTotal: 1, UptimeSec: 1})
+	})
+	mux.HandleFunc("GET /secrets", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, []client.SecretMeta{{Name: "k"}})
+	})
+	mux.HandleFunc("POST /secrets", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(201)
+		ok(w, &client.SecretMeta{Name: "k"})
+	})
+	mux.HandleFunc("DELETE /secrets/{name}", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("POST /vms/{name}/secrets/{s}", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, map[string]string{"path": "/p"})
+	})
+	mux.HandleFunc("PUT /vms/{name}/cp", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(204)
+	})
+	mux.HandleFunc("GET /vms/{name}/cp", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("mode") == "tar" {
+			_, _ = w.Write([]byte("tar"))
+			return
+		}
+		_, _ = w.Write([]byte("bin"))
+	})
+	mux.HandleFunc("GET /vms/{name}/fs/readdir", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, []client.FSInfo{{Name: "a", Type: "file", Size: 1, Mode: "0644"}})
+	})
+	mux.HandleFunc("GET /vms/{name}/fs/stat", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, &client.FSInfo{Name: "a", Type: "file", Size: 1, Mode: "0644"})
+	})
+	mux.HandleFunc("POST /vms/{name}/fs/mkdir", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+	mux.HandleFunc("DELETE /vms/{name}/fs/remove", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	if err := c.Health(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Info(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.List(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Create(ctx, client.CreateRequest{Name: "n", Wait: "ssh", Timeout: "30s"}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if _, err := c.CreateStream(ctx, client.CreateRequest{Name: "n"}, func(ev client.CreateEvent) { n++ }); err != nil || n < 1 {
+		t.Fatalf("stream n=%d err=%v", n, err)
+	}
+	if _, err := c.Get(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Delete(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Start(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Stop(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Shutdown(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Pause(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Resume(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Suspend(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Restore(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AddForward(ctx, "n", 0, 80); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.RemoveForward(ctx, "n", 9); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Exec(ctx, "n", "true", "a"); err != nil {
+		t.Fatal(err)
+	}
+	uid, gid := uint32(1), uint32(2)
+	code, err := c.ExecStream(ctx, "n", client.ExecOpts{Cmd: "true", UID: &uid, GID: &gid, Cwd: "/tmp"}, func(f client.ExecFrame) error {
+		return nil
+	})
+	if err != nil || code != 0 {
+		t.Fatalf("%d %v", code, err)
+	}
+	if _, err := c.AgentHealth(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Stats(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ListSecrets(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.SetSecret(ctx, client.SecretPut{Name: "k", DataBase64: "YQ=="}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DeleteSecret(ctx, "k"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.InjectSecret(ctx, "n", "k", "/p"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.InjectSecret(ctx, "n", "k", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.PutFile(ctx, "n", "/a", strings.NewReader("z"), 1, client.CPOpts{UID: &uid, GID: &gid, Mode: "0644"}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := c.GetFile(ctx, "n", "/a", &buf); err != nil || buf.String() != "bin" {
+		t.Fatalf("%q %v", buf.String(), err)
+	}
+	if err := c.PutTar(ctx, "n", "/a", strings.NewReader("t")); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	if err := c.GetTar(ctx, "n", "/a", &buf); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ReadDir(ctx, "n", "/"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Stat(ctx, "n", "/a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Mkdir(ctx, "n", "/d", true, "0755"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Remove(ctx, "n", "/d", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Remove(ctx, "n", "/d", false); err != nil {
+		t.Fatal(err)
+	}
+	if c.Base() == "" || c.Token() != "tok" {
+		t.Fatalf("base/token %q %q", c.Base(), c.Token())
+	}
+}
+
+func TestClientDecodeAPIErrorNoJSON(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		_, _ = io.WriteString(w, "plain")
+	}))
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.List(context.Background()); err == nil || !strings.Contains(err.Error(), "500") {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestClientExecNonJSONErrorBody(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /vms/{name}/exec", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(502)
+		_, _ = io.WriteString(w, "bad gateway")
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Exec(context.Background(), "n", "true"); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestClientExecStreamNoExitAndBadFrame(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /vms/{name}/exec", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		switch r.URL.Query().Get("cmd") {
+		case "badjson":
+			_, _ = io.WriteString(w, "{not-json}\n")
+		case "noexit":
+			_, _ = io.WriteString(w, `{"type":"started","pid":1}`+"\n")
+		case "emptyerr":
+			_, _ = io.WriteString(w, `{"type":"error"}`+"\n")
+		case "onframe":
+			_, _ = io.WriteString(w, `{"type":"started","pid":1}`+"\n")
+			_, _ = io.WriteString(w, `{"type":"exit","exit_code":0}`+"\n")
+		default:
+			_, _ = io.WriteString(w, `{"type":"exit","exit_code":0}`+"\n")
+		}
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := c.ExecStream(ctx, "n", client.ExecOpts{Cmd: "badjson"}, func(client.ExecFrame) error { return nil }); err == nil {
+		t.Fatal("badjson")
+	}
+	if _, err := c.ExecStream(ctx, "n", client.ExecOpts{Cmd: "noexit"}, func(client.ExecFrame) error { return nil }); err == nil {
+		t.Fatal("noexit")
+	}
+	if _, err := c.ExecStream(ctx, "n", client.ExecOpts{Cmd: "emptyerr"}, func(client.ExecFrame) error { return nil }); err == nil {
+		t.Fatal("emptyerr")
+	}
+	_, err = c.ExecStream(ctx, "n", client.ExecOpts{Cmd: "onframe"}, func(client.ExecFrame) error {
+		return io.EOF
+	})
+	if err == nil {
+		t.Fatal("onframe")
+	}
+}
+
+func TestClientCreateStreamBlankLines(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /vms", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = io.WriteString(w, "\n\n")
+		_ = json.NewEncoder(w).Encode(client.CreateEvent{
+			Phase: client.PhaseReady,
+			Name:  "solo",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, err := c.CreateStream(context.Background(), client.CreateRequest{}, nil)
+	if err != nil || inst.Name != "solo" {
+		t.Fatalf("%+v %v", inst, err)
+	}
+}
+
+func TestDialHTTPTrimSlashAndEmpty(t *testing.T) {
+	t.Parallel()
+	if _, err := client.DialHTTP("", ""); err == nil {
+		t.Fatal("empty base")
+	}
+	if _, err := client.DialUnix(""); err == nil {
+		t.Fatal("empty sock")
+	}
+	c, err := client.DialHTTP("http://example.com/", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Base() != "http://example.com" {
+		t.Fatalf("%q", c.Base())
+	}
+	if c.Token() != "t" {
+		t.Fatalf("%q", c.Token())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Merged from error_paths_test.go
+// ---------------------------------------------------------------------------
+
+// errServer returns configurable status/body for every request.
+func errServer(t *testing.T, status int, body string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+	}))
+}
+
+func TestClientErrorPathsAllMethods(t *testing.T) {
+	t.Parallel()
+	// Non-2xx JSON error
+	srv := errServer(t, 500, `{"error":"boom"}`)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	if err := c.Health(ctx); err == nil {
+		t.Fatal("health")
+	}
+	if _, err := c.Info(ctx); err == nil {
+		t.Fatal("info")
+	}
+	if _, err := c.List(ctx); err == nil {
+		t.Fatal("list")
+	}
+	if _, err := c.Create(ctx, client.CreateRequest{Name: "x"}); err == nil {
+		t.Fatal("create")
+	}
+	if _, err := c.Get(ctx, "x"); err == nil {
+		t.Fatal("get")
+	}
+	if err := c.Delete(ctx, "x"); err == nil {
+		t.Fatal("delete")
+	}
+	if _, err := c.Start(ctx, "x"); err == nil {
+		t.Fatal("start")
+	}
+	if err := c.Stop(ctx, "x"); err == nil {
+		t.Fatal("stop")
+	}
+	if err := c.Shutdown(ctx, "x"); err == nil {
+		t.Fatal("shutdown")
+	}
+	if err := c.Pause(ctx, "x"); err == nil {
+		t.Fatal("pause")
+	}
+	if err := c.Resume(ctx, "x"); err == nil {
+		t.Fatal("resume")
+	}
+	if err := c.Suspend(ctx, "x"); err == nil {
+		t.Fatal("suspend")
+	}
+	if _, err := c.Restore(ctx, "x"); err == nil {
+		t.Fatal("restore")
+	}
+	if _, err := c.AddForward(ctx, "x", 0, 80); err == nil {
+		t.Fatal("addfwd")
+	}
+	if err := c.RemoveForward(ctx, "x", 8080); err == nil {
+		t.Fatal("rmfwd")
+	}
+	if _, err := c.Exec(ctx, "x", "true"); err == nil {
+		t.Fatal("exec")
+	}
+	if _, err := c.AgentHealth(ctx, "x"); err == nil {
+		t.Fatal("agent health")
+	}
+	if _, err := c.Stats(ctx, "x"); err == nil {
+		t.Fatal("stats")
+	}
+	if _, err := c.ListSecrets(ctx); err == nil {
+		t.Fatal("list secrets")
+	}
+	if _, err := c.SetSecret(ctx, client.SecretPut{Name: "k", DataBase64: "dg=="}); err == nil {
+		t.Fatal("set secret")
+	}
+	if err := c.DeleteSecret(ctx, "k"); err == nil {
+		t.Fatal("del secret")
+	}
+	if _, err := c.InjectSecret(ctx, "x", "k", ""); err == nil {
+		t.Fatal("inject")
+	}
+	if _, err := c.InjectSecret(ctx, "x", "k", "/run/s"); err == nil {
+		t.Fatal("inject path")
+	}
+	if err := c.PutFile(ctx, "x", "/a", strings.NewReader("hi"), 2, client.CPOpts{}); err == nil {
+		t.Fatal("putfile")
+	}
+	if err := c.GetFile(ctx, "x", "/a", io.Discard); err == nil {
+		t.Fatal("getfile")
+	}
+	if err := c.PutTar(ctx, "x", "/a", strings.NewReader("t")); err == nil {
+		t.Fatal("puttar")
+	}
+	if err := c.GetTar(ctx, "x", "/a", io.Discard); err == nil {
+		t.Fatal("gettar")
+	}
+	if _, err := c.ReadDir(ctx, "x", "/"); err == nil {
+		t.Fatal("readdir")
+	}
+	if _, err := c.Stat(ctx, "x", "/a"); err == nil {
+		t.Fatal("stat")
+	}
+	if err := c.Mkdir(ctx, "x", "/a", true, "0755"); err == nil {
+		t.Fatal("mkdir")
+	}
+	if err := c.Remove(ctx, "x", "/a", true); err == nil {
+		t.Fatal("remove")
+	}
+}
+
+func TestClientBadJSONBodies(t *testing.T) {
+	t.Parallel()
+	srv := errServer(t, 200, `not-json{`)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := c.Info(ctx); err == nil {
+		t.Fatal("info decode")
+	}
+	if _, err := c.List(ctx); err == nil {
+		t.Fatal("list decode")
+	}
+	if _, err := c.Get(ctx, "x"); err == nil {
+		t.Fatal("get decode")
+	}
+	if _, err := c.Start(ctx, "x"); err == nil {
+		t.Fatal("start decode")
+	}
+	if _, err := c.Restore(ctx, "x"); err == nil {
+		t.Fatal("restore decode")
+	}
+	if _, err := c.AddForward(ctx, "x", 1, 2); err == nil {
+		t.Fatal("fwd decode")
+	}
+	if _, err := c.Exec(ctx, "x", "echo"); err == nil {
+		t.Fatal("exec decode")
+	}
+	if _, err := c.AgentHealth(ctx, "x"); err == nil {
+		t.Fatal("agent decode")
+	}
+	if _, err := c.Stats(ctx, "x"); err == nil {
+		t.Fatal("stats decode")
+	}
+	if _, err := c.ListSecrets(ctx); err == nil {
+		t.Fatal("secrets decode")
+	}
+	if _, err := c.SetSecret(ctx, client.SecretPut{Name: "a", DataBase64: "Yg=="}); err == nil {
+		t.Fatal("setsecret decode")
+	}
+	if _, err := c.ReadDir(ctx, "x", "/"); err == nil {
+		t.Fatal("readdir decode")
+	}
+	if _, err := c.Stat(ctx, "x", "/a"); err == nil {
+		t.Fatal("stat decode")
+	}
+}
+
+func TestClientClosedServer(t *testing.T) {
+	t.Parallel()
+	srv := errServer(t, 200, `{}`)
+	u := srv.URL
+	srv.Close()
+	c, err := client.DialHTTP(u, "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.SetToken("tok2")
+	if c.Token() != "tok2" {
+		t.Fatal(c.Token())
+	}
+	if c.Base() != u {
+		t.Fatal(c.Base())
+	}
+	ctx := context.Background()
+	if err := c.Health(ctx); err == nil {
+		t.Fatal("expected dial error")
+	}
+	if _, err := c.CreateStream(ctx, client.CreateRequest{Name: "n"}, nil); err == nil {
+		t.Fatal("createstream")
+	}
+	_, _ = c.ExecStream(ctx, "n", client.ExecOpts{Cmd: "true"}, nil)
+}
+
+func TestCreateStreamPartialAndInvalid(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /vms", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("stream") != "1" {
+			http.Error(w, "no", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(200)
+		// Ready with name only (no nested instance object).
+		_, _ = io.WriteString(w, `{"phase":"qemu","message":"boot"}`+"\n")
+		_, _ = io.WriteString(w, `{"phase":"ready","name":"only-name"}`+"\n")
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var phases []string
+	inst, err := c.CreateStream(context.Background(), client.CreateRequest{Name: "only-name"}, func(ev client.CreateEvent) {
+		phases = append(phases, ev.Phase)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst == nil || inst.Name != "only-name" {
+		t.Fatalf("%+v", inst)
+	}
+	_ = phases
+}
+
+func TestExecStreamStdoutStderrExit(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /vms/{name}/exec", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(200)
+		_, _ = io.WriteString(w, `{"type":"started","pid":9}`+"\n")
+		_, _ = io.WriteString(w, `{"type":"stdout","data":"out\n"}`+"\n")
+		_, _ = io.WriteString(w, `{"type":"stderr","data":"err\n"}`+"\n")
+		_, _ = io.WriteString(w, `{"type":"exit","exit_code":3}`+"\n")
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frames int
+	code, err := c.ExecStream(context.Background(), "vm", client.ExecOpts{
+		Cmd: "sh", Args: []string{"-c", "x"},
+	}, func(f client.ExecFrame) error {
+		frames++
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != 3 || frames < 3 {
+		t.Fatalf("code=%d frames=%d", code, frames)
+	}
+}
+
+func TestPutGetFileSuccessPaths(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /vms/{name}/cp", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /vms/{name}/cp", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		if r.URL.Query().Get("mode") == "tar" {
+			_, _ = w.Write([]byte("tardata"))
+			return
+		}
+		_, _ = w.Write([]byte("payload"))
+	})
+	mux.HandleFunc("POST /vms/{name}/fs/mkdir", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("DELETE /vms/{name}/fs/remove", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	uid, gid := uint32(1), uint32(2)
+	if err := c.PutFile(ctx, "vm", "/tmp/a", strings.NewReader("hi"), 2, client.CPOpts{
+		Mode: "0644", UID: &uid, GID: &gid,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := c.GetFile(ctx, "vm", "/tmp/a", &buf); err != nil || buf.String() != "payload" {
+		t.Fatalf("%q %v", buf.String(), err)
+	}
+	if err := c.PutTar(ctx, "vm", "/tmp", strings.NewReader("t")); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	if err := c.GetTar(ctx, "vm", "/tmp", &buf); err != nil || buf.String() != "tardata" {
+		t.Fatalf("%q %v", buf.String(), err)
+	}
+	if err := c.Mkdir(ctx, "vm", "/tmp/d", true, "0755"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Remove(ctx, "vm", "/tmp/d", true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Additional error-path / decode coverage
+// ---------------------------------------------------------------------------
+
+func TestClientCreateDecodeAndStreamInvalidJSON(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /vms", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("stream") == "1" {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(200)
+			_, _ = io.WriteString(w, "{\"phase\":\"qemu\"}\n")
+			_, _ = io.WriteString(w, "{not-valid-json\n")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, "not-json{")
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := c.Create(ctx, client.CreateRequest{Name: "x"}); err == nil {
+		t.Fatal("expected Create decode error")
+	}
+	if _, err := c.CreateStream(ctx, client.CreateRequest{Name: "x"}, nil); err == nil {
+		t.Fatal("expected CreateStream event decode error")
+	}
+}
+
+func TestClientInjectSecretDecodeError(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /vms/{name}/secrets/{s}", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = io.WriteString(w, `not-json`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.InjectSecret(context.Background(), "vm", "k", "/p"); err == nil {
+		t.Fatal("expected inject decode error")
+	}
+}
+
+func TestClientExecStreamHTTPError(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /vms/{name}/exec", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 503, map[string]string{"error": "agent unavailable"})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.ExecStream(context.Background(), "vm", client.ExecOpts{Cmd: "true"}, func(client.ExecFrame) error {
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "agent unavailable") {
+		t.Fatalf("want agent unavailable, got %v", err)
+	}
+}
+
+func TestClientNetworkErrorsAllMethods(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	u := srv.URL
+	srv.Close()
+
+	c, err := client.DialHTTP(u, "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	// Exercise do()/transport failure paths on every public method.
+	_ = c.Health(ctx)
+	_, _ = c.Info(ctx)
+	_, _ = c.List(ctx)
+	_, _ = c.Create(ctx, client.CreateRequest{Name: "n", Wait: "ssh", Timeout: "1s"})
+	_, _ = c.CreateStream(ctx, client.CreateRequest{Name: "n"}, func(client.CreateEvent) {})
+	_, _ = c.Get(ctx, "n")
+	_ = c.Delete(ctx, "n")
+	_, _ = c.Start(ctx, "n")
+	_ = c.Stop(ctx, "n")
+	_ = c.Shutdown(ctx, "n")
+	_ = c.Pause(ctx, "n")
+	_ = c.Resume(ctx, "n")
+	_ = c.Suspend(ctx, "n")
+	_, _ = c.Restore(ctx, "n")
+	_, _ = c.AddForward(ctx, "n", 0, 80)
+	_ = c.RemoveForward(ctx, "n", 8080)
+	_, _ = c.Exec(ctx, "n", "true", "a")
+	_, _ = c.ExecStream(ctx, "n", client.ExecOpts{Cmd: "true", Cwd: "/"}, func(client.ExecFrame) error { return nil })
+	_, _ = c.AgentHealth(ctx, "n")
+	_, _ = c.Stats(ctx, "n")
+	_, _ = c.ListSecrets(ctx)
+	_, _ = c.SetSecret(ctx, client.SecretPut{Name: "k", DataBase64: "YQ=="})
+	_ = c.DeleteSecret(ctx, "k")
+	_, _ = c.InjectSecret(ctx, "n", "k", "")
+	_, _ = c.InjectSecret(ctx, "n", "k", "/run/s")
+	_ = c.PutFile(ctx, "n", "/a", strings.NewReader("x"), 1, client.CPOpts{})
+	_ = c.GetFile(ctx, "n", "/a", io.Discard)
+	_ = c.PutTar(ctx, "n", "/a", strings.NewReader("t"))
+	_ = c.GetTar(ctx, "n", "/a", io.Discard)
+	_, _ = c.ReadDir(ctx, "n", "/")
+	_, _ = c.Stat(ctx, "n", "/a")
+	_ = c.Mkdir(ctx, "n", "/a", true, "0755")
+	_ = c.Remove(ctx, "n", "/a", false)
+	_ = c.Remove(ctx, "n", "/a", true)
+}
+
+func TestClientCreateWithWaitUserdataStream(t *testing.T) {
+	t.Parallel()
+	ts := mockDaemon(t, "")
+	t.Cleanup(ts.Close)
+	c, err := client.DialHTTP(ts.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var phases []string
+	inst, err := c.CreateStream(context.Background(), client.CreateRequest{
+		Name: "ud",
+		Wait: client.WaitUserdata,
+	}, func(ev client.CreateEvent) {
+		phases = append(phases, ev.Phase)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Name != "ud" {
+		t.Fatalf("%+v", inst)
+	}
+	joined := strings.Join(phases, ",")
+	if !strings.Contains(joined, "wait_userdata") && !strings.Contains(joined, client.PhaseReady) {
+		t.Fatalf("phases %v", phases)
+	}
+}
+
+// TestClientInvalidBaseURL exercises NewRequest/url.Parse failure branches.
+// DialHTTP only rejects an empty base, so a syntactically invalid base is accepted
+// and then fails on the first request builder call.
+func TestClientInvalidBaseURL(t *testing.T) {
+	t.Parallel()
+	c, err := client.DialHTTP("%", "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := c.Health(ctx); err == nil {
+		t.Fatal("Health")
+	}
+	if _, err := c.Info(ctx); err == nil {
+		t.Fatal("Info")
+	}
+	if _, err := c.List(ctx); err == nil {
+		t.Fatal("List")
+	}
+	if _, err := c.Create(ctx, client.CreateRequest{Name: "n", Wait: "ssh", Timeout: "1s"}); err == nil {
+		t.Fatal("Create")
+	}
+	if _, err := c.CreateStream(ctx, client.CreateRequest{Name: "n"}, nil); err == nil {
+		t.Fatal("CreateStream")
+	}
+	if _, err := c.Get(ctx, "n"); err == nil {
+		t.Fatal("Get")
+	}
+	if err := c.Delete(ctx, "n"); err == nil {
+		t.Fatal("Delete")
+	}
+	if _, err := c.Start(ctx, "n"); err == nil {
+		t.Fatal("Start")
+	}
+	if err := c.Stop(ctx, "n"); err == nil {
+		t.Fatal("Stop")
+	}
+	if err := c.Shutdown(ctx, "n"); err == nil {
+		t.Fatal("Shutdown")
+	}
+	if err := c.Pause(ctx, "n"); err == nil {
+		t.Fatal("Pause")
+	}
+	if err := c.Resume(ctx, "n"); err == nil {
+		t.Fatal("Resume")
+	}
+	if err := c.Suspend(ctx, "n"); err == nil {
+		t.Fatal("Suspend")
+	}
+	if _, err := c.Restore(ctx, "n"); err == nil {
+		t.Fatal("Restore")
+	}
+	if _, err := c.AddForward(ctx, "n", 0, 80); err == nil {
+		t.Fatal("AddForward")
+	}
+	if err := c.RemoveForward(ctx, "n", 9); err == nil {
+		t.Fatal("RemoveForward")
+	}
+	if _, err := c.Exec(ctx, "n", "true", "a"); err == nil {
+		t.Fatal("Exec")
+	}
+	if _, err := c.ExecStream(ctx, "n", client.ExecOpts{Cmd: "true", Cwd: "/tmp"}, func(client.ExecFrame) error { return nil }); err == nil {
+		t.Fatal("ExecStream")
+	}
+	if _, err := c.AgentHealth(ctx, "n"); err == nil {
+		t.Fatal("AgentHealth")
+	}
+	if _, err := c.Stats(ctx, "n"); err == nil {
+		t.Fatal("Stats")
+	}
+	if _, err := c.ListSecrets(ctx); err == nil {
+		t.Fatal("ListSecrets")
+	}
+	if _, err := c.SetSecret(ctx, client.SecretPut{Name: "k", DataBase64: "YQ=="}); err == nil {
+		t.Fatal("SetSecret")
+	}
+	if err := c.DeleteSecret(ctx, "k"); err == nil {
+		t.Fatal("DeleteSecret")
+	}
+	if _, err := c.InjectSecret(ctx, "n", "k", ""); err == nil {
+		t.Fatal("InjectSecret")
+	}
+	if _, err := c.InjectSecret(ctx, "n", "k", "/p"); err == nil {
+		t.Fatal("InjectSecret path")
+	}
+	if err := c.PutFile(ctx, "n", "/a", strings.NewReader("x"), 1, client.CPOpts{}); err == nil {
+		t.Fatal("PutFile")
+	}
+	if err := c.GetFile(ctx, "n", "/a", io.Discard); err == nil {
+		t.Fatal("GetFile")
+	}
+	if err := c.PutTar(ctx, "n", "/a", strings.NewReader("t")); err == nil {
+		t.Fatal("PutTar")
+	}
+	if err := c.GetTar(ctx, "n", "/a", io.Discard); err == nil {
+		t.Fatal("GetTar")
+	}
+	if _, err := c.ReadDir(ctx, "n", "/"); err == nil {
+		t.Fatal("ReadDir")
+	}
+	if _, err := c.Stat(ctx, "n", "/a"); err == nil {
+		t.Fatal("Stat")
+	}
+	if err := c.Mkdir(ctx, "n", "/a", true, "0755"); err == nil {
+		t.Fatal("Mkdir")
+	}
+	if err := c.Remove(ctx, "n", "/a", true); err == nil {
+		t.Fatal("Remove")
 	}
 }

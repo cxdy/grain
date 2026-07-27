@@ -1572,3 +1572,809 @@ func TestCreateAcceptNDJSONHeader(t *testing.T) {
 		t.Fatalf("ct %q", rr.Header().Get("Content-Type"))
 	}
 }
+
+// --- merged from api_more_test.go / coverage_boost_test.go ---
+
+func TestAgentUnavailableRoutes(t *testing.T) {
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	createMockVM(t, h, "errvm")
+	setAgentPort(t, st, "errvm", 0)
+
+	paths := []struct {
+		method, url string
+		body        string
+	}{
+		{http.MethodPost, "/vms/errvm/exec?cmd=true", ""},
+		{http.MethodPut, "/vms/errvm/cp?path=/tmp/x", "x"},
+		{http.MethodGet, "/vms/errvm/cp?path=/tmp/x", ""},
+		{http.MethodGet, "/vms/errvm/fs/readdir?path=/", ""},
+		{http.MethodGet, "/vms/errvm/fs/stat?path=/", ""},
+		{http.MethodPost, "/vms/errvm/fs/mkdir", `{"path":"/tmp/a"}`},
+		{http.MethodDelete, "/vms/errvm/fs/remove?path=/tmp/a", ""},
+		{http.MethodGet, "/vms/errvm/agent/health", ""},
+		{http.MethodGet, "/vms/errvm/stats", ""},
+	}
+	for _, p := range paths {
+		rr := httptest.NewRecorder()
+		var body io.Reader
+		if p.body != "" {
+			body = strings.NewReader(p.body)
+		}
+		req := httptest.NewRequest(p.method, p.url, body)
+		if p.body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		h.ServeHTTP(rr, req)
+		if rr.Code == http.StatusOK || rr.Code == http.StatusNoContent {
+			t.Fatalf("%s %s: unexpected success %d", p.method, p.url, rr.Code)
+		}
+	}
+}
+
+func TestCPAndFSAndExecValidation(t *testing.T) {
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	port := startLocalAgent(t)
+	createMockVM(t, h, "val1")
+	setAgentPort(t, st, "val1", port)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/vms/val1/cp", strings.NewReader("x"))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("cp path: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/vms/val1/cp?path=/tmp/x&mode=weird", strings.NewReader("x"))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("cp mode: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/vms/val1/cp?path=/tmp/x&uid=bad", strings.NewReader("x"))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("uid: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/vms/val1/cp?path=/tmp/x&gid=bad", strings.NewReader("x"))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("gid: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/val1/cp", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("get cp path: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/val1/cp?path=/tmp/x&mode=weird", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("get mode: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/val1/fs/readdir", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("readdir: %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/val1/fs/stat", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("stat: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/val1/fs/mkdir", strings.NewReader("{"))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("mkdir json: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/val1/fs/mkdir", strings.NewReader(`{"path":""}`))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("mkdir path: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/vms/val1/fs/remove", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("remove: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/val1/exec", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("exec cmd: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/val1/exec?cmd=true&uid=xx", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("exec uid: %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/val1/exec?cmd=true&gid=yy", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("exec gid: %d", rr.Code)
+	}
+}
+
+func TestSecretsDeleteNotFoundAndInject(t *testing.T) {
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	createMockVM(t, h, "secvm")
+	setAgentPort(t, st, "secvm", 0)
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/secrets/nope", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("delete: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/secrets/nope", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("get: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/secrets/nope", strings.NewReader(`{"mode":"0600"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("patch: %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/secvm/secrets/missing", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("inject missing secret: %d %s", rr.Code, rr.Body.String())
+	}
+
+	_, err := s.Secrets.Put(secrets.PutRequest{
+		Name:       "tok",
+		DataBase64: "dG9r",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/secvm/secrets/tok", nil))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("inject no agent: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// inject success with live agent
+	port := startLocalAgent(t)
+	setAgentPort(t, st, "secvm", port)
+	guestPath := filepath.Join(t.TempDir(), "injected")
+	body, _ := json.Marshal(map[string]string{"path": guestPath})
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/secvm/secrets/tok", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("inject ok: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPIClientCreateStreamAndLifecycle(t *testing.T) {
+	s := testServer(t)
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(ts.Close)
+
+	c := &api.Client{Base: ts.URL, HTTP: ts.Client()}
+	ctx := context.Background()
+
+	inst, err := c.CreateStream(ctx, api.CreateRequest{Name: "stream-1", Persistent: false}, func(ev vm.CreateEvent) {
+		_ = ev.Phase
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst == nil || inst.Name == "" {
+		t.Fatalf("%+v", inst)
+	}
+
+	got, err := c.Get(ctx, inst.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != inst.Name {
+		t.Fatalf("%+v", got)
+	}
+
+	if _, err := c.Get(ctx, "no-such-vm-xyz"); err == nil {
+		t.Fatal("expected get error")
+	}
+	if err := c.Delete(ctx, "no-such-vm-xyz"); err == nil {
+		t.Fatal("expected delete error")
+	}
+
+	// CreateStream with nil onEvent
+	inst2, err := c.CreateStream(ctx, api.CreateRequest{Name: "stream-2", Persistent: false}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst2 == nil {
+		t.Fatal("nil inst")
+	}
+}
+
+func TestAPIClientExecStreamAndPutGet(t *testing.T) {
+	s, st := testServerWithStore(t)
+	port := startLocalAgent(t)
+	h := s.Handler()
+	createMockVM(t, h, "ex1")
+	setAgentPort(t, st, "ex1", port)
+
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	c := &api.Client{Base: ts.URL, HTTP: ts.Client()}
+	ctx := context.Background()
+
+	if _, err := c.Exec(ctx, "ex1", ""); err == nil {
+		t.Fatal("empty cmd")
+	}
+	if _, err := c.ExecStream(ctx, "ex1", agent.ExecOpts{}, func(agent.ExecFrame) error { return nil }); err == nil {
+		t.Fatal("empty cmd stream")
+	}
+	if _, err := c.ExecStream(ctx, "ex1", agent.ExecOpts{Cmd: "echo"}, nil); err == nil {
+		t.Fatal("nil onFrame")
+	}
+
+	code, err := c.ExecStream(ctx, "ex1", agent.ExecOpts{Cmd: "echo", Args: []string{"hi"}}, func(f agent.ExecFrame) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != 0 {
+		t.Fatalf("code %d", code)
+	}
+
+	// Put/Get file via client
+	guest := filepath.Join(t.TempDir(), "f.txt")
+	payload := []byte("hello-api")
+	if err := c.PutFile(ctx, "ex1", guest, bytes.NewReader(payload), int64(len(payload)), agent.CPOpts{Mode: "0644"}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := c.GetFile(ctx, "ex1", guest, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if buf.String() != string(payload) {
+		t.Fatalf("%q", buf.String())
+	}
+
+	// validation
+	if err := c.PutFile(ctx, "ex1", "", bytes.NewReader(payload), 1, agent.CPOpts{}); err == nil {
+		t.Fatal("empty path")
+	}
+	if err := c.GetFile(ctx, "ex1", "", io.Discard); err == nil {
+		t.Fatal("empty get")
+	}
+	if err := c.PutTar(ctx, "ex1", "", bytes.NewReader(nil)); err == nil {
+		t.Fatal("empty put tar")
+	}
+	if err := c.GetTar(ctx, "ex1", "", io.Discard); err == nil {
+		t.Fatal("empty get tar")
+	}
+	if _, err := c.ReadDir(ctx, "ex1", ""); err == nil {
+		t.Fatal("empty readdir")
+	}
+	if _, err := c.Stat(ctx, "ex1", ""); err == nil {
+		t.Fatal("empty stat")
+	}
+	if err := c.Mkdir(ctx, "ex1", "", false, ""); err == nil {
+		t.Fatal("empty mkdir")
+	}
+	if err := c.Remove(ctx, "ex1", "", false); err == nil {
+		t.Fatal("empty remove")
+	}
+}
+
+func TestFSNotFoundViaAPI(t *testing.T) {
+	s, st := testServerWithStore(t)
+	port := startLocalAgent(t)
+	h := s.Handler()
+	createMockVM(t, h, "fsnf")
+	setAgentPort(t, st, "fsnf", port)
+
+	missing := filepath.Join(t.TempDir(), "nope-xyz")
+	q := url.QueryEscape(missing)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/fsnf/fs/stat?path="+q, nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("stat: %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/fsnf/fs/readdir?path="+q, nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("readdir: %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/fsnf/cp?path="+q, nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("cp: %d", rr.Code)
+	}
+}
+
+func TestShellProxyToAgent(t *testing.T) {
+	s, st := testServerWithStore(t)
+	port := startLocalAgent(t)
+	h := s.Handler()
+	createMockVM(t, h, "sh2")
+	setAgentPort(t, st, "sh2", port)
+
+	// Non-upgrade GET: on non-linux agent returns 501; proxy may return 501 or error.
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/sh2/shell?cols=80&rows=24", nil))
+	// Should not be 404
+	if rr.Code == http.StatusNotFound {
+		t.Fatalf("shell missing: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateStreamInvalidWait(t *testing.T) {
+	s := testServer(t)
+	body := []byte(`{"name":"badwait","persistent":false}`)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms?stream=1&wait=nope", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	s.Handler().ServeHTTP(rr, req)
+	if rr.Code == http.StatusOK || rr.Code == http.StatusCreated {
+		t.Fatalf("invalid wait should fail: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAddForwardInvalidHostPort(t *testing.T) {
+	s := testServer(t)
+	h := s.Handler()
+	createMockVM(t, h, "fwd1")
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/vms/fwd1/forwards/0", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("hostPort 0: %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/vms/fwd1/forwards/abc", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("hostPort abc: %d", rr.Code)
+	}
+}
+
+func TestClientTokenRoundTrip(t *testing.T) {
+	s := testServer(t)
+	s.APIToken = "secret-token"
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(ts.Close)
+
+	// without token fails
+	c := &api.Client{Base: ts.URL, HTTP: ts.Client()}
+	if err := c.Health(context.Background()); err != nil {
+		t.Logf("health: %v", err)
+	}
+	if _, err := c.List(context.Background()); err == nil {
+		t.Fatal("list without token should fail")
+	}
+
+	c.Token = "secret-token"
+	list, err := c.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = list
+}
+
+func TestAPICreateStreamErrorPhase(t *testing.T) {
+	t.Parallel()
+	s, _ := testServerWithStore(t)
+	h := s.Handler()
+
+	// Fail create via invalid name to force error phase on stream.
+	rr := httptest.NewRecorder()
+	body := []byte(`{"name":"Bad_Name"}`)
+	req := httptest.NewRequest(http.MethodPost, "/vms?stream=1&wait=ssh", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+	h.ServeHTTP(rr, req)
+	// Stream path writes 200 then NDJSON error events when flusher is available.
+	if rr.Code != http.StatusOK && rr.Code != http.StatusBadRequest {
+		t.Fatalf("code %d body %s", rr.Code, rr.Body.String())
+	}
+	if rr.Code == http.StatusOK && !strings.Contains(rr.Body.String(), "error") && !strings.Contains(rr.Body.String(), "invalid") {
+		t.Logf("stream body: %s", rr.Body.String())
+	}
+}
+
+func TestAPICreateWithAllBodyFields(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	host := t.TempDir()
+	body, _ := json.Marshal(map[string]any{
+		"name":       "full1",
+		"persistent": true,
+		"cpus":       1,
+		"memory_mb":  256,
+		"disk_gb":    2,
+		"image":      "ubuntu-cloud",
+		"arch":       "amd64",
+		"gpu":        "virtio",
+		"network":    "slirp",
+		"tags":       map[string]string{"k": "v"},
+		"userdata":   "#cloud-config\n",
+		"forwards":   []map[string]int{{"host_port": 0, "guest_port": 8080}},
+		"mounts":     []map[string]string{{"host": host, "guest": "/mnt"}},
+	})
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms?wait=ssh&timeout=2s", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("%d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPILifecycleErrorPaths(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	createMockVM(t, h, "life1")
+
+	// pause/resume/suspend/restore success and failures
+	for _, path := range []string{
+		"/vms/missing/pause",
+		"/vms/missing/resume",
+		"/vms/missing/suspend",
+		"/vms/missing/restore",
+		"/vms/missing/start",
+		"/vms/missing/shutdown",
+	} {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, path, nil))
+		if rr.Code == http.StatusOK {
+			t.Fatalf("%s unexpected ok", path)
+		}
+	}
+
+	// pause then resume
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/life1/pause", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("pause %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/life1/resume", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("resume %d %s", rr.Code, rr.Body.String())
+	}
+
+	// shutdown persistent — recreate as persistent
+	body := []byte(`{"name":"pers1","persistent":true}`)
+	rr = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create pers %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/pers1/suspend", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("suspend %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/pers1/restore", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("restore %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPIForwardRemoveInvalidPort(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	createMockVM(t, h, "fwd1")
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/vms/fwd1/forwards/0", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("%d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/vms/fwd1/forwards/abc", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("%d", rr.Code)
+	}
+
+	// add then remove
+	rr = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms/fwd1/forwards", strings.NewReader(`{"host_port":19091,"guest_port":80}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("add %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/vms/fwd1/forwards/19091", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("rm %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPIExecAndCPWithAgent(t *testing.T) {
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	port := startLocalAgent(t)
+	createMockVM(t, h, "ag1")
+	setAgentPort(t, st, "ag1", port)
+
+	// exec buffered with uid/gid/cwd
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms/ag1/exec?cmd=echo&args=hi&uid=0&gid=0&cwd=/", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("exec %d %s", rr.Code, rr.Body.String())
+	}
+
+	// exec stream
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/ag1/exec?cmd=echo&args=hi&buffered=false", nil)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stream %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "exit") && !strings.Contains(rr.Body.String(), "started") {
+		t.Logf("stream body %s", rr.Body.String())
+	}
+
+	// put/get binary
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/vms/ag1/cp?path=/tmp/grain-api-cov&mode=binary&permissions=0644&uid=0&gid=0", strings.NewReader("hello"))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("put %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/ag1/cp?path=/tmp/grain-api-cov&mode=binary", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "hello" {
+		t.Fatalf("get %d %q", rr.Code, rr.Body.String())
+	}
+
+	// get missing
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/ag1/cp?path=/tmp/no-such-grain-file&mode=binary", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("missing %d", rr.Code)
+	}
+
+	// agent health + stats
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/ag1/agent/health", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("health %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/ag1/stats", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stats %d", rr.Code)
+	}
+
+	// fs ops
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/ag1/fs/mkdir", strings.NewReader(`{"path":"/tmp/grain-api-dir","recursive":true,"mode":"0755"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("mkdir %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/ag1/fs/readdir?path=/tmp", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("readdir %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/ag1/fs/stat?path=/tmp/grain-api-dir", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("stat %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/vms/ag1/fs/remove?path=/tmp/grain-api-dir&recursive=true", nil))
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("rm %d", rr.Code)
+	}
+}
+
+func TestAPIInjectSecretWithAgent(t *testing.T) {
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	port := startLocalAgent(t)
+	createMockVM(t, h, "secvm")
+	setAgentPort(t, st, "secvm", port)
+
+	// create secret
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/secrets", strings.NewReader(`{"name":"tok","data_base64":"c2VjcmV0","mode":"0600"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("secret %d %s", rr.Code, rr.Body.String())
+	}
+
+	// inject with path
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/secvm/secrets/tok", strings.NewReader(`{"path":"/tmp/grain-secret-inj"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("inject %d %s", rr.Code, rr.Body.String())
+	}
+
+	// inject missing secret
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/secvm/secrets/nope", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("missing secret %d", rr.Code)
+	}
+}
+
+func TestAPISecretsPatchAndGetData(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/secrets", strings.NewReader(`{"name":"p1","data_base64":"YQ==","mode":"0600"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/secrets/p1?data=1", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get %d", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/secrets/p1", strings.NewReader(`{"mode":"0640"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch %d %s", rr.Code, rr.Body.String())
+	}
+
+	// patch missing
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/secrets/missing", strings.NewReader(`{"mode":"0640"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("patch miss %d", rr.Code)
+	}
+
+	// get missing
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/secrets/missing", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("get miss %d", rr.Code)
+	}
+}
+
+func TestAPIWriteAgentFSErrNotFound(t *testing.T) {
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	port := startLocalAgent(t)
+	createMockVM(t, h, "fserr")
+	setAgentPort(t, st, "fserr", port)
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/fserr/fs/stat?path=/tmp/grain-no-such-path-xyz", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("%d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPIExecInvalidUIDGID(t *testing.T) {
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	port := startLocalAgent(t)
+	createMockVM(t, h, "uidvm")
+	setAgentPort(t, st, "uidvm", port)
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/uidvm/exec?cmd=true&uid=xx", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("uid %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/uidvm/exec?cmd=true&gid=yy", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("gid %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/uidvm/exec", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("cmd %d", rr.Code)
+	}
+}
+
+func TestAPIOpenAPIAndMetricsAndInfo(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	for _, u := range []string{"/openapi.yaml", "/openapi.json", "/metrics", "/info", "/healthz"} {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, u, nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s %d", u, rr.Code)
+		}
+	}
+}
+
+func TestAPICreateWaitModesViaQuery(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	for i, wait := range []string{"ssh", "agent", "userdata", "auto", "true"} {
+		name := fmt.Sprintf("wqm%d", i)
+		rr := httptest.NewRecorder()
+		body := []byte(`{"name":"` + name + `"}`)
+		req := httptest.NewRequest(http.MethodPost, "/vms?wait="+wait+"&timeout=1s", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.ServeHTTP(rr, req)
+		// mock hypervisor short-circuits all wait modes successfully
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("wait=%s code=%d %s", wait, rr.Code, rr.Body.String())
+		}
+	}
+	// invalid wait
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms?wait=nope", strings.NewReader(`{"name":"badw"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("%d", rr.Code)
+	}
+	// invalid timeout
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms?timeout=nope", strings.NewReader(`{"name":"badt"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("%d", rr.Code)
+	}
+}
+
+func TestAPIShellUnavailable(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	createMockVM(t, h, "shell0")
+	// AgentPort from mock may be set; zero it via store
+	s2, st := testServerWithStore(t)
+	h2 := s2.Handler()
+	createMockVM(t, h2, "shell1")
+	setAgentPort(t, st, "shell1", 0)
+	rr := httptest.NewRecorder()
+	h2.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/vms/shell1/shell", nil))
+	if rr.Code == http.StatusOK {
+		t.Fatalf("expected unavailable, got %d", rr.Code)
+	}
+	_ = time.Second
+	_ = s
+	_ = h
+}

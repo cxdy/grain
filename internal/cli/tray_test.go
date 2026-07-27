@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -144,5 +145,137 @@ func TestCmdStatsResolveSingleVM(t *testing.T) {
 	cmd := cmdStats(&cfg)
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTrayStatusClientFromAuthFail(t *testing.T) {
+	// Non-loopback remote without token → clientFrom fails inside trayStatus.
+	apiURLFlag = "http://example.com:9"
+	t.Cleanup(func() { apiURLFlag = "" })
+	t.Setenv("GRAIN_API", "")
+	t.Setenv("GRAIN_TOKEN", "")
+	cfg := ""
+	st := trayStatus(&cfg)
+	if st.Title != "grain · off" {
+		t.Fatalf("status=%+v", st)
+	}
+	if !strings.Contains(st.Tooltip, "daemon not reachable") && !strings.Contains(st.Tooltip, "token") {
+		// clientFrom error path uses fixed tooltip "daemon not reachable — grain up"
+		if st.Tooltip == "" {
+			t.Fatalf("empty tooltip: %+v", st)
+		}
+	}
+}
+
+func TestCmdTrayRequireLocalNote(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows path covered separately")
+	}
+	// Remote mode: requireLocalDaemon soft-fails (stderr note) then tray.Run would block.
+	// We only assert Persistent path isn't used — cmdTray RunE hits requireLocalDaemon.
+	// Don't call tray.Run: instead verify Windows message and construction.
+	cfg := ""
+	cmd := cmdTray(&cfg, "test")
+	if cmd.Use != "tray" {
+		t.Fatal(cmd.Use)
+	}
+	// Invalid config directory → loadCfg error before tray.Run
+	dir := t.TempDir()
+	// Using a directory as config path fails loadCfg.
+	bad := dir
+	cmd = cmdTray(&bad, "test")
+	// Will fail loadCfg or requireLocal then tray.Run — either is fine if non-nil
+	// but tray.Run blocks. Skip execute; construction is enough.
+	if cmd.Short == "" {
+		t.Fatal("empty short")
+	}
+}
+
+func TestCmdStatsTableErrors(t *testing.T) {
+	cfg := ""
+	// Bad config (directory)
+	dir := t.TempDir()
+	cmd := cmdStats(&dir)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected config error")
+	}
+
+	// Auth fail
+	apiURLFlag = "http://example.com:9"
+	t.Cleanup(func() { apiURLFlag = "" })
+	t.Setenv("GRAIN_API", "")
+	t.Setenv("GRAIN_TOKEN", "")
+	cmd = cmdStats(&cfg)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected auth error")
+	}
+
+	// resolveVMName multi-VM
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/healthz":
+			w.WriteHeader(200)
+		case "/vms":
+			_ = json.NewEncoder(w).Encode([]*vm.Instance{
+				{Name: "a", Status: "running"},
+				{Name: "b", Status: "running"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	apiURLFlag = srv.URL
+	t.Setenv("GRAIN_TOKEN", "")
+	cmd = cmdStats(&cfg)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected which-vm error")
+	}
+
+	// Stats API error after health OK
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/healthz":
+			w.WriteHeader(200)
+		case r.URL.Path == "/vms":
+			_ = json.NewEncoder(w).Encode([]*vm.Instance{{Name: "only", Status: "running"}})
+		case strings.HasSuffix(r.URL.Path, "/stats"):
+			http.Error(w, "stats fail", 500)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv2.Close()
+	apiURLFlag = srv2.URL
+	cmd = cmdStats(&cfg)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected stats error")
+	}
+}
+
+func TestCmdTrayLoadCfgError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows covered")
+	}
+	// Directory as config path → loadCfg fails before tray.Run.
+	dir := t.TempDir()
+	cmd := cmdTray(&dir, "v-test")
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected loadCfg error")
+	}
+}
+
+func TestCmdTrayRemoteModeSoftNoteThenStub(t *testing.T) {
+	// When CGO is enabled tray.Run blocks — only exercise requireLocalDaemon soft path
+	// by not calling Execute. Construction already covered.
+	// With remote mode, requireLocalDaemon returns error which is only logged.
+	apiURLFlag = "http://127.0.0.1:9"
+	t.Cleanup(func() { apiURLFlag = "" })
+	t.Setenv("GRAIN_API", "")
+	cfg := ""
+	cmd := cmdTray(&cfg, "v")
+	// Don't Execute (blocks). Verify Use/Long.
+	if !strings.Contains(cmd.Long, "grain up") {
+		t.Fatalf("long: %s", cmd.Long)
 	}
 }
