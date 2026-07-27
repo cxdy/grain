@@ -26,6 +26,9 @@ type CreateRequest struct {
 	MemoryMB       int                `json:"memory_mb,omitempty"`
 	DiskGB         int                `json:"disk_gb,omitempty"`
 	Image          string             `json:"image,omitempty"`
+	Arch           string             `json:"arch,omitempty"`
+	GPU            string             `json:"gpu,omitempty"`
+	Network        string             `json:"network,omitempty"`
 	Tags           map[string]string  `json:"tags,omitempty"`
 	Userdata       string             `json:"userdata,omitempty"`
 	Forwards       []vm.PortForward   `json:"forwards,omitempty"`

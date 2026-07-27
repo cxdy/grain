@@ -88,6 +88,9 @@ type CreateRequest struct {
 	MemoryMB       int               `json:"memory_mb,omitempty"`
 	DiskGB         int               `json:"disk_gb,omitempty"`
 	Image          string            `json:"image,omitempty"`
+	Arch           string            `json:"arch,omitempty"`    // arm64|amd64; empty=host
+	GPU            string            `json:"gpu,omitempty"`     // ""|virtio
+	Network        string            `json:"network,omitempty"` // slirp|overlay
 	Tags           map[string]string `json:"tags,omitempty"`
 	Userdata       string            `json:"userdata,omitempty"`
 	Forwards       []PortForward     `json:"forwards,omitempty"`

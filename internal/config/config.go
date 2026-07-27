@@ -73,6 +73,13 @@ type Config struct {
 	// TCP hostfwd is always configured as a fallback even when vsock is selected.
 	AgentTransport string `yaml:"agent_transport"`
 
+	// GuestArch default for new VMs: arm64 | amd64 (empty = host arch).
+	GuestArch string `yaml:"guest_arch"`
+	// GPU default for new VMs: "" (none) or "virtio".
+	GPU string `yaml:"gpu"`
+	// Network default: "slirp" (isolated) or "overlay" (shared multicast L2 between VMs).
+	Network string `yaml:"network"`
+
 	// ProxyListen is the host bind address for `grain proxy up` (default 0.0.0.0:3128).
 	// Guests reach the proxy via SLIRP gateway 10.0.2.2 on the same port.
 	// Binding only 127.0.0.1 is not reachable from VMs — use 0.0.0.0 (firewall carefully).

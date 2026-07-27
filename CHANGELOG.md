@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`grain tray`** — macOS menu bar / Linux system tray status helper.
+- **Guest arch** — `grain new --arch arm64|amd64` (and config `guest_arch`). Cross-arch on Apple Silicon uses QEMU TCG for x86_64 guests.
+- **Virtio GPU** — `grain new --gpu virtio` / config `gpu: virtio` adds `virtio-gpu-pci`.
+- **Overlay network** — `grain new --network overlay` / config `network: overlay` shares an L2 multicast segment between VMs (plus SLIRP for hostfwd).
+- Guides: tray, multi-arch, GPU, overlay networking. Product surface page cleaned up (no competitor comparison / deferred-feature table).
+
 ### Changed
 
 - **Python SDK** PyPI name is **`grainvm`** (`pip install grainvm`; import still `import grain`). Previous name `cxdy-grain` is not used for new publishes.

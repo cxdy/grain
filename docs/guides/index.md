@@ -26,6 +26,10 @@ grain new --preset k3s -n lab -p --wait userdata
 | [Images & golden boots]({{ '/guides/images/' | relative_url }}) | Pull, import, bake, choose ubuntu/alpine/golden |
 | [Guest agent]({{ '/guides/agent/' | relative_url }}) | Exec, shell, cp, fs without living in SSH |
 | [Networking & ports]({{ '/guides/networking/' | relative_url }}) | Publish ports, live forwards, SLIRP limits |
+| [Overlay network]({{ '/guides/networking-overlay/' | relative_url }}) | Guest↔guest L2 on one host (`network: overlay`) |
+| [Guest architecture]({{ '/guides/multi-arch/' | relative_url }}) | arm64 / amd64 guests (TCG cross-arch) |
+| [Virtio GPU]({{ '/guides/gpu/' | relative_url }}) | `virtio-gpu-pci` for guests |
+| [Menu bar tray]({{ '/guides/tray/' | relative_url }}) | `grain tray` status helper |
 | [Mounts & shares]({{ '/guides/mounts/' | relative_url }}) | Share host directories into the guest |
 | [Profiles & presets]({{ '/guides/profiles/' | relative_url }}) | Named defaults and docker / k3s / act presets |
 | [Pause, suspend, restore]({{ '/guides/lifecycle/' | relative_url }}) | Free CPU or RAM while keeping work |
