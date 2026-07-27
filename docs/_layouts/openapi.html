@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% include head.html %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css" crossorigin="anonymous">
+  <style>
+    /* Swagger UI on grain ink/mint chrome */
+    body.layout-openapi {
+      background: var(--bg);
+    }
+    .openapi-shell {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.25rem 1.25rem 3rem;
+    }
+    .openapi-intro {
+      margin: 0 0 1.25rem;
+    }
+    .openapi-intro h1 {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 1.85rem;
+      margin: 0 0 0.4rem;
+      letter-spacing: -0.02em;
+    }
+    .openapi-intro .lead {
+      color: var(--muted);
+      margin: 0 0 0.75rem;
+      max-width: 52rem;
+    }
+    .openapi-intro .openapi-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem 1.25rem;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+    .openapi-intro a {
+      color: var(--brand);
+    }
+    #swagger-ui {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    /* Re-theme Swagger for dark/light via CSS variables */
+    #swagger-ui .swagger-ui {
+      font-family: var(--font);
+      color: var(--text);
+    }
+    #swagger-ui .swagger-ui .topbar { display: none; }
+    #swagger-ui .swagger-ui .info {
+      margin: 1.25rem 0;
+    }
+    #swagger-ui .swagger-ui .info .title {
+      font-family: var(--display);
+      color: var(--text);
+    }
+    #swagger-ui .swagger-ui .info .title small {
+      background: var(--brand-soft);
+      color: var(--brand);
+    }
+    #swagger-ui .swagger-ui .info li,
+    #swagger-ui .swagger-ui .info p,
+    #swagger-ui .swagger-ui .info table,
+    #swagger-ui .swagger-ui .scheme-container,
+    #swagger-ui .swagger-ui .opblock-tag,
+    #swagger-ui .swagger-ui .opblock-summary-description,
+    #swagger-ui .swagger-ui .opblock-description-wrapper p,
+    #swagger-ui .swagger-ui .response-col_status,
+    #swagger-ui .swagger-ui .response-col_description,
+    #swagger-ui .swagger-ui table thead tr td,
+    #swagger-ui .swagger-ui table thead tr th,
+    #swagger-ui .swagger-ui .parameter__name,
+    #swagger-ui .swagger-ui .parameter__type,
+    #swagger-ui .swagger-ui .tab li,
+    #swagger-ui .swagger-ui .model-title,
+    #swagger-ui .swagger-ui .model,
+    #swagger-ui .swagger-ui section.models h4,
+    #swagger-ui .swagger-ui .responses-inner h4,
+    #swagger-ui .swagger-ui .responses-inner h5,
+    #swagger-ui .swagger-ui label,
+    #swagger-ui .swagger-ui .btn,
+    #swagger-ui .swagger-ui select {
+      color: var(--text);
+      font-family: var(--font);
+    }
+    #swagger-ui .swagger-ui .opblock-tag {
+      border-bottom-color: var(--border);
+    }
+    #swagger-ui .swagger-ui .scheme-container {
+      background: var(--bg-soft);
+      box-shadow: none;
+      border-bottom: 1px solid var(--border);
+    }
+    #swagger-ui .swagger-ui .opblock {
+      border-radius: var(--radius);
+      box-shadow: none;
+      border: 1px solid var(--border);
+      background: var(--bg-soft);
+    }
+    #swagger-ui .swagger-ui .opblock .opblock-summary {
+      border-color: transparent;
+    }
+    #swagger-ui .swagger-ui .opblock.opblock-get { border-color: color-mix(in srgb, #61affe 35%, var(--border)); background: color-mix(in srgb, #61affe 8%, var(--bg-soft)); }
+    #swagger-ui .swagger-ui .opblock.opblock-post { border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); background: color-mix(in srgb, var(--brand) 8%, var(--bg-soft)); }
+    #swagger-ui .swagger-ui .opblock.opblock-put { border-color: color-mix(in srgb, #fca130 35%, var(--border)); background: color-mix(in srgb, #fca130 8%, var(--bg-soft)); }
+    #swagger-ui .swagger-ui .opblock.opblock-delete { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--bg-soft)); }
+    #swagger-ui .swagger-ui .opblock .opblock-section-header {
+      background: var(--bg-elev);
+      box-shadow: none;
+      border-color: var(--border);
+    }
+    #swagger-ui .swagger-ui .opblock-body pre.microlight,
+    #swagger-ui .swagger-ui .highlight-code > .microlight {
+      background: var(--code-bg) !important;
+      color: var(--text) !important;
+      font-family: var(--mono) !important;
+      border-radius: var(--radius);
+    }
+    #swagger-ui .swagger-ui input[type=text],
+    #swagger-ui .swagger-ui textarea,
+    #swagger-ui .swagger-ui select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius);
+    }
+    #swagger-ui .swagger-ui .btn {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      box-shadow: none;
+      border-radius: var(--radius);
+    }
+    #swagger-ui .swagger-ui .btn.execute {
+      background: var(--brand);
+      border-color: var(--brand-dim);
+      color: #04120c;
+      font-weight: 600;
+    }
+    #swagger-ui .swagger-ui .btn.authorize {
+      color: var(--brand);
+      border-color: var(--brand);
+    }
+    #swagger-ui .swagger-ui section.models {
+      border: 1px solid var(--border);
+      background: var(--bg-soft);
+    }
+    #swagger-ui .swagger-ui .model-box {
+      background: transparent;
+    }
+    #swagger-ui .swagger-ui .wrapper {
+      padding: 0 1rem 1.5rem;
+      max-width: none;
+    }
+    #swagger-ui .swagger-ui a.nostyle,
+    #swagger-ui .swagger-ui .info a {
+      color: var(--brand);
+    }
+    #swagger-ui .swagger-ui .markdown code,
+    #swagger-ui .swagger-ui .renderedMarkdown code {
+      background: var(--code-bg);
+      color: var(--sand);
+      font-family: var(--mono);
+    }
+  </style>
+</head>
+<body class="layout-openapi" data-search-index="{{ '/search-data.json' | relative_url }}">
+  {% include nav.html %}
+  <main class="openapi-shell">
+    <header class="openapi-intro">
+      {% if page.title %}<h1>{{ page.title }}</h1>{% endif %}
+      {% if page.description %}<p class="lead">{{ page.description }}</p>{% endif %}
+      <div class="openapi-meta">
+        <span>OpenAPI 3 · interactive Swagger UI</span>
+        <a href="{{ '/assets/openapi.yaml' | relative_url }}">Download openapi.yaml</a>
+        <a href="{{ '/reference/api/' | relative_url }}">HTTP API overview</a>
+        <a href="https://github.com/cxdy/grain/blob/main/api/openapi.yaml">Source in repo</a>
+      </div>
+    </header>
+    <div id="swagger-ui" aria-label="OpenAPI specification"></div>
+  </main>
+  {% include footer.html %}
+  <script src="{{ '/assets/js/site.js' | relative_url }}" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-standalone-preset.js" crossorigin="anonymous"></script>
+  <script>
+    (function () {
+      var specUrl = {{ '/assets/openapi.yaml' | relative_url | jsonify }};
+      window.addEventListener('DOMContentLoaded', function () {
+        if (!window.SwaggerUIBundle) return;
+        window.SwaggerUIBundle({
+          url: specUrl,
+          dom_id: '#swagger-ui',
+          deepLinking: true,
+          presets: [
+            window.SwaggerUIBundle.presets.apis,
+            window.SwaggerUIStandalonePreset
+          ],
+          plugins: [window.SwaggerUIBundle.plugins.DownloadUrl],
+          layout: 'StandaloneLayout',
+          // Default servers are localhost / unix socket — try-it-out is for local daemons.
+          tryItOutEnabled: true,
+          persistAuthorization: true,
+          displayRequestDuration: true,
+          filter: true,
+          syntaxHighlight: { activated: true, theme: 'agate' }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

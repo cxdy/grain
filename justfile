@@ -209,3 +209,8 @@ release-tag:
     git push origin HEAD
     git push origin "$TAG"
     echo "GoReleaser will publish GitHub Release assets for $TAG"
+
+# Copy api/openapi.yaml into the GitHub Pages tree (docs/assets).
+openapi-docs:
+    cp api/openapi.yaml docs/assets/openapi.yaml
+    @echo "updated docs/assets/openapi.yaml from api/openapi.yaml"
