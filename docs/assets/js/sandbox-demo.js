@@ -180,9 +180,7 @@
         if (i >= items.length) {
           state.busy = false;
           inputEl.disabled = false;
-          try {
-            inputEl.focus();
-          } catch (e) {}
+          focusDemoInput(inputEl);
           return Promise.resolve();
         }
         var item = items[i++];
@@ -364,7 +362,7 @@
         if (i >= lines.length) {
           state.busy = false;
           inputEl.disabled = false;
-          inputEl.focus();
+          focusDemoInput(inputEl);
           return;
         }
         var t = lines[i++];
@@ -433,9 +431,7 @@
       appendLine("grain interactive demo — simulated terminal", "dim");
       appendLine("\u00a0");
       renderSteps();
-      try {
-        inputEl.focus();
-      } catch (e) {}
+      focusDemoInput(inputEl);
     }
 
     function onNextClick(e) {
@@ -486,12 +482,41 @@
     });
 
     term.addEventListener("click", function () {
-      try {
-        inputEl.focus();
-      } catch (e) {}
+      focusDemoInput(inputEl);
     });
 
     restart();
+  }
+
+  /** Focus without re-scrolling the page (avoids hiding the demo under the sticky header). */
+  function focusDemoInput(inputEl) {
+    if (!inputEl) return;
+    try {
+      inputEl.focus({ preventScroll: true });
+    } catch (e) {
+      try {
+        inputEl.focus();
+      } catch (e2) {}
+    }
+  }
+
+  /**
+   * Scroll so the demo section sits just below the sticky header.
+   * Prefer #demo-section (title + terminal); fall back to #demo / [data-sandbox-demo].
+   */
+  function scrollToDemo(smooth) {
+    var el =
+      document.getElementById("demo-section") ||
+      document.getElementById("demo") ||
+      document.querySelector("[data-sandbox-demo]");
+    if (!el) return;
+    var header = document.querySelector(".site-header");
+    var offset = (header ? header.offsetHeight : 64) + 16;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({
+      top: Math.max(0, top),
+      behavior: smooth === false ? "auto" : "smooth",
+    });
   }
 
   function boot() {
@@ -499,13 +524,32 @@
     for (var i = 0; i < nodes.length; i++) {
       initDemo(nodes[i]);
     }
-    if (location.hash === "#demo") {
-      var el = document.getElementById("demo") || document.querySelector("[data-sandbox-demo]");
-      if (el) {
-        setTimeout(function () {
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 80);
+
+    // Hero / in-page links: custom scroll (native #hash ignores sticky header).
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest('a[href="#demo"], a[href="#demo-section"], [data-scroll-demo]');
+      if (!a) return;
+      var href = a.getAttribute("href") || "#demo-section";
+      if (href.charAt(0) !== "#" && !a.hasAttribute("data-scroll-demo")) return;
+      e.preventDefault();
+      var hash = href.charAt(0) === "#" ? href : "#demo-section";
+      if (history.replaceState) {
+        history.replaceState(null, "", hash);
+      } else {
+        location.hash = hash;
       }
+      scrollToDemo(true);
+      var demoRoot = document.querySelector("[data-sandbox-demo]");
+      var input = demoRoot && demoRoot.querySelector("[data-demo-input]");
+      setTimeout(function () {
+        focusDemoInput(input);
+      }, 400);
+    });
+
+    if (location.hash === "#demo" || location.hash === "#demo-section") {
+      setTimeout(function () {
+        scrollToDemo(true);
+      }, 60);
     }
   }
 

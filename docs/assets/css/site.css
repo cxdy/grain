@@ -1324,6 +1324,13 @@ body.search-open {
 
 .home-demo {
   padding: 0 0 1rem;
+  /* Sticky header (~64px) + air — hash / CTA scroll must not hide the demo */
+  scroll-margin-top: 5.5rem;
+}
+
+#demo,
+#demo-section {
+  scroll-margin-top: 5.5rem;
 }
 
 /* Demo inside docs article */

@@ -14,7 +14,7 @@ description: grain runs disposable Linux sandboxes locally — install in one co
       </p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#install">Install grain</a>
-        <a class="btn btn-ghost" href="#demo">Try interactive demo</a>
+        <a class="btn btn-ghost" href="#demo-section" data-scroll-demo>Try interactive demo</a>
         <a class="btn btn-ghost" href="{{ '/get-started/first-sandbox/' | relative_url }}">Full tutorial</a>
       </div>
       <p class="hero-meta">macOS Apple Silicon &amp; Linux · QEMU · optional Firecracker · Go, TypeScript &amp; Python SDKs</p>
