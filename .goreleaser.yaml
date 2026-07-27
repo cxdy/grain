@@ -1,0 +1,102 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Inspired by grex (.goreleaser.yaml): multi-platform CLI archives, checksums,
+# github-native notes. Grain also ships guest agent binaries (Linux only).
+version: 2
+
+project_name: grain
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  # Host CLI — macOS + Linux (install script rejects Windows/WSL).
+  - id: grain
+    main: ./cmd/grain
+    binary: grain
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+
+  # Guest agent — Linux only (deployed into VMs / baked into golden images).
+  - id: grain-agent
+    main: ./cmd/grain-agent
+    binary: grain-agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: grain
+    ids: [grain]
+    formats: [tar.gz]
+    # Stable names for scripts/install.sh (no version in archive name).
+    # e.g. grain_darwin_arm64.tar.gz, grain_linux_amd64.tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+  - id: grain-agent
+    ids: [grain-agent]
+    formats: [tar.gz]
+    # e.g. grain-agent-linux-arm64.tar.gz
+    name_template: "grain-agent-linux-{{ .Arch }}"
+    files:
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+# Release notes via GitHub's generate-notes API (same approach as grex).
+changelog:
+  use: github-native
+
+release:
+  name_template: "v{{ .Version }}"
+  draft: false
+  prerelease: auto
+  footer: |
+    ---
+
+    **Docs:** https://grainvm.com  
+    **Full Changelog:** https://github.com/cxdy/grain/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    **Install**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
+    ```
+
+    **Golden images** (agent-ready disks, not part of this release):
+    ```bash
+    grain image pull grain-ubuntu   # from release tag golden-latest
+    ```
+
+    **Assets**
+    | Archive | Contents |
+    |---------|----------|
+    | `grain_<os>_<arch>.tar.gz` | CLI binary `grain` |
+    | `grain-agent-linux-<arch>.tar.gz` | Guest agent |
+    | `checksums.txt` | SHA-256 sums |

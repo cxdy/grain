@@ -68,7 +68,16 @@ Troubleshooting: [guides/troubleshooting](https://grainvm.com/guides/troubleshoo
 
 ## Release
 
-Maintainer checklist for v0.1.0: [docs/RELEASE.md](docs/RELEASE.md).
+Maintainer checklist: [docs/RELEASE.md](docs/RELEASE.md).
+
+GitHub Releases for `v*` tags are produced by **GoReleaser** (`.goreleaser.yaml`, grex-style workflow). Snapshot locally without publishing:
+
+```bash
+go install github.com/goreleaser/goreleaser/v2@latest
+make release-build   # dist/*.tar.gz + checksums.txt
+```
+
+Golden images (`golden-latest`) use the separate bake workflow, not GoReleaser.
 
 ## License
 

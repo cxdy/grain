@@ -19,7 +19,8 @@ Practical gates before tagging **v0.1.0**. Do not start a long golden bake from 
 - [x] **Version pins** at **0.1.0** (not `0.1.0-dev`):
   - `Makefile` `VERSION`
   - `cmd/grain` / `cmd/grain-agent` version ldflags as used by `make build`
-- [ ] Tag **`v0.1.0`** and attach release binaries (and notes pointing at CHANGELOG + docs)
+- [x] Tag **`v0.1.0`** and attach release binaries (and notes pointing at CHANGELOG + docs)
+- [ ] Prefer **GoReleaser** (`.goreleaser.yaml` + `.github/workflows/release.yml`) for subsequent tags
 
 ## Packages
 

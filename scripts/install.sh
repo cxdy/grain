@@ -120,7 +120,10 @@ download() {
 }
 
 # Fetch latest release asset URL by exact asset name.
-# Asset names from make release-build: grain_darwin_arm64, grain-agent-linux-arm64, …
+# GoReleaser assets (preferred):
+#   grain_<os>_<arch>.tar.gz
+#   grain-agent-linux-<arch>.tar.gz
+# Legacy bare binaries (v0.1.0): grain_<os>_<arch>, grain-agent-linux-<arch>
 latest_asset_url_named() {
   local asset="$1"
   local json=""
@@ -165,20 +168,60 @@ for a in data.get('assets') or []:
   printf '%s' "$url"
 }
 
+# Extract a single binary from a .tar.gz (GoReleaser archive) into dest path.
+extract_binary_from_tarball() {
+  local tarball="$1"
+  local member="$2" # e.g. grain or grain-agent
+  local dest="$3"
+  local tmpdir
+  tmpdir="$(mktemp -d 2>/dev/null || mktemp -d -t grain.XXXXXX)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmpdir'" RETURN
+  if ! tar -xzf "$tarball" -C "$tmpdir" 2>/dev/null; then
+    return 1
+  fi
+  local found=""
+  # Prefer exact member name at root, else find by basename.
+  if [[ -f "${tmpdir}/${member}" ]]; then
+    found="${tmpdir}/${member}"
+  else
+    found="$(find "$tmpdir" -type f -name "$member" 2>/dev/null | head -1 || true)"
+  fi
+  if [[ -z "$found" || ! -f "$found" ]]; then
+    return 1
+  fi
+  install_file "$found" "$dest"
+  return 0
+}
+
+looks_like_binary_or_archive() {
+  local f="$1"
+  [[ -s "$f" ]] || return 1
+  if head -c 100 "$f" | grep -qi '<html\|<!doctype'; then
+    return 1
+  fi
+  return 0
+}
+
 latest_asset_url() {
   local os="$1" arch="$2"
+  # Prefer GoReleaser tarball, then bare binary (older releases).
+  if latest_asset_url_named "grain_${os}_${arch}.tar.gz"; then
+    return 0
+  fi
   latest_asset_url_named "grain_${os}_${arch}"
 }
 
 # --- install paths ------------------------------------------------------------
 install_from_release() {
   local os="$1" arch="$2" dest_dir="$3"
-  local url
+  local url name
   info "looking up latest GitHub release for ${os}/${arch}…"
   if ! url="$(latest_asset_url "$os" "$arch")"; then
-    warn "no release binary found for grain_${os}_${arch}"
+    warn "no release binary found for grain_${os}_${arch}(.tar.gz)"
     return 1
   fi
+  name="$(basename "$url")"
   info "downloading ${url}"
   local tmp
   tmp="$(mktemp -t grain.XXXXXX 2>/dev/null || mktemp)"
@@ -188,18 +231,23 @@ install_from_release() {
     warn "download failed"
     return 1
   fi
-  # Sanity: non-empty and looks like a binary (not HTML error page)
-  if [[ ! -s "$tmp" ]]; then
-    warn "downloaded file is empty"
-    return 1
-  fi
-  if head -c 100 "$tmp" | grep -qi '<html\|<!doctype'; then
-    warn "download looks like HTML, not a binary"
+  if ! looks_like_binary_or_archive "$tmp"; then
+    warn "download looks empty or like HTML, not a release asset"
     return 1
   fi
   ensure_dir "$dest_dir"
   local dest="${dest_dir}/${BIN_NAME}"
-  install_file "$tmp" "$dest"
+  case "$name" in
+    *.tar.gz|*.tgz)
+      if ! extract_binary_from_tarball "$tmp" "grain" "$dest"; then
+        warn "failed to extract grain from ${name}"
+        return 1
+      fi
+      ;;
+    *)
+      install_file "$tmp" "$dest"
+      ;;
+  esac
   ok "installed ${dest}"
   return 0
 }
@@ -207,14 +255,20 @@ install_from_release() {
 # Install guest agent binary for SSH deploy into VMs (linux arch matching host).
 install_agent_from_release() {
   local arch="$1"
-  local asset="grain-agent-linux-${arch}"
+  local asset_tar="grain-agent-linux-${arch}.tar.gz"
+  local asset_bin="grain-agent-linux-${arch}"
   local agent_dir="${HOME}/.grain/agent"
-  local url
-  info "looking up guest agent ${asset}…"
-  if ! url="$(latest_asset_url_named "$asset")"; then
-    warn "no release asset ${asset} (run make agent-linux for local dev)"
+  local url name
+  info "looking up guest agent for ${arch}…"
+  if url="$(latest_asset_url_named "$asset_tar")"; then
+    :
+  elif url="$(latest_asset_url_named "$asset_bin")"; then
+    :
+  else
+    warn "no release asset ${asset_tar} or ${asset_bin} (run make agent-linux for local dev)"
     return 1
   fi
+  name="$(basename "$url")"
   info "downloading ${url}"
   local tmp
   tmp="$(mktemp -t grain-agent.XXXXXX 2>/dev/null || mktemp)"
@@ -224,13 +278,24 @@ install_agent_from_release() {
     warn "agent download failed"
     return 1
   fi
-  if [[ ! -s "$tmp" ]]; then
-    warn "agent download empty"
+  if ! looks_like_binary_or_archive "$tmp"; then
+    warn "agent download empty or invalid"
     return 1
   fi
   ensure_dir "$agent_dir"
-  local dest="${agent_dir}/${asset}"
-  install_file "$tmp" "$dest"
+  local dest="${agent_dir}/${asset_bin}"
+  case "$name" in
+    *.tar.gz|*.tgz)
+      # Archive contains binary "grain-agent"; install as grain-agent-linux-$arch.
+      if ! extract_binary_from_tarball "$tmp" "grain-agent" "$dest"; then
+        warn "failed to extract grain-agent from ${name}"
+        return 1
+      fi
+      ;;
+    *)
+      install_file "$tmp" "$dest"
+      ;;
+  esac
   ok "installed guest agent ${dest}"
   return 0
 }

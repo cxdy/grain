@@ -40,18 +40,24 @@ cover:
 fmt:
 	go fmt ./...
 
-# Cross-build release binaries (darwin/linux × arm64/amd64) plus guest agents.
-# VERSION from env or tag.
+# Snapshot release artifacts (tarballs + checksums), no publish.
+# Same pipeline as CI (.goreleaser.yaml). Requires goreleaser v2.
+#   go install github.com/goreleaser/goreleaser/v2@latest
 release-build:
-	@mkdir -p $(DIST)
-	GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_darwin_arm64 ./cmd/grain
-	GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_darwin_amd64 ./cmd/grain
-	GOOS=linux  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_linux_arm64  ./cmd/grain
-	GOOS=linux  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_linux_amd64  ./cmd/grain
-	# Guest agent (deployed into Linux VMs over SSH when not baked into the image)
-	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain-agent-linux-arm64 ./cmd/grain-agent
-	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain-agent-linux-amd64 ./cmd/grain-agent
-	@ls -la $(DIST)/
+	@if command -v goreleaser >/dev/null 2>&1; then \
+	  goreleaser release --snapshot --clean --skip=publish; \
+	  ls -la dist/*.tar.gz dist/checksums.txt 2>/dev/null || ls -la dist/; \
+	else \
+	  echo "goreleaser not found — writing bare binaries to $(DIST)/ (install: go install github.com/goreleaser/goreleaser/v2@latest)"; \
+	  mkdir -p $(DIST); \
+	  GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_darwin_arm64 ./cmd/grain; \
+	  GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_darwin_amd64 ./cmd/grain; \
+	  GOOS=linux  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_linux_arm64  ./cmd/grain; \
+	  GOOS=linux  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain_linux_amd64  ./cmd/grain; \
+	  GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain-agent-linux-arm64 ./cmd/grain-agent; \
+	  GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/grain-agent-linux-amd64 ./cmd/grain-agent; \
+	  ls -la $(DIST)/; \
+	fi
 
 clean:
 	rm -rf bin dist coverage.out

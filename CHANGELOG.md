@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Releases** use [GoReleaser](https://goreleaser.com) (grex-style workflow) instead of a hand-rolled `make release-build` + softprops upload. Install script accepts `.tar.gz` archives and falls back to bare binaries from v0.1.0.
+
 ### Fixed
 
 ## [0.1.0] - 2026-07-27
