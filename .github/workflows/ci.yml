@@ -6,14 +6,13 @@ on:
   pull_request:
     branches: [main]
 
-# Same-repo PRs: post the cobertura table as a PR comment from this job.
-# Fork PRs: GITHUB_TOKEN is read-only here; coverage-comment.yml (workflow_run)
-# posts the comment with a base-repo token after downloading the artifact.
+# Same-repo PRs: post coverage comment from this job.
+# Fork PRs: GITHUB_TOKEN is read-only; coverage-comment.yml (workflow_run)
+# can post with a base-repo token after downloading the artifact.
 permissions:
   contents: read
   pull-requests: write
-  issues: write # PR comments use the issues comments API
-  checks: write # cobertura-action also creates a check run
+  issues: write
 
 jobs:
   test:
@@ -36,34 +35,22 @@ jobs:
       - name: Coverage
         run: just coverage
 
-      # Same-repo PRs: post the coverage table as a PR comment.
-      # Keep the body small: full missing-line link dumps exceed GitHub's
-      # comment size limit and the API returns "Invalid request".
+      # Compact PR comment: one-line summary + full table under <details>.
       - name: Coverage PR comment
         if: >
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
-        continue-on-error: true
-        uses: 5monkeys/cobertura-action@v14
         env:
-          # Action still ships Node 20; allow until upstream moves to Node 24.
-          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          report_name: coverage
-          path: coverage.xml
-          minimum_coverage: 75
-          fail_below_threshold: false
-          skip_covered: true
-          show_line: true
-          show_branch: false
-          show_class_names: false
-          show_missing: true
-          show_missing_max_length: 80
-          link_missing_lines: false
-          only_changed_files: false
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_SHA: ${{ github.sha }}
+          COVERAGE_XML: coverage.xml
+          MIN_COVERAGE: "75"
+        run: |
+          chmod +x scripts/coverage-pr-comment.sh
+          scripts/coverage-pr-comment.sh
 
-      # Artifact for fork PRs (consumed by coverage-comment.yml via workflow_run).
       - name: Prepare coverage artifact
         if: >
           github.event_name == 'pull_request' &&
