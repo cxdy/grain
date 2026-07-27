@@ -203,8 +203,14 @@ func TestParseVolumeAndPublishHelpers(t *testing.T) {
 
 func TestShellQuoteHelpers(t *testing.T) {
 	t.Parallel()
-	if shellQuote("plain") != "plain" && !strings.Contains(shellQuote("a b"), "'") {
-		// either style ok
+	if got := shellQuote("plain"); got == "" {
+		t.Fatal("empty quote")
+	}
+	if got := shellQuote("a b"); !strings.Contains(got, " ") && !strings.Contains(got, "'") {
+		// quoted forms vary; just ensure non-empty
+		if got == "" {
+			t.Fatal(got)
+		}
 	}
 	_ = shellQuote("it's")
 	_ = shellQuote("")

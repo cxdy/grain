@@ -18,22 +18,18 @@ import (
 )
 
 // mockAPIForCP implements the daemon cp/stat/tar surface used by daemonPut/Get.
-func mockAPIForCP(t *testing.T) (*httptest.Server, *api.Client) {
+func mockAPIForCP(t *testing.T) *api.Client {
 	t.Helper()
-	var lastPutMode, lastPath string
 	mux := http.NewServeMux()
 	mux.HandleFunc("PUT /vms/{name}/cp", func(w http.ResponseWriter, r *http.Request) {
-		lastPutMode = r.URL.Query().Get("mode")
-		lastPath = r.URL.Query().Get("path")
 		_, _ = io.Copy(io.Discard, r.Body)
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /vms/{name}/cp", func(w http.ResponseWriter, r *http.Request) {
 		mode := r.URL.Query().Get("mode")
 		if mode == "tar" {
-			// empty-ish tar
 			var buf bytes.Buffer
-			_ = writeLocalTar(&buf, t.TempDir()) // empty dir ok
+			_ = writeLocalTar(&buf, t.TempDir())
 			_, _ = w.Write(buf.Bytes())
 			return
 		}
@@ -56,9 +52,7 @@ func mockAPIForCP(t *testing.T) (*httptest.Server, *api.Client) {
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	_ = lastPutMode
-	_ = lastPath
-	return srv, &api.Client{Base: srv.URL, HTTP: srv.Client()}
+	return &api.Client{Base: srv.URL, HTTP: srv.Client()}
 }
 
 func TestCPViaAgentPolicyErrors(t *testing.T) {
@@ -80,7 +74,7 @@ func TestCPViaAgentPolicyErrors(t *testing.T) {
 
 func TestDaemonPutFileAndDir(t *testing.T) {
 	t.Parallel()
-	_, c := mockAPIForCP(t)
+	c := mockAPIForCP(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	f := filepath.Join(dir, "hello.txt")
@@ -113,7 +107,7 @@ func TestDaemonPutFileAndDir(t *testing.T) {
 
 func TestDaemonGetFileAndDir(t *testing.T) {
 	t.Parallel()
-	_, c := mockAPIForCP(t)
+	c := mockAPIForCP(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out.txt")
@@ -222,7 +216,7 @@ func TestAgentPutGetWithMockAgent(t *testing.T) {
 
 func TestCPViaAgentDaemonMode(t *testing.T) {
 	t.Parallel()
-	_, c := mockAPIForCP(t)
+	c := mockAPIForCP(t)
 	dir := t.TempDir()
 	src := filepath.Join(dir, "x.txt")
 	if err := os.WriteFile(src, []byte("x"), 0o644); err != nil {
