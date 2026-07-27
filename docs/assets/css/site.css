@@ -1022,7 +1022,10 @@ body.search-open {
   min-height: 320px;
 }
 
-/* Terminal first (main focus), walkthrough rail on the right */
+/*
+ * DOM order: terminal, then sidebar.
+ * Desktop: wide terminal | narrow walkthrough (no order hacks — those swapped columns).
+ */
 @media (min-width: 800px) {
   .demo-body {
     grid-template-columns: minmax(0, 1fr) 220px;
@@ -1030,7 +1033,6 @@ body.search-open {
 }
 
 .demo-sidebar {
-  order: 2;
   padding: 0.85rem 0.9rem 1rem;
   border-top: 1px solid var(--term-border);
   background: var(--term-bg-elev);
@@ -1038,10 +1040,13 @@ body.search-open {
 
 @media (min-width: 800px) {
   .demo-sidebar {
-    order: 0;
     border-top: 0;
     border-left: 1px solid var(--term-border);
   }
+}
+
+.demo-term-wrap {
+  order: unset;
 }
 
 .demo-sidebar-label {
@@ -1179,7 +1184,6 @@ body.search-open {
 }
 
 .demo-term-wrap {
-  order: 1;
   min-width: 0;
   background: var(--term-bg);
   position: relative;
