@@ -63,10 +63,10 @@ func cmdFsLs(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			var entries []struct {
-				Name  string
-				Type  string
-				Mode  string
-				Size  int64
+				Name string
+				Type string
+				Mode string
+				Size int64
 			}
 			// Prefer daemon-proxied API when remote (or always for simplicity).
 			if remoteMode(cfg) {
@@ -76,10 +76,10 @@ func cmdFsLs(cfgPath *string) *cobra.Command {
 				}
 				for _, e := range list {
 					entries = append(entries, struct {
-						Name  string
-						Type  string
-						Mode  string
-						Size  int64
+						Name string
+						Type string
+						Mode string
+						Size int64
 					}{e.Name, e.Type, e.Mode, e.Size})
 				}
 			} else {
@@ -93,10 +93,10 @@ func cmdFsLs(cfgPath *string) *cobra.Command {
 				}
 				for _, e := range list {
 					entries = append(entries, struct {
-						Name  string
-						Type  string
-						Mode  string
-						Size  int64
+						Name string
+						Type string
+						Mode string
+						Size int64
 					}{e.Name, e.Type, e.Mode, e.Size})
 				}
 			}
@@ -106,7 +106,7 @@ func cmdFsLs(cfgPath *string) *cobra.Command {
 				if kind == "" {
 					kind = "?"
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", kind, e.Mode, e.Size, e.Name)
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", kind, e.Mode, e.Size, e.Name)
 			}
 			return tw.Flush()
 		},

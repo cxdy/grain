@@ -127,7 +127,7 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 		return fmt.Errorf("project dir is not a directory: %s", workDir)
 	}
 	if _, err := os.Stat(filepath.Join(workDir, ".github", "workflows")); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: no .github/workflows under %s\n", workDir)
+		_, _ = fmt.Fprintf(os.Stderr, "warning: no .github/workflows under %s\n", workDir)
 	}
 
 	actArgs := o.ActArgs
@@ -170,10 +170,10 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 	// WaitAgent deploys grain-agent over SSH when the base image is not golden.
 	// Fail fast if neither a deploy binary nor a golden image is available.
 	if _, err := agent.LinuxBinaryPath(cfg.DataDir); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: no grain-agent linux binary — WaitAgent will need a golden image or: just agent-linux\n  (%v)\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "warning: no grain-agent linux binary — WaitAgent will need a golden image or: just agent-linux\n  (%v)\n", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "grain act  project=%s  vm=%s  cpus=%d mem=%d\n", workDir, vmName, cpus, mem)
+	_, _ = fmt.Fprintf(os.Stderr, "grain act  project=%s  vm=%s  cpus=%d mem=%d\n", workDir, vmName, cpus, mem)
 
 	createCtx, createCancel := context.WithTimeout(context.Background(), timeout)
 	defer createCancel()
@@ -205,13 +205,13 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 		defer func() {
 			dctx, dcancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer dcancel()
-			fmt.Fprintf(os.Stderr, "grain act  deleting %s\n", vmName)
+			_, _ = fmt.Fprintf(os.Stderr, "grain act  deleting %s\n", vmName)
 			if err := c.Delete(dctx, vmName); err != nil {
-				fmt.Fprintf(os.Stderr, "grain act  warning: delete %s: %v\n", vmName, err)
+				_, _ = fmt.Fprintf(os.Stderr, "grain act  warning: delete %s: %v\n", vmName, err)
 			}
 		}()
 	} else {
-		fmt.Fprintf(os.Stderr, "grain act  keeping %s — grain sh %s\n", vmName, vmName)
+		_, _ = fmt.Fprintf(os.Stderr, "grain act  keeping %s — grain sh %s\n", vmName, vmName)
 	}
 
 	readyDeadline := time.Now().Add(timeout)
@@ -228,7 +228,7 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 		`if [ ! -s "$HOME/.config/act/actrc" ]; then printf '%s\n' '-P ubuntu-latest=catthehacker/ubuntu:act-latest' '-P ubuntu-24.04=catthehacker/ubuntu:act-latest' '-P ubuntu-22.04=catthehacker/ubuntu:act-22.04' '-P ubuntu-20.04=catthehacker/ubuntu:act-20.04' > "$HOME/.config/act/actrc"; fi`,
 		`cd /work && act ` + shellJoin(actArgs),
 	}, "; ")
-	fmt.Fprintf(os.Stderr, "grain act  exec: %s\n", shellCmd)
+	_, _ = fmt.Fprintf(os.Stderr, "grain act  exec: %s\n", shellCmd)
 
 	execCtx, execCancel := context.WithTimeout(context.Background(), time.Until(readyDeadline))
 	if time.Until(readyDeadline) < time.Minute {
@@ -245,7 +245,7 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 		case "stdout":
 			fmt.Print(f.Data)
 		case "stderr":
-			fmt.Fprint(os.Stderr, f.Data)
+			_, _ = fmt.Fprint(os.Stderr, f.Data)
 		}
 		return nil
 	})

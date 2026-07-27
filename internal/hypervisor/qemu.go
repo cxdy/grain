@@ -19,9 +19,9 @@ import (
 
 // QEMURuntime launches guests with QEMU (HVF on Apple Silicon when available).
 type QEMURuntime struct {
-	Binary         string
-	DataDir        string
-	MountDriver    string // effective driver: 9p (default) or virtiofs
+	Binary      string
+	DataDir     string
+	MountDriver string // effective driver: 9p (default) or virtiofs
 	// AgentTransport is auto|tcp|vsock (see config.agent_transport).
 	AgentTransport string
 	// VhostVsockPath overrides the host device path for tests (default /dev/vhost-vsock).
@@ -66,7 +66,7 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	if err != nil {
 		return err
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	sshPort, err := netutil.FreeTCPPort()
 	if err != nil {
@@ -122,7 +122,7 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 		"-display", "none",
 		"-serial", "file:" + filepath.Join(vmDir, "serial.log"),
 		"-pidfile", pidFile,
-		"-qmp", "unix:"+qmpPath+",server,nowait",
+		"-qmp", "unix:" + qmpPath + ",server,nowait",
 	}
 	// Shared L2 between grain VMs (multicast socket). Keeps SLIRP for hostfwd.
 	if strings.EqualFold(inst.Network, "overlay") {
@@ -251,7 +251,6 @@ func resolveDisk(diskPath string) string {
 	}
 	return diskPath
 }
-
 
 // powerdownWait is how long to wait after QMP system_powerdown before SIGTERM/SIGKILL.
 const powerdownWait = 15 * time.Second
@@ -407,9 +406,6 @@ func cleanupQEMUFiles(inst *vm.Instance) {
 	StopVirtiofsDaemons(dir)
 }
 
-
-
-
 func hostArch() string {
 	if runtime.GOARCH == "amd64" {
 		return "amd64"
@@ -438,10 +434,6 @@ func qemuBinaryForArch(guestArch string) string {
 	return "qemu-system-aarch64"
 }
 
-func machineType() string {
-	return machineTypeFor(hostArch(), false)
-}
-
 func machineTypeFor(guestArch string, cross bool) string {
 	if guestArch == "arm64" {
 		if !cross && runtime.GOOS == "darwin" {
@@ -462,10 +454,6 @@ func machineTypeFor(guestArch string, cross bool) string {
 	return "q35,accel=tcg"
 }
 
-func cpuType() string {
-	return cpuTypeFor(hostArch(), false)
-}
-
 func cpuTypeFor(guestArch string, cross bool) string {
 	if cross {
 		if guestArch == "amd64" {
@@ -479,11 +467,6 @@ func cpuTypeFor(guestArch string, cross bool) string {
 		}
 	}
 	return "host"
-}
-
-// findFirmware returns UEFI for the host arch.
-func findFirmware() (code, vars string) {
-	return findFirmwareFor(hostArch())
 }
 
 // findFirmwareFor returns UEFI code and vars templates for the guest arch.
@@ -536,16 +519,11 @@ func findFirmwareFor(guestArch string) (code, vars string) {
 	return code, vars
 }
 
-// findEDK is kept as an alias for older call sites/tests.
-func findEDK() (code, vars string) {
-	return findFirmware()
-}
-
 func truncateFile(path string, size int64) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return f.Truncate(size)
 }

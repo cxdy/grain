@@ -8,7 +8,13 @@ description: Run grain tray for a small macOS menu bar or Linux system tray help
 ## Prerequisites
 
 - macOS or Linux (not Windows)
+- A **CGO-enabled** grain binary (`grain tray` is stubbed out when `CGO_ENABLED=0`, including GitHub Release archives)
 - `grain up` so the daemon is running (the tray still starts if the daemon is down; it shows **off**)
+
+```bash
+# local tray-capable build
+CGO_ENABLED=1 just build-tray   # or: CGO_ENABLED=1 go build -o bin/grain ./cmd/grain
+```
 
 ## Usage
 

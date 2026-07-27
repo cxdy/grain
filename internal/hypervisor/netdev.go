@@ -17,9 +17,9 @@ const GuestAgentPort = 7475
 func buildUserNetdev(sshPort int, agentPort int, fwds []vm.PortForward) string {
 	var b strings.Builder
 	b.WriteString("user,id=net0")
-	b.WriteString(fmt.Sprintf(",hostfwd=tcp:127.0.0.1:%d-:22", sshPort))
+	fmt.Fprintf(&b, ",hostfwd=tcp:127.0.0.1:%d-:22", sshPort)
 	if agentPort > 0 {
-		b.WriteString(fmt.Sprintf(",hostfwd=tcp:127.0.0.1:%d-:%d", agentPort, GuestAgentPort))
+		fmt.Fprintf(&b, ",hostfwd=tcp:127.0.0.1:%d-:%d", agentPort, GuestAgentPort)
 	}
 	for _, f := range fwds {
 		if f.GuestPort <= 0 || f.HostPort <= 0 {
@@ -29,7 +29,7 @@ func buildUserNetdev(sshPort int, agentPort int, fwds []vm.PortForward) string {
 		if proto == "" {
 			proto = "tcp"
 		}
-		b.WriteString(fmt.Sprintf(",hostfwd=%s:127.0.0.1:%d-:%d", proto, f.HostPort, f.GuestPort))
+		fmt.Fprintf(&b, ",hostfwd=%s:127.0.0.1:%d-:%d", proto, f.HostPort, f.GuestPort)
 	}
 	return b.String()
 }

@@ -1,0 +1,18 @@
+# Markdownlint rules for grain docs and repo markdown.
+# See https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+default: true
+
+# Long lines are common in tables, links, and code-adjacent prose.
+MD013: false
+
+# Inline HTML is used (e.g. logo centering in README, homepage sections).
+MD033: false
+
+# Not every file is a standalone document (PR templates, partials).
+MD041: false
+
+# Mixed compact/aligned pipe tables are fine.
+MD060: false
+
+# Indented fences appear in some nested examples.
+MD046: false

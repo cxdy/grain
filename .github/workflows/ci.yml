@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Fork PRs get a read-only GITHUB_TOKEN. Do not try to post PR comments here.
+# Coverage comments are posted by coverage-comment.yml via workflow_run (base-repo
+# token + artifact from this job).
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -23,3 +29,35 @@ jobs:
 
       - name: Smoke API (mock hypervisor)
         run: just smoke-api
+
+      - name: Coverage
+        run: just coverage
+
+      # Artifact is consumed by coverage-comment.yml (workflow_run) so fork PRs
+      # can still get a report comment with a write-capable base-repo token.
+      # Include pr-number.txt: workflow_run.pull_requests is often empty for
+      # cross-repo (fork) PRs, and commits/{sha}/pulls also fails for fork heads.
+      # github.event.pull_request.number is reliable on pull_request events.
+      - name: Prepare coverage artifact
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          echo -n "${{ github.event.pull_request.number }}" > pr-number.txt
+          test -s pr-number.txt
+          test -f coverage.xml
+
+      - name: Upload coverage report
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            pr-number.txt
+          retention-days: 5
+          if-no-files-found: error
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2

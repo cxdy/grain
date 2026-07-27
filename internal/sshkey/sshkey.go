@@ -26,7 +26,7 @@ func Ensure(dataDir string) (privPath, pubLine string, err error) {
 		if err != nil {
 			return "", "", err
 		}
-		return privPath, string(bytesTrim(b)), nil
+		return privPath, bytesTrim(b), nil
 	}
 
 	_, priv, err := ed25519.GenerateKey(rand.Reader)

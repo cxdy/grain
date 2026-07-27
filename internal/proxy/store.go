@@ -23,8 +23,8 @@ type Client struct {
 
 // Store persists allow rules and clients under dataDir/proxy/.
 type Store struct {
-	mu   sync.RWMutex
-	dir  string
+	mu  sync.RWMutex
+	dir string
 	// secrets reader is optional; injected at runtime via Server.
 }
 

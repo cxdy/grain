@@ -1,0 +1,42 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - misspell
+    - unconvert
+    - unparam
+    - gosec
+  settings:
+    gosec:
+      # Hypervisor/CLI tooling intentionally shells out, reads config paths, and
+      # reverse-proxies guest traffic. Exclude rules that are pure noise here;
+      # keep Slowloris (G112) and similar actionable findings.
+      excludes:
+        - G101 # false positive: path constants like /run/grain/secrets
+        - G110 # tar streaming size is bounded by caller/protocol
+        - G114 # http.Serve in tests
+        - G115 # int→uint32 for uid/gid and tar mode bits
+        - G204 # exec of ssh/qemu/hdiutil with constructed args
+        - G702 # agent exec is the guest control plane (caller-supplied argv)
+        - G301 # 0o755 dirs for VM state under user data dir
+        - G302 # log files and chmod on secret dirs
+        - G304 # config/image paths from local config (not remote include)
+        - G306 # non-secret cloud-init and pid files at 0o644
+        - G703 # agent FS paths validated separately
+        - G704 # intentional proxy/SSRF surface for guest egress
+        - G705 # JSON error encoding via %q
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

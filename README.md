@@ -16,7 +16,6 @@
 <p align="center">
   Apache-2.0
   · macOS &amp; Linux
-  · not Windows / WSL
 </p>
 
 grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Actions](https://grainvm.com/guides/recipes/act/) (`grain act`), or for a [throwaway k3s](https://grainvm.com/guides/recipes/k3s/) lab. Ephemeral by default; persistent when you want it.

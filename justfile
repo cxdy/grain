@@ -17,17 +17,32 @@ dist := "dist"
 default:
     @just --list
 
+# Install tool versions (mise) and git hooks (pre-commit).
+init:
+    command -v mise >/dev/null 2>&1 && mise install || true
+    if command -v pre-commit >/dev/null 2>&1; then \
+        pre-commit install; \
+    else \
+        echo "pre-commit not found; install via mise or: pip install pre-commit"; \
+        false; \
+    fi
+
 # Unit tests (mock hypervisor — no QEMU required).
 test:
-    go test ./... -count=1
+    env -u GOROOT GOTOOLCHAIN=auto go test ./... -count=1
 
 # Unit tests + CLI build.
 all: test build
 
-# Build the grain CLI into bin/grain.
+# Build the grain CLI into bin/grain (CGO off for portable binary).
 build:
     mkdir -p bin
-    go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
+    CGO_ENABLED=0 go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
+
+# Build CLI with CGO (needed for grain tray on macOS/Linux).
+build-tray:
+    mkdir -p bin
+    CGO_ENABLED=1 go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
 
 # Guest agent for the host architecture (bin/grain-agent).
 agent:
@@ -46,9 +61,41 @@ cover:
     go test ./... -coverprofile=coverage.out -count=1
     go tool cover -func=coverage.out | tail -5
 
+# Profile without -race for cobertura (race + cover is slower / noisier in CI).
+# Writes coverage.out, coverage.html, and coverage.xml for PR comments.
+# Excludes cmd/* (main packages) and tray (CGO UI) from the profile + 75% gate.
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    env -u GOROOT GOTOOLCHAIN=auto go test -count=1 ./... \
+        -coverprofile coverage.raw.out -covermode count
+    # Drop mains and CGO tray from the gated profile (keep single mode header).
+    head -n1 coverage.raw.out > coverage.out
+    tail -n +2 coverage.raw.out | grep -vE '/cmd/grain|/cmd/grain-agent|/internal/tray/' >> coverage.out || true
+    rm -f coverage.raw.out
+    env -u GOROOT GOTOOLCHAIN=auto go tool cover -html=coverage.out -o coverage.html
+    env -u GOROOT GOTOOLCHAIN=auto go run github.com/boumenot/gocover-cobertura@v1.4.0 \
+        --by-files -ignore-gen-files < coverage.out > coverage.xml
+    total=$(env -u GOROOT GOTOOLCHAIN=auto go tool cover -func=coverage.out | awk '/^total:/{print $3}')
+    echo "total coverage: ${total} (cmd + tray excluded)"
+    pct=$(echo "$total" | tr -d '%')
+    awk -v p="$pct" 'BEGIN{ if ((p+0) < 75.0) { printf "coverage %.1f%% is below 75%% minimum\n", p+0; exit 1 } }'
+
 # gofmt all packages.
 fmt:
     go fmt ./...
+
+# Run golangci-lint.
+lint:
+    env -u GOROOT GOTOOLCHAIN=auto golangci-lint run
+
+# Lint markdown with markdownlint-cli2.
+markdownlint:
+    npx --yes markdownlint-cli2
+
+# Run pre-commit on all files.
+pre-commit:
+    pre-commit run --all-files
 
 # Snapshot GoReleaser artifacts (tarballs + checksums), no publish.
 # Requires: go install github.com/goreleaser/goreleaser/v2@latest

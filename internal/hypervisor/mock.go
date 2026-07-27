@@ -12,9 +12,9 @@ import (
 )
 
 type MockRuntime struct {
-	mu     sync.Mutex
-	alive  map[string]bool
-	paused map[string]bool
+	mu        sync.Mutex
+	alive     map[string]bool
+	paused    map[string]bool
 	FailStart bool
 }
 

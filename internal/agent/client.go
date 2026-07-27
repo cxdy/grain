@@ -59,7 +59,7 @@ func (c *Client) Health(ctx context.Context) (*Health, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 		return nil, fmt.Errorf("health: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
@@ -81,7 +81,7 @@ func (c *Client) HeadHealth(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return fmt.Errorf("head health: status %d", res.StatusCode)
 	}
@@ -127,7 +127,7 @@ func (c *Client) ExecBufferedOpts(ctx context.Context, opts ExecOpts) (*ExecResu
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 32<<20))
 	if err != nil {
 		return nil, err
@@ -180,7 +180,7 @@ func (c *Client) ExecStream(ctx context.Context, opts ExecOpts, onFrame func(Exe
 	if err != nil {
 		return -1, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 		return -1, fmt.Errorf("exec stream: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
@@ -265,7 +265,7 @@ func (c *Client) PutFile(ctx context.Context, guestPath string, r io.Reader, siz
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 		return fmt.Errorf("put file: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
@@ -295,7 +295,7 @@ func (c *Client) GetFile(ctx context.Context, guestPath string, w io.Writer) err
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("get file: not found")
 	}
@@ -330,7 +330,7 @@ func (c *Client) PutTar(ctx context.Context, guestPath string, r io.Reader) erro
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 		return fmt.Errorf("put tar: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
@@ -360,7 +360,7 @@ func (c *Client) GetTar(ctx context.Context, guestPath string, w io.Writer) erro
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("get tar: not found")
 	}
@@ -438,7 +438,7 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 	if err != nil {
 		return fmt.Errorf("shell dial: %w", err)
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	// Interactive shells can produce large bursts (e.g. cat of big files).
 	conn.SetReadLimit(8 << 20)
 
@@ -576,7 +576,7 @@ func (c *Client) Stats(ctx context.Context) (*Stats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 		return nil, fmt.Errorf("stats: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
@@ -605,7 +605,7 @@ func (c *Client) MaterializeSecret(ctx context.Context, req MaterializeSecretReq
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 		return nil, fmt.Errorf("materialize secret: status %d: %s", res.StatusCode, strings.TrimSpace(string(b)))
@@ -642,7 +642,7 @@ func (c *Client) ReadDir(ctx context.Context, guestPath string) ([]FSInfo, error
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("readdir: not found")
 	}
@@ -678,7 +678,7 @@ func (c *Client) Stat(ctx context.Context, guestPath string) (*FSInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("stat: not found")
 	}
@@ -715,7 +715,7 @@ func (c *Client) Mkdir(ctx context.Context, guestPath string, recursive bool, mo
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 		return fmt.Errorf("mkdir: status %d: %s", res.StatusCode, strings.TrimSpace(string(b)))
@@ -747,7 +747,7 @@ func (c *Client) Remove(ctx context.Context, guestPath string, recursive bool) e
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("remove: not found")
 	}

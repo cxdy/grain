@@ -169,7 +169,7 @@ func daemonPut(ctx context.Context, c *api.Client, vmName, hostPath, guestPath s
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	mode := fmt.Sprintf("%04o", fi.Mode().Perm())
 	return c.PutFile(ctx, vmName, guestPath, f, fi.Size(), agent.CPOpts{Mode: mode})
 }
@@ -209,7 +209,7 @@ func daemonGet(ctx context.Context, c *api.Client, vmName, guestPath, hostPath s
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return c.GetFile(ctx, vmName, guestPath, f)
 }
 
@@ -240,7 +240,7 @@ func agentPut(ctx context.Context, ac *agent.Client, hostPath, guestPath string)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	mode := fmt.Sprintf("%04o", fi.Mode().Perm())
 	return ac.PutFile(ctx, guestPath, f, fi.Size(), agent.CPOpts{Mode: mode})
 }
@@ -284,7 +284,7 @@ func agentGet(ctx context.Context, ac *agent.Client, guestPath, hostPath string)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := ac.GetFile(ctx, guestPath, f); err != nil {
 		return err
 	}
@@ -301,7 +301,7 @@ func agentGet(ctx context.Context, ac *agent.Client, guestPath, hostPath string)
 // Directory entries are relative to the directory root (not including the dir name).
 func writeLocalTar(w io.Writer, path string) error {
 	tw := tar.NewWriter(w)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -357,7 +357,7 @@ func addLocalToTar(tw *tar.Writer, path, name string, fi os.FileInfo) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		if _, err := io.Copy(tw, f); err != nil {
 			return err
 		}
@@ -391,7 +391,7 @@ func extractTar(r io.Reader, dest string) error {
 			if err := os.MkdirAll(target, perm); err != nil {
 				return err
 			}
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}

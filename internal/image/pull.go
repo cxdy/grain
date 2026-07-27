@@ -101,7 +101,7 @@ func fileSHA256(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
@@ -179,7 +179,7 @@ func (m *Manager) pullSpec(ctx context.Context, spec Spec, progress func(written
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("download: HTTP %s", res.Status)
 	}
@@ -272,7 +272,7 @@ func resolveWantSHA256(ctx context.Context, client *http.Client, imageURL, pinne
 		// Network failure for optional sidecar: skip verify rather than fail pull.
 		return "", nil
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		// No sidecar published yet — skip verification.
 		return "", nil
@@ -302,7 +302,7 @@ func ParseSHA256Sidecar(body string) string {
 		return ""
 	}
 	for _, c := range field {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return ""
 		}
 	}
@@ -414,12 +414,12 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	if _, err := io.Copy(out, in); err != nil {
 		return err
 	}

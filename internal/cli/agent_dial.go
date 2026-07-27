@@ -67,7 +67,7 @@ func shellViaDaemon(c *api.Client, name string) error {
 		BaseURL: strings.TrimRight(c.Base, "/") + "/vms/" + url.PathEscape(name),
 		HTTP:    daemonHTTP(c),
 	}
-	fmt.Fprintf(os.Stderr, "connecting via agent (remote API) to %s …\n", name)
+	_, _ = fmt.Fprintf(os.Stderr, "connecting via agent (remote API) to %s …\n", name)
 	return ac.Shell(context.Background(), agent.ShellOpts{})
 }
 
@@ -132,7 +132,7 @@ func execViaAgent(c *api.Client, name string, remote []string, force bool, viaDa
 		case "stdout":
 			fmt.Print(f.Data)
 		case "stderr":
-			fmt.Fprint(os.Stderr, f.Data)
+			_, _ = fmt.Fprint(os.Stderr, f.Data)
 		}
 		return nil
 	})
@@ -162,7 +162,7 @@ func execViaAgent(c *api.Client, name string, remote []string, force bool, viaDa
 		fmt.Print(res.Stdout)
 	}
 	if res.Stderr != "" {
-		fmt.Fprint(os.Stderr, res.Stderr)
+		_, _ = fmt.Fprint(os.Stderr, res.Stderr)
 	}
 	if res.Error != "" && res.ExitCode != 0 {
 		if res.Stdout == "" && res.Stderr == "" {
@@ -184,7 +184,7 @@ func execViaDaemonAPI(c *api.Client, name string, remote []string) error {
 		case "stdout":
 			fmt.Print(f.Data)
 		case "stderr":
-			fmt.Fprint(os.Stderr, f.Data)
+			_, _ = fmt.Fprint(os.Stderr, f.Data)
 		}
 		return nil
 	})
@@ -198,7 +198,7 @@ func execViaDaemonAPI(c *api.Client, name string, remote []string) error {
 			fmt.Print(res.Stdout)
 		}
 		if res.Stderr != "" {
-			fmt.Fprint(os.Stderr, res.Stderr)
+			_, _ = fmt.Fprint(os.Stderr, res.Stderr)
 		}
 		if res.ExitCode != 0 {
 			return exitCodeError(res.ExitCode)

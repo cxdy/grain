@@ -295,7 +295,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	s.Log.Info("proxy allow", "method", r.Method, "host", hostname, "path", path, "rule", rule.ID, "status", resp.StatusCode)
 
@@ -361,8 +361,8 @@ func removeHopByHop(h http.Header) {
 }
 
 func bidirCopy(a, b net.Conn) {
-	defer a.Close()
-	defer b.Close()
+	defer func() { _ = a.Close() }()
+	defer func() { _ = b.Close() }()
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {

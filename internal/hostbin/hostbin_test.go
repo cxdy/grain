@@ -47,4 +47,7 @@ func TestIsExecutable(t *testing.T) {
 	if isExecutable(filepath.Join(dir, "missing")) {
 		t.Fatal("missing should be false")
 	}
+	if isExecutable(dir) {
+		t.Fatal("directory should be false")
+	}
 }

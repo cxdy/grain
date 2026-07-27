@@ -15,7 +15,7 @@ import (
 	"github.com/cxdy/grain/internal/agent"
 )
 
-func startTestServer(t *testing.T) (*agent.Server, *agent.Client) {
+func startTestServer(t *testing.T) *agent.Client {
 	t.Helper()
 	srv := agent.NewServer("127.0.0.1:0", nil)
 	errCh := make(chan error, 1)
@@ -60,11 +60,11 @@ func startTestServer(t *testing.T) (*agent.Server, *agent.Client) {
 		}
 	})
 
-	return srv, c
+	return c
 }
 
 func TestHealth(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 
 	ctx := context.Background()
 	h, err := c.Health(ctx)
@@ -87,7 +87,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestExecBufferedEcho(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 
 	ctx := context.Background()
 	res, err := c.ExecBuffered(ctx, "echo", "hello")
@@ -104,7 +104,7 @@ func TestExecBufferedEcho(t *testing.T) {
 }
 
 func TestExecBufferedNonZero(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 
 	ctx := context.Background()
 	// /bin/sh -c "exit 42"
@@ -118,7 +118,7 @@ func TestExecBufferedNonZero(t *testing.T) {
 }
 
 func TestExecMissingCmd(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 
 	ctx := context.Background()
 	res, err := c.ExecBufferedOpts(ctx, agent.ExecOpts{Cmd: ""})
@@ -130,7 +130,7 @@ func TestExecMissingCmd(t *testing.T) {
 }
 
 func TestExecStreamEcho(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 
 	ctx := context.Background()
 	var types []string
@@ -176,7 +176,7 @@ func TestExecStreamEcho(t *testing.T) {
 }
 
 func TestExecStreamNonZero(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 
 	ctx := context.Background()
 	code, err := c.ExecStream(ctx, agent.ExecOpts{Cmd: "/bin/sh", Args: []string{"-c", "exit 42"}}, func(f agent.ExecFrame) error {
@@ -191,7 +191,7 @@ func TestExecStreamNonZero(t *testing.T) {
 }
 
 func TestExecStreamStartError(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 
 	ctx := context.Background()
 	_, err := c.ExecStream(ctx, agent.ExecOpts{Cmd: "/nonexistent/grain-agent-cmd-xyz"}, func(f agent.ExecFrame) error {
@@ -206,7 +206,7 @@ func TestExecStreamStartError(t *testing.T) {
 }
 
 func TestPutGetFileRoundtrip(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 	ctx := context.Background()
 
 	dir := t.TempDir()
@@ -238,14 +238,14 @@ func TestPutGetFileRoundtrip(t *testing.T) {
 }
 
 func TestPutTarGetTar(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 	ctx := context.Background()
 
 	// Build a small tar in memory: a.txt, nested/b.txt
 	var tarBuf bytes.Buffer
 	tw := tar.NewWriter(&tarBuf)
 	files := map[string]string{
-		"a.txt":       "alpha",
+		"a.txt":        "alpha",
 		"nested/b.txt": "bravo",
 	}
 	for name, content := range files {
@@ -314,7 +314,7 @@ func TestPutTarGetTar(t *testing.T) {
 }
 
 func TestFSReadDirStatMkdirRemove(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 	ctx := context.Background()
 
 	root := t.TempDir()
@@ -397,7 +397,7 @@ func TestFSReadDirStatMkdirRemove(t *testing.T) {
 }
 
 func TestNotFoundPaths(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 	ctx := context.Background()
 
 	missing := filepath.Join(t.TempDir(), "no-such-path-xyz")
@@ -421,7 +421,7 @@ func TestNotFoundPaths(t *testing.T) {
 }
 
 func TestWaitSucceeds(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := agent.Wait(ctx, c); err != nil {
@@ -472,7 +472,7 @@ func TestStatsEndpoint(t *testing.T) {
 	)
 	t.Cleanup(restore)
 
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 	st, err := c.Stats(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -489,7 +489,7 @@ func TestStatsEndpoint(t *testing.T) {
 }
 
 func TestMaterializeSecret(t *testing.T) {
-	_, c := startTestServer(t)
+	c := startTestServer(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mysecret")
 	ctx := context.Background()

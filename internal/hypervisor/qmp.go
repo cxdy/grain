@@ -142,7 +142,7 @@ func qmpCommand(ctx context.Context, sockPath, execute string) error {
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	return c.execute(ctx, execute)
 }
 
@@ -152,6 +152,6 @@ func qmpHumanMonitor(ctx context.Context, sockPath, cmdline string) error {
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	return c.HumanMonitorCommand(ctx, cmdline)
 }

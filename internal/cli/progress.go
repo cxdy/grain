@@ -60,7 +60,7 @@ func createProgress(label string) (stop func()) {
 			close(done)
 			<-finished
 			if tty {
-				fmt.Fprint(os.Stderr, "\r\033[K")
+				_, _ = fmt.Fprint(os.Stderr, "\r\033[K")
 			}
 		})
 	}
@@ -128,7 +128,7 @@ func createProgressEvents(label string) (onEvent func(vm.CreateEvent), stop func
 			close(done)
 			<-finished
 			if tty {
-				fmt.Fprint(os.Stderr, "\r\033[K")
+				_, _ = fmt.Fprint(os.Stderr, "\r\033[K")
 			}
 		})
 	}
@@ -138,10 +138,10 @@ func createProgressEvents(label string) (onEvent func(vm.CreateEvent), stop func
 func printCreateProgress(tty bool, frame, label, stage string, elapsed time.Duration) {
 	e := elapsed.Round(time.Second)
 	if tty {
-		fmt.Fprintf(os.Stderr, "\r\033[K  %s %s  %-12s %s", frame, label, stage, e)
+		_, _ = fmt.Fprintf(os.Stderr, "\r\033[K  %s %s  %-12s %s", frame, label, stage, e)
 		return
 	}
-	fmt.Fprintf(os.Stderr, "%s: %s (%s)\n", label, stage, e)
+	_, _ = fmt.Fprintf(os.Stderr, "%s: %s (%s)\n", label, stage, e)
 }
 
 // phaseLabel maps CreateEvent phases to short spinner labels.

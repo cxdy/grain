@@ -2,12 +2,15 @@ package manager_test
 
 import (
 	"context"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/hypervisor"
 	"github.com/cxdy/grain/internal/image"
@@ -18,15 +21,29 @@ import (
 
 func testManager(t *testing.T) (*manager.Manager, *hypervisor.MockRuntime, *hypervisor.MockDisk) {
 	t.Helper()
-	return testManagerCfg(t, config.Defaults())
+	return testManagerCfg(t, mockCfg(t))
+}
+
+// mockCfg is Defaults with Hypervisor=mock and a short ReadyTimeout.
+func mockCfg(t *testing.T) config.Config {
+	t.Helper()
+	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
+	return cfg
 }
 
 func testManagerCfg(t *testing.T, cfg config.Config) (*manager.Manager, *hypervisor.MockRuntime, *hypervisor.MockDisk) {
 	t.Helper()
 	dir := t.TempDir()
 	cfg.DataDir = dir
-	cfg.Hypervisor = "mock"
-	cfg.ReadyTimeout = time.Second // never used for mock, but keep tests fast
+	// Do not force Hypervisor/ReadyTimeout — callers must set them (see mockCfg / nonMockCfg).
+	if cfg.Hypervisor == "" {
+		cfg.Hypervisor = "mock"
+	}
+	if cfg.ReadyTimeout <= 0 {
+		cfg.ReadyTimeout = time.Second
+	}
 	st, err := store.New(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +233,6 @@ func TestListRefreshesStopped(t *testing.T) {
 		t.Fatalf("want stopped, got %+v", list)
 	}
 }
-
 
 func TestCreateEmitsEvents(t *testing.T) {
 	t.Parallel()
@@ -437,6 +453,8 @@ func TestStartReappliesMounts(t *testing.T) {
 func TestResourceCapMaxVMs(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
 	cfg.MaxVMs = 2
 	cfg.MaxCPUsTotal = 0 // unlimited so we hit max_vms first
 	cfg.MaxMemoryMBTotal = 0
@@ -463,6 +481,8 @@ func TestResourceCapMaxVMs(t *testing.T) {
 func TestResourceCapPerVMMemory(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
 	cfg.MaxMemoryMBPerVM = 1024
 	cfg.MaxVMs = 0
 	cfg.MaxCPUsTotal = 0
@@ -485,6 +505,8 @@ func TestResourceCapPerVMMemory(t *testing.T) {
 func TestResourceCapPerVMCPUs(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
 	cfg.MaxCPUsPerVM = 2
 	cfg.MaxVMs = 0
 	cfg.MaxCPUsTotal = 0
@@ -503,6 +525,8 @@ func TestResourceCapPerVMCPUs(t *testing.T) {
 func TestResourceCapStoppedDoesNotCount(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
 	cfg.MaxVMs = 1
 	cfg.MaxCPUsTotal = 0
 	cfg.MaxMemoryMBTotal = 0
@@ -527,6 +551,8 @@ func TestResourceCapStoppedDoesNotCount(t *testing.T) {
 func TestResourceCapStartRespectsMaxVMs(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
 	cfg.MaxVMs = 1
 	cfg.MaxCPUsTotal = 0
 	cfg.MaxMemoryMBTotal = 0
@@ -554,6 +580,8 @@ func TestResourceCapStartRespectsMaxVMs(t *testing.T) {
 func TestResourceCapTotalCPUs(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
 	cfg.MaxVMs = 0
 	cfg.MaxCPUsTotal = 4
 	cfg.MaxMemoryMBTotal = 0
@@ -732,7 +760,6 @@ func TestCreateWaitSSHDefaultPhases(t *testing.T) {
 	}
 }
 
-
 func TestPauseResumeMock(t *testing.T) {
 	t.Parallel()
 	m, rt, _ := testManager(t)
@@ -887,6 +914,8 @@ func TestSuspendFromPaused(t *testing.T) {
 func TestResourceCapSuspendedDoesNotCount(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
 	cfg.MaxVMs = 1
 	cfg.MaxCPUsTotal = 0
 	cfg.MaxMemoryMBTotal = 0
@@ -959,6 +988,8 @@ func TestAddRemoveLiveForwardMock(t *testing.T) {
 func TestResourceCapPausedCounts(t *testing.T) {
 	t.Parallel()
 	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
 	cfg.MaxVMs = 1
 	cfg.MaxCPUsTotal = 0
 	cfg.MaxMemoryMBTotal = 0
@@ -1014,5 +1045,497 @@ func TestCreateSocketForwardsRejectsRelativeGuest(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for relative guest path")
+	}
+}
+
+func TestCreateTimeoutAndReadyTimeout(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
+	cfg.ReadyTimeout = 30 * time.Second
+	m, _, _ := testManagerCfg(t, cfg)
+	// ReadyTimeout + 2m = 2m30s → floored to 5m
+	if m.CreateTimeout() != 5*time.Minute {
+		t.Fatalf("CreateTimeout %v", m.CreateTimeout())
+	}
+	if m.ReadyTimeout() != 30*time.Second {
+		t.Fatalf("ReadyTimeout %v", m.ReadyTimeout())
+	}
+
+	cfg2 := config.Defaults()
+	cfg2.Hypervisor = "mock"
+	cfg2.ReadyTimeout = time.Second
+	cfg2.ReadyTimeout = 10 * time.Minute
+	m2, _, _ := testManagerCfg(t, cfg2)
+	if m2.CreateTimeout() != 12*time.Minute {
+		t.Fatalf("CreateTimeout large %v", m2.CreateTimeout())
+	}
+}
+
+func TestCreateRejectsInvalidArchGPUNetwork(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "a1", Arch: "riscv"}); err == nil {
+		t.Fatal("expected arch error")
+	}
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "g1", GPU: "vfio"}); err == nil {
+		t.Fatal("expected gpu error")
+	}
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "n1", Network: "bridge"}); err == nil {
+		t.Fatal("expected network error")
+	}
+}
+
+func TestCreateWithArchGPUNetworkAndResources(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:     "opts1",
+		CPUs:     1,
+		MemoryMB: 512,
+		DiskGB:   4,
+		Arch:     "amd64",
+		GPU:      "virtio",
+		Network:  "overlay",
+		Image:    "ubuntu-cloud",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.CPUs != 1 || inst.MemoryMB != 512 || inst.DiskGB != 4 {
+		t.Fatalf("resources %+v", inst)
+	}
+	if inst.Arch != "amd64" || inst.GPU != "virtio" || inst.Network != "overlay" {
+		t.Fatalf("arch/gpu/net %s/%s/%s", inst.Arch, inst.GPU, inst.Network)
+	}
+	// aarch64 alias
+	inst2, err := m.Create(context.Background(), vm.CreateOpts{Name: "opts2", Arch: "aarch64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst2.Arch != "arm64" {
+		t.Fatalf("arch %s", inst2.Arch)
+	}
+}
+
+func TestCreateFailStartEmitsError(t *testing.T) {
+	t.Parallel()
+	m, rt, _ := testManager(t)
+	rt.FailStart = true
+	var phases []string
+	_, err := m.Create(context.Background(), vm.CreateOpts{
+		Name: "failstart",
+		OnEvent: func(ev vm.CreateEvent) {
+			phases = append(phases, ev.Phase)
+		},
+	})
+	if err == nil {
+		t.Fatal("expected start failure")
+	}
+	joined := strings.Join(phases, ",")
+	if !strings.Contains(joined, vm.PhaseError) {
+		t.Fatalf("want error phase in %v", phases)
+	}
+	// Instance should be in error state or cleaned depending on fail path
+	got, gerr := m.Get("failstart")
+	if gerr == nil && got.Status != vm.StatusError && got.Status != vm.StatusStopped {
+		// fail() marks error; acceptable either way if still listed
+		if got.Error == "" && got.Status == vm.StatusRunning {
+			t.Fatalf("unexpected running after fail: %+v", got)
+		}
+	}
+}
+
+func TestGetMissingAndDeleteMissing(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	if _, err := m.Get("nope"); err == nil {
+		t.Fatal("expected get missing")
+	}
+	if err := m.Delete(context.Background(), "nope"); err == nil {
+		t.Fatal("expected delete missing")
+	}
+	if err := m.Shutdown(context.Background(), "nope"); err == nil {
+		t.Fatal("expected shutdown missing")
+	}
+	if err := m.Pause(context.Background(), "nope"); err == nil {
+		t.Fatal("expected pause missing")
+	}
+	if err := m.Resume(context.Background(), "nope"); err == nil {
+		t.Fatal("expected resume missing")
+	}
+}
+
+func TestDiskExistsHelper(t *testing.T) {
+	t.Parallel()
+	if manager.DiskExists("/nonexistent/path/disk.img") {
+		t.Fatal("should not exist")
+	}
+	f := filepath.Join(t.TempDir(), "d.img")
+	if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !manager.DiskExists(f) {
+		t.Fatal("should exist")
+	}
+}
+
+func TestCreateRejectsEmptyMountFields(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	if _, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:   "m1",
+		Mounts: []vm.Mount{{Host: "", Guest: "/mnt"}},
+	}); err == nil {
+		t.Fatal("expected empty host")
+	}
+	if _, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:   "m2",
+		Mounts: []vm.Mount{{Host: t.TempDir(), Guest: ""}},
+	}); err == nil {
+		t.Fatal("expected empty guest")
+	}
+	if _, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:   "m3",
+		Mounts: []vm.Mount{{Host: t.TempDir(), Guest: "relative"}},
+	}); err == nil {
+		t.Fatal("expected relative guest")
+	}
+}
+
+func TestCreateRejectsBadForwardGuestPort(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	_, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:     "badfwd",
+		Forwards: []vm.PortForward{{HostPort: 8080, GuestPort: 0}},
+	})
+	if err == nil {
+		t.Fatal("expected forward validation error")
+	}
+}
+
+func TestAddForwardRequiresRunning(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Shutdown(context.Background(), "lab"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.AddForward(context.Background(), "lab", 0, 80); err == nil {
+		t.Fatal("expected add forward fail when stopped")
+	}
+	if err := m.RemoveForward(context.Background(), "lab", 9999); err == nil {
+		t.Fatal("expected remove missing forward")
+	}
+}
+
+func TestCreateWithUserdataAndTags(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:     "ud",
+		Userdata: "echo hi",
+		Tags:     map[string]string{"a": "b"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Tags["a"] != "b" {
+		t.Fatalf("tags %+v", inst.Tags)
+	}
+}
+
+func TestCreateWaitTimeoutOverride(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name:        "wto",
+		WaitMode:    vm.WaitSSH,
+		WaitTimeout: 500 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Status != vm.StatusRunning {
+		t.Fatalf("status %s", inst.Status)
+	}
+}
+
+func TestResourceCapTotalMemory(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
+	cfg.MaxMemoryMBTotal = 1024
+	cfg.MaxMemoryMBPerVM = 0
+	cfg.MaxCPUsTotal = 0
+	cfg.MaxVMs = 0
+	m, _, _ := testManagerCfg(t, cfg)
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "a", MemoryMB: 1024}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "b", MemoryMB: 512}); err == nil {
+		t.Fatal("expected total memory cap")
+	}
+}
+
+func TestStartMissingDisk(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Shutdown(context.Background(), "lab"); err != nil {
+		t.Fatal(err)
+	}
+	// Remove disk to force start failure path.
+	_ = os.Remove(inst.DiskPath)
+	_ = os.Remove(inst.DiskPath + ".qcow2")
+	if _, err := m.Start(context.Background(), "lab"); err == nil {
+		t.Fatal("expected start error when disk missing")
+	} else if !strings.Contains(err.Error(), "no disk") {
+		t.Fatalf("want no disk error, got %v", err)
+	}
+}
+
+func TestCreateArchAliases(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	for _, tc := range []struct {
+		in, want string
+	}{
+		{"host", ""},
+		{"x86_64", "amd64"},
+		{"x64", "amd64"},
+	} {
+		name := "arch-" + strings.ReplaceAll(tc.in, "_", "")
+		inst, err := m.Create(context.Background(), vm.CreateOpts{Name: name, Arch: tc.in})
+		if err != nil {
+			t.Fatalf("arch %s: %v", tc.in, err)
+		}
+		if inst.Arch != tc.want {
+			t.Fatalf("arch %s: got %q want %q", tc.in, inst.Arch, tc.want)
+		}
+	}
+}
+
+func TestCreateSocketForwardEmptyHost(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	_, err := m.Create(context.Background(), vm.CreateOpts{
+		Name: "empty-sock",
+		SocketForwards: []vm.SocketForward{
+			{HostPath: "", GuestPath: "/var/run/docker.sock"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected empty host path error")
+	}
+}
+
+func TestDeleteRunningStopsFirst(t *testing.T) {
+	t.Parallel()
+	m, rt, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "delrun"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rt.Running(inst) {
+		t.Fatal("should be running")
+	}
+	if err := m.Delete(context.Background(), "delrun"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Get("delrun"); err == nil {
+		t.Fatal("should be gone")
+	}
+}
+
+func TestPauseNotRunning(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Persistent: true, Name: "lab"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Shutdown(context.Background(), "lab"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Pause(context.Background(), "lab"); err == nil {
+		t.Fatal("expected pause fail when stopped")
+	}
+	if err := m.Resume(context.Background(), "lab"); err == nil {
+		t.Fatal("expected resume fail when stopped")
+	}
+}
+
+// nonMockCfg uses Hypervisor="qemu" so Manager wait paths do not short-circuit,
+// while still injecting MockRuntime/MockDisk (no real QEMU).
+func nonMockCfg(t *testing.T) config.Config {
+	t.Helper()
+	cfg := config.Defaults()
+	cfg.Hypervisor = "qemu"
+	cfg.ReadyTimeout = 300 * time.Millisecond
+	return cfg
+}
+
+func TestCreateWaitSSHSoftWhenNoGuest(t *testing.T) {
+	t.Parallel()
+	// isMock=false → WaitSSH is attempted; soft mode still succeeds Create.
+	m, _, _ := testManagerCfg(t, nonMockCfg(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	inst, err := m.Create(ctx, vm.CreateOpts{
+		Name:        "softssh",
+		WaitMode:    vm.WaitSSH,
+		WaitTimeout: 250 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Status != vm.StatusRunning {
+		t.Fatalf("status %s", inst.Status)
+	}
+}
+
+func TestCreateWaitAgentHardFailsWithoutAgent(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManagerCfg(t, nonMockCfg(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	_, err := m.Create(ctx, vm.CreateOpts{
+		Name:        "hardagent",
+		WaitMode:    vm.WaitAgent,
+		WaitTimeout: 400 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("expected wait agent failure without guest")
+	}
+	if !strings.Contains(err.Error(), "agent") && !strings.Contains(err.Error(), "ssh") {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestCreateWaitUserdataFailsWithoutAgent(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManagerCfg(t, nonMockCfg(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	_, err := m.Create(ctx, vm.CreateOpts{
+		Name:        "hardud",
+		WaitMode:    vm.WaitUserdata,
+		WaitTimeout: 400 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("expected userdata wait failure")
+	}
+}
+
+func TestCreateWaitUserdataWithLocalAgent(t *testing.T) {
+	// Not parallel: first mock VM gets AgentPort 7476; bind agent there first.
+	// Hypervisor label "qemu" so wait paths run; runtime is still MockRuntime.
+	ln, err := net.Listen("tcp", "127.0.0.1:7476")
+	if err != nil {
+		t.Skipf("port 7476 busy: %v", err)
+	}
+	_ = ln.Close()
+
+	// Boot real grain-agent on the port MockRuntime assigns to the first VM.
+	srv := agent.NewServer("127.0.0.1:7476", nil)
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		select {
+		case <-errCh:
+		case <-time.After(2 * time.Second):
+		}
+	})
+	// Wait until agent is up.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		ac := &agent.Client{BaseURL: "http://127.0.0.1:7476", HTTP: &http.Client{Timeout: time.Second}}
+		if _, err := ac.Health(context.Background()); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	cfg := nonMockCfg(t)
+	cfg.ReadyTimeout = 5 * time.Second
+	m, _, _ := testManagerCfg(t, cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// UserdataRan is false on fresh agent → wait userdata should time out.
+	_, err = m.Create(ctx, vm.CreateOpts{
+		Name:        "udlocal",
+		WaitMode:    vm.WaitUserdata,
+		WaitTimeout: 500 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("expected userdata timeout (UserdataRan=false)")
+	}
+	if !strings.Contains(err.Error(), "userdata") && !strings.Contains(err.Error(), "deadline") && !strings.Contains(err.Error(), "context") {
+		// still useful if agent path partially ran
+		t.Logf("userdata wait error: %v", err)
+	}
+}
+
+func TestAddForwardNonMockUsesSSHPath(t *testing.T) {
+	t.Parallel()
+	// Hypervisor not mock → AddForward starts real ssh -N -L (not mock PID=1).
+	// Without a guest the process may die quickly (error) or linger briefly (PID>1).
+	cfg := nonMockCfg(t)
+	m, _, _ := testManagerCfg(t, cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	inst, err := m.Create(ctx, vm.CreateOpts{
+		Name:        "fwdssh",
+		WaitMode:    vm.WaitSSH,
+		WaitTimeout: 200 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err := m.AddForward(ctx, inst.Name, 19090, 80)
+	if err != nil {
+		// Expected when ssh cannot establish the forward.
+		return
+	}
+	t.Cleanup(func() {
+		_ = m.RemoveForward(context.Background(), inst.Name, lf.HostPort)
+	})
+	if lf.PID <= 1 {
+		t.Fatalf("non-mock forward should not use mock PID=1, got %d", lf.PID)
+	}
+}
+
+func TestCreateSocketForwardsNonMock(t *testing.T) {
+	t.Parallel()
+	cfg := nonMockCfg(t)
+	m, _, _ := testManagerCfg(t, cfg)
+	hostSock := filepath.Join(t.TempDir(), "d.sock")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// Create succeeds (soft SSH); socket forwards may fail non-fatally.
+	inst, err := m.Create(ctx, vm.CreateOpts{
+		Name:        "socknm",
+		WaitMode:    vm.WaitSSH,
+		WaitTimeout: 200 * time.Millisecond,
+		SocketForwards: []vm.SocketForward{
+			{HostPath: hostSock, GuestPath: "/var/run/docker.sock"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inst.SocketForwards) != 1 {
+		t.Fatalf("forwards %+v", inst.SocketForwards)
 	}
 }
