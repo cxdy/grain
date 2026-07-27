@@ -8,7 +8,7 @@ import (
 
 func TestLinuxBinaryPathSkipsDirAndFindsFile(t *testing.T) {
 	dir := t.TempDir()
-	name := LinuxBinaryName()
+	name := LinuxBinaryName("")
 	// Directory that matches candidate path → skipped (IsDir branch).
 	if err := os.MkdirAll(filepath.Join(dir, "bin", name), 0o755); err != nil {
 		t.Fatal(err)
