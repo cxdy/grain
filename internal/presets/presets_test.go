@@ -1,9 +1,10 @@
 package presets_test
 
 import (
-	"github.com/cxdy/grain/internal/presets"
 	"strings"
 	"testing"
+
+	"github.com/cxdy/grain/internal/presets"
 )
 
 func TestGetDockerK3sActNonEmpty(t *testing.T) {

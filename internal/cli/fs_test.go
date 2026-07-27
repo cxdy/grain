@@ -12,10 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/api"
 	"github.com/cxdy/grain/internal/vm"
-	"github.com/spf13/cobra"
 )
 
 func TestResolveVMAndPathOneArg(t *testing.T) {

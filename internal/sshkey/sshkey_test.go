@@ -1,11 +1,12 @@
 package sshkey_test
 
 import (
-	"github.com/cxdy/grain/internal/sshkey"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cxdy/grain/internal/sshkey"
 )
 
 func TestEnsureIdempotent(t *testing.T) {

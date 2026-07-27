@@ -1,12 +1,13 @@
 package store_test
 
 import (
-	"github.com/cxdy/grain/internal/store"
-	"github.com/cxdy/grain/internal/vm"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/cxdy/grain/internal/store"
+	"github.com/cxdy/grain/internal/vm"
 )
 
 func TestPutGetListDelete(t *testing.T) {

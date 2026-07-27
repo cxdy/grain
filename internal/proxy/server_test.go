@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/cxdy/grain/internal/secrets"
 	"io"
 	"log/slog"
 	"net"
@@ -16,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cxdy/grain/internal/secrets"
 )
 
 func TestInjectAuthorization(t *testing.T) {

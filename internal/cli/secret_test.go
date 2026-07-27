@@ -11,8 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cxdy/grain/internal/secrets"
 	"github.com/spf13/cobra"
+
+	"github.com/cxdy/grain/internal/secrets"
 )
 
 func TestParsePublishSocketFlag(t *testing.T) {

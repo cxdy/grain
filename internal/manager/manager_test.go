@@ -3,13 +3,12 @@ package manager_test
 import (
 	"context"
 	"net"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"net/http"
-	"path/filepath"
 
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/config"
