@@ -114,6 +114,8 @@ docs_nav:
         url: /reference/go-sdk/
       - title: TypeScript SDK
         url: /reference/typescript-sdk/
+      - title: Python SDK
+        url: /reference/python-sdk/
       - title: Metrics
         url: /reference/metrics/
   explain:

@@ -99,7 +99,7 @@ grain up
 | `doctor` | dependency check (QEMU, image, optional agent binary + QMP) |
 | `version` | print version |
 
-**Also:** daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), **TypeScript client SDK** ([`sdk/ts`](sdk/ts) — `@cxdy/grain`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
+**Also:** daemon **OpenAPI** (`api/openapi.yaml`, `GET /openapi.yaml`), **Go client SDK** (`github.com/cxdy/grain/client`), **TypeScript client SDK** ([`sdk/ts`](sdk/ts) — `@cxdy/grain`), **Python client SDK** ([`sdk/python`](sdk/python) — `cxdy-grain` / `import grain`), and optional **`api_token`** / `GRAIN_TOKEN` for Bearer auth.
 
 **Guest agent:** each VM host-forwards guest `:7475`. After SSH is up, grain deploys `grain-agent` over SSH when `bin/grain-agent-linux-$(arch)` is present (`make agent-linux`), then waits for `/health`. `grain x` and `grain cp` use the agent when available (`x` streams stdout/stderr live; `cp` uses binary/tar file transfer). `grain fs` lists/stats/creates/removes guest paths without SSH. Soft-fail: VMs still work SSH-only (`--ssh` forces scp/ssh). Full overview: [Guest agent](https://grainvm.com/guides/agent/).
 
@@ -293,6 +293,29 @@ const out = await grain.exec(inst.name, "uname", ["-a"]);
 ```
 
 Unix socket via optional `undici` (`socketPath` or custom `fetch`) — see [`sdk/ts/README.md`](sdk/ts/README.md).
+
+### Python client SDK
+
+Stdlib-only client for Python 3.9+: [`sdk/python`](sdk/python) (`cxdy-grain`, `import grain`). Not published to PyPI yet — install from a local path or git.
+
+```bash
+pip install -e ./sdk/python
+# or: pip install "git+https://github.com/cxdy/grain.git#subdirectory=sdk/python"
+```
+
+```python
+from pathlib import Path
+from grain import GrainClient, CreateRequest, WAIT_AGENT
+
+grain = GrainClient.unix(str(Path.home() / ".grain" / "grain.sock"))
+# or: GrainClient(base_url="http://127.0.0.1:7474", token=os.environ.get("GRAIN_TOKEN", ""))
+
+grain.health()
+inst = grain.create(CreateRequest(persistent=False), wait=WAIT_AGENT, timeout="3m")
+out = grain.exec(inst.name, "uname", ["-a"])
+```
+
+See [`sdk/python/README.md`](sdk/python/README.md) and [grainvm.com/reference/python-sdk](https://grainvm.com/reference/python-sdk/).
 
 ## License
 

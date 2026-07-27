@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cxdy-grain"
+version = "0.1.0"
+description = "Python client for the grain microVM daemon HTTP API"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.9"
+authors = [{ name = "grain contributors" }]
+keywords = ["grain", "microvm", "sandbox", "qemu", "client"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: System :: Systems Administration",
+  "Typing :: Typed",
+]
+# Zero runtime dependencies — stdlib only (http.client, urllib, json).
+dependencies = []
+
+[project.urls]
+Homepage = "https://grainvm.com"
+Documentation = "https://grainvm.com/reference/python-sdk/"
+Repository = "https://github.com/cxdy/grain"
+Issues = "https://github.com/cxdy/grain/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+grain = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

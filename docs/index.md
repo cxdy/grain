@@ -7,8 +7,6 @@ description: grain runs disposable Linux sandboxes locally — install in one co
 <section class="hero">
   <div class="wrap hero-grid">
     <div>
-      <img class="hero-logo" src="{{ '/assets/img/logo.svg' | relative_url }}" width="48" height="48" alt="grain — a grain of sand" />
-      <div class="eyebrow">Open source · Apache-2.0 · grainvm.com</div>
       <h1>Real Linux sandboxes.<br>On your machine.</h1>
       <p class="hero-lead">
         grain is a local microVM control plane — small like a grain of sand, complete like a real Linux box.
@@ -19,7 +17,7 @@ description: grain runs disposable Linux sandboxes locally — install in one co
         <a class="btn btn-ghost" href="#demo">Try interactive demo</a>
         <a class="btn btn-ghost" href="{{ '/get-started/first-sandbox/' | relative_url }}">Full tutorial</a>
       </div>
-      <p class="hero-meta">macOS Apple Silicon &amp; Linux · QEMU · optional Firecracker · Go &amp; TypeScript SDKs</p>
+      <p class="hero-meta">macOS Apple Silicon &amp; Linux · QEMU · optional Firecracker · Go, TypeScript &amp; Python SDKs</p>
     </div>
 
     <div class="install-card" id="install" data-tabs>
@@ -149,7 +147,7 @@ description: grain runs disposable Linux sandboxes locally — install in one co
       </div>
       <div class="feature">
         <h3>Automate it</h3>
-        <p>Unix socket API, OpenAPI, Go client, and TypeScript SDK for agents and CI.</p>
+        <p>Unix socket API, OpenAPI, Go, TypeScript, and Python SDKs for agents and CI.</p>
       </div>
     </div>
   </div>
@@ -172,7 +170,7 @@ description: grain runs disposable Linux sandboxes locally — install in one co
       </div>
       <div class="audience">
         <h3>Developers</h3>
-        <p>HTTP API, OpenAPI, Go SDK, TypeScript SDK, agent protocol.</p>
+        <p>HTTP API, OpenAPI, Go / TypeScript / Python SDKs, agent protocol.</p>
         <a class="btn btn-sm btn-ghost" href="{{ '/reference/go-sdk/' | relative_url }}">Build with grain →</a>
       </div>
     </div>

@@ -15,6 +15,14 @@ bin/
 sdk/ts/node_modules/
 sdk/ts/dist/
 
+# Python SDK (sdk/python)
+sdk/python/.venv/
+sdk/python/**/__pycache__/
+sdk/python/**/*.egg-info/
+sdk/python/.pytest_cache/
+sdk/python/dist/
+sdk/python/build/
+
 # Jekyll local preview
 docs/vendor/
 docs/.bundle/
