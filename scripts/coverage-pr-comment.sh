@@ -16,11 +16,11 @@ if [[ ! -f "$COVERAGE_XML" ]]; then
   exit 1
 fi
 
-BODY="$(python3 - "$COVERAGE_XML" "$MIN_COVERAGE" "$SHA" <<'PY'
+BODY="$(python3 - "$COVERAGE_XML" "$MIN_COVERAGE" "$SHA" "$MARKER" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 
-path, min_cov_s, sha = sys.argv[1], sys.argv[2], sys.argv[3]
+path, min_cov_s, sha, marker = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 min_cov = float(min_cov_s)
 root = ET.parse(path).getroot()
 
@@ -58,7 +58,7 @@ badge = "✅" if ok else "❌"
 rows.sort(key=lambda r: (r[0], r[1]))
 
 out = []
-out.append(MARKER)
+out.append(marker)
 out.append(f"**Coverage** (lines): `{overall:.0f}%` {badge} — minimum `{min_cov:.0f}%`")
 if sha:
     out.append("")
