@@ -1,12 +1,16 @@
 # grain
 
+<p align="center">
+  <img src="logo.png" alt="grain logo" width="200">
+</p>
+
 **Fast Linux microVM sandboxes on your own hardware.** Apache-2.0.
 
 Run **GitHub Actions** (`grain act`) and **throwaway k3s** labs in isolated microVMs — plus everyday sandboxes with mounts, ports, and a guest agent.
 
 Ephemeral by default · persistent when you want · local-first · macOS & Linux (not Windows/WSL).
 
-**Docs:** [grainvm.com](https://grainvm.com) · **Quick start:** [grainvm.com/get-started/quickstart](https://grainvm.com/get-started/quickstart/)
+**Documentation:** [https://grainvm.com](https://grainvm.com) · **Quick start:** [https://grainvm.com/get-started/quickstart/](https://grainvm.com/get-started/quickstart/)
 
 ## Quick start
 
