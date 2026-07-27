@@ -1,4 +1,4 @@
-package agent_test
+package agent
 
 import (
 	"os"
@@ -6,27 +6,25 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/cxdy/grain/internal/agent"
 )
 
 func TestLinuxBinaryName(t *testing.T) {
-	if got := agent.LinuxBinaryName("arm64"); got != "grain-agent-linux-arm64" {
+	if got := LinuxBinaryName("arm64"); got != "grain-agent-linux-arm64" {
 		t.Fatalf("got %q", got)
 	}
-	if got := agent.LinuxBinaryName("amd64"); got != "grain-agent-linux-amd64" {
+	if got := LinuxBinaryName("amd64"); got != "grain-agent-linux-amd64" {
 		t.Fatalf("got %q", got)
 	}
 	// empty → runtime GOARCH
 	want := "grain-agent-linux-" + runtime.GOARCH
-	if got := agent.LinuxBinaryName(""); got != want {
+	if got := LinuxBinaryName(""); got != want {
 		t.Fatalf("empty arch: got %q want %q", got, want)
 	}
 }
 
 func TestLinuxBinaryPath_DataDir(t *testing.T) {
 	dir := t.TempDir()
-	name := agent.LinuxBinaryName(runtime.GOARCH)
+	name := LinuxBinaryName(runtime.GOARCH)
 	agentDir := filepath.Join(dir, "agent")
 	if err := os.MkdirAll(agentDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -36,7 +34,7 @@ func TestLinuxBinaryPath_DataDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := agent.LinuxBinaryPath(dir)
+	got, err := LinuxBinaryPath(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +54,7 @@ func TestLinuxBinaryPath_CWDBin(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	name := agent.LinuxBinaryName(runtime.GOARCH)
+	name := LinuxBinaryName(runtime.GOARCH)
 	binPath := filepath.Join(binDir, name)
 	if err := os.WriteFile(binPath, []byte("cwd-agent"), 0o755); err != nil {
 		t.Fatal(err)
@@ -73,7 +71,7 @@ func TestLinuxBinaryPath_CWDBin(t *testing.T) {
 
 	// dataDir empty / missing so we fall through to cwd search (unless test binary
 	// directory happens to contain the same name — unlikely).
-	got, err := agent.LinuxBinaryPath(filepath.Join(root, "no-such-data"))
+	got, err := LinuxBinaryPath(filepath.Join(root, "no-such-data"))
 	if err != nil {
 		// If the test executable's directory already has a real binary, that's OK too.
 		if !strings.Contains(err.Error(), "not found") {
@@ -104,7 +102,7 @@ func TestLinuxBinaryPath_NotFound(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
 
-	_, err = agent.LinuxBinaryPath(filepath.Join(dir, "empty-data"))
+	_, err = LinuxBinaryPath(filepath.Join(dir, "empty-data"))
 	// May still succeed if the test binary's directory has grain-agent-linux-*
 	// (e.g. when running from a package that was built next to release bins).
 	// Only assert the error message shape when it fails.
@@ -114,6 +112,42 @@ func TestLinuxBinaryPath_NotFound(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "just agent-linux") {
 			t.Fatalf("error should mention just agent-linux: %v", err)
+		}
+	}
+}
+
+func TestLinuxBinaryPathSkipsDirAndFindsFile(t *testing.T) {
+	dir := t.TempDir()
+	name := LinuxBinaryName("")
+	// Directory that matches candidate path → skipped (IsDir branch).
+	if err := os.MkdirAll(filepath.Join(dir, "bin", name), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Real file under dataDir/agent/
+	agentDir := filepath.Join(dir, "agent")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(agentDir, name)
+	if err := os.WriteFile(real, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Change cwd so bin/<name> dir is searched first.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LinuxBinaryPath(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != real {
+		if filepath.Base(got) != name {
+			t.Fatalf("got %s want %s", got, real)
 		}
 	}
 }

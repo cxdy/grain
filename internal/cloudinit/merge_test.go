@@ -1,10 +1,9 @@
-package cloudinit_test
+package cloudinit
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/cxdy/grain/internal/cloudinit"
 	"gopkg.in/yaml.v3"
 )
 
@@ -14,7 +13,7 @@ hostname: sbox-1
 runcmd:
   - [ sh, -c, "echo grain-ready > /var/lib/grain-ready" ]
 `
-	got, err := cloudinit.MergeUserData(base, "apt-get update && apt-get install -y curl")
+	got, err := MergeUserData(base, "apt-get update && apt-get install -y curl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +59,7 @@ write_files:
   - path: /etc/motd
     content: hi
 `
-	got, err := cloudinit.MergeUserData(base, extra)
+	got, err := MergeUserData(base, extra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +92,7 @@ func TestMergeUserData_EmptyExtra(t *testing.T) {
 	base := `#cloud-config
 hostname: only
 `
-	got, err := cloudinit.MergeUserData(base, "")
+	got, err := MergeUserData(base, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +113,7 @@ users:
   - name: alice
     sudo: ALL=(ALL) NOPASSWD:ALL
 `
-	got, err := cloudinit.MergeUserData(base, extra)
+	got, err := MergeUserData(base, extra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +132,7 @@ ssh_pwauth: false
 	extra := `#cloud-config
 hostname: overridden
 `
-	got, err := cloudinit.MergeUserData(base, extra)
+	got, err := MergeUserData(base, extra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +151,7 @@ runcmd:
   - echo base
 `
 	script := "#!/bin/bash\necho hello\n"
-	got, err := cloudinit.MergeUserData(base, script)
+	got, err := MergeUserData(base, script)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +167,7 @@ runcmd:
 }
 
 func TestRenderUserData_IncludesGrainReadyAndSSH(t *testing.T) {
-	got, err := cloudinit.RenderUserData("sbox-9", "ssh-ed25519 AAAA test@grain", "echo hi")
+	got, err := RenderUserData("sbox-9", "ssh-ed25519 AAAA test@grain", "echo hi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,15 +191,15 @@ func TestRenderUserData_IncludesGrainReadyAndSSH(t *testing.T) {
 }
 
 func TestRenderUserData_MountRuncmds(t *testing.T) {
-	got, err := cloudinit.RenderUserData("sbox-1", "ssh-ed25519 AAAA k", "",
-		cloudinit.MountSpec{Tag: "grain0", Guest: "/mnt/src"},
-		cloudinit.MountSpec{Tag: "grain1", Guest: "/data"},
+	got, err := RenderUserData("sbox-1", "ssh-ed25519 AAAA k", "",
+		MountSpec{Tag: "grain0", Guest: "/mnt/src"},
+		MountSpec{Tag: "grain1", Guest: "/data"},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want0 := cloudinit.MountRuncmd("grain0", "/mnt/src", "9p")
-	want1 := cloudinit.MountRuncmd("grain1", "/data", "")
+	want0 := MountRuncmd("grain0", "/mnt/src", "9p")
+	want1 := MountRuncmd("grain1", "/data", "")
 	if !strings.Contains(got, want0) {
 		t.Fatalf("missing mount0 %q in:\n%s", want0, got)
 	}
@@ -214,7 +213,7 @@ func TestRenderUserData_MountRuncmds(t *testing.T) {
 
 func TestRenderUserDataMinimal_HostnameKeysAndMarkers(t *testing.T) {
 	key := "ssh-ed25519 AAAA test@grain"
-	got, err := cloudinit.RenderUserDataMinimal("clone-1", key, "")
+	got, err := RenderUserDataMinimal("clone-1", key, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +247,7 @@ func TestRenderUserDataMinimal_HostnameKeysAndMarkers(t *testing.T) {
 		t.Fatalf("missing grain-ready:\n%s", got)
 	}
 	// Full seed should still work and not include package_update false by default.
-	full, err := cloudinit.RenderUserData("sbox-9", key, "")
+	full, err := RenderUserData("sbox-9", key, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,13 +264,13 @@ func TestRenderUserDataMinimal_HostnameKeysAndMarkers(t *testing.T) {
 }
 
 func TestRenderUserDataMinimal_MountsAndExtra(t *testing.T) {
-	got, err := cloudinit.RenderUserDataMinimal("m", "ssh-ed25519 AAAA k", "echo extra",
-		cloudinit.MountSpec{Tag: "grain0", Guest: "/work"},
+	got, err := RenderUserDataMinimal("m", "ssh-ed25519 AAAA k", "echo extra",
+		MountSpec{Tag: "grain0", Guest: "/work"},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, cloudinit.MountRuncmd("grain0", "/work", "9p")) {
+	if !strings.Contains(got, MountRuncmd("grain0", "/work", "9p")) {
 		t.Fatalf("missing mount runcmd:\n%s", got)
 	}
 	if !strings.Contains(got, "echo extra") {
@@ -280,7 +279,7 @@ func TestRenderUserDataMinimal_MountsAndExtra(t *testing.T) {
 }
 
 func TestBaseUserDataMinimal_Map(t *testing.T) {
-	m := cloudinit.BaseUserDataMinimal("h1", "ssh-ed25519 BBBB k")
+	m := BaseUserDataMinimal("h1", "ssh-ed25519 BBBB k")
 	if m["hostname"] != "h1" {
 		t.Fatalf("hostname %v", m["hostname"])
 	}
@@ -295,16 +294,16 @@ func TestBaseUserDataMinimal_Map(t *testing.T) {
 }
 
 func TestMountRuncmd(t *testing.T) {
-	got := cloudinit.MountRuncmd("grain0", "/work", "9p")
+	got := MountRuncmd("grain0", "/work", "9p")
 	want := "mkdir -p /work && mount -t 9p -o trans=virtio,version=9p2000.L grain0 /work"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
 	// empty driver defaults to 9p
-	if got := cloudinit.MountRuncmd("grain0", "/work", ""); got != want {
+	if got := MountRuncmd("grain0", "/work", ""); got != want {
 		t.Fatalf("empty driver: got %q want %q", got, want)
 	}
-	vfs := cloudinit.MountRuncmd("grain0", "/work", "virtiofs")
+	vfs := MountRuncmd("grain0", "/work", "virtiofs")
 	wantVFS := "mkdir -p /work && mount -t virtiofs grain0 /work"
 	if vfs != wantVFS {
 		t.Fatalf("virtiofs: got %q want %q", vfs, wantVFS)
@@ -312,18 +311,187 @@ func TestMountRuncmd(t *testing.T) {
 }
 
 func TestRenderUserData_MountRuncmdsVirtiofs(t *testing.T) {
-	got, err := cloudinit.RenderUserData("sbox-1", "ssh-ed25519 AAAA k", "",
-		cloudinit.MountSpec{Tag: "grain0", Guest: "/mnt/src", Driver: "virtiofs"},
+	got, err := RenderUserData("sbox-1", "ssh-ed25519 AAAA k", "",
+		MountSpec{Tag: "grain0", Guest: "/mnt/src", Driver: "virtiofs"},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := cloudinit.MountRuncmd("grain0", "/mnt/src", "virtiofs")
+	want := MountRuncmd("grain0", "/mnt/src", "virtiofs")
 	if !strings.Contains(got, want) {
 		t.Fatalf("missing virtiofs mount %q in:\n%s", want, got)
 	}
 	if strings.Contains(got, "mount -t 9p") {
 		t.Fatalf("should not inject 9p mount for virtiofs driver:\n%s", got)
+	}
+}
+
+func TestBaseUserDataMap(t *testing.T) {
+	t.Parallel()
+	m := BaseUserData("host1", "  ssh-ed25519 AAAA k  ")
+	if m["hostname"] != "host1" {
+		t.Fatalf("hostname %v", m["hostname"])
+	}
+	if m["fqdn"] != "host1.local" {
+		t.Fatalf("fqdn %v", m["fqdn"])
+	}
+	if m["ssh_pwauth"] != false {
+		t.Fatal("ssh_pwauth")
+	}
+	users, ok := m["users"].([]any)
+	if !ok || len(users) < 2 {
+		t.Fatalf("users %#v", m["users"])
+	}
+	// grain user entry
+	gu := grainUserEntry("ssh-ed25519 AAAA k")
+	if gu["name"] != "grain" {
+		t.Fatalf("%v", gu["name"])
+	}
+	cmd := sshAuthRuncmd("ssh-ed25519 AAAA k")
+	if !strings.Contains(cmd, "ssh-ed25519 AAAA k") {
+		t.Fatalf("runcmd %s", cmd)
+	}
+}
+
+func TestIsCloudConfig(t *testing.T) {
+	t.Parallel()
+	if !isCloudConfig("#cloud-config\nhostname: x\n") {
+		t.Fatal("expected cloud-config")
+	}
+	if !isCloudConfig("\n\n  #cloud-config\n") {
+		t.Fatal("blank lines then header")
+	}
+	if isCloudConfig("#!/bin/bash\necho hi\n") {
+		t.Fatal("shebang is not cloud-config")
+	}
+	if isCloudConfig("") {
+		t.Fatal("empty")
+	}
+	if isCloudConfig("\n\n") {
+		t.Fatal("whitespace only")
+	}
+}
+
+func TestParseCloudConfigEmptyAndNil(t *testing.T) {
+	t.Parallel()
+	m, err := parseCloudConfig("")
+	if err != nil || m == nil {
+		t.Fatalf("%v %v", m, err)
+	}
+	// YAML null document
+	m, err = parseCloudConfig("#cloud-config\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m == nil {
+		t.Fatal("nil map")
+	}
+}
+
+func TestParseCloudConfigInvalid(t *testing.T) {
+	t.Parallel()
+	_, err := parseCloudConfig(":\n  - bad: [\n")
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+}
+
+func TestMergeUserDataInvalidBase(t *testing.T) {
+	t.Parallel()
+	_, err := MergeUserData(":\n  [\n", "")
+	if err == nil {
+		t.Fatal("expected base parse error")
+	}
+}
+
+func TestMergeUserDataInvalidExtraCloudConfig(t *testing.T) {
+	t.Parallel()
+	base := "#cloud-config\nhostname: x\n"
+	_, err := MergeUserData(base, "#cloud-config\n:\n  [\n")
+	if err == nil {
+		t.Fatal("expected extra parse error")
+	}
+}
+
+func TestToAnySliceAndAppendAny(t *testing.T) {
+	t.Parallel()
+	if toAnySlice(nil) != nil {
+		t.Fatal("nil")
+	}
+	ss := toAnySlice([]string{"a", "b"})
+	if len(ss) != 2 || ss[0] != "a" {
+		t.Fatalf("%v", ss)
+	}
+	// scalar → one-element list
+	one := toAnySlice("solo")
+	if len(one) != 1 || one[0] != "solo" {
+		t.Fatalf("%v", one)
+	}
+	// base nil, extra scalar → extra becomes one-element list via toAnySlice
+	got := appendAny(nil, "x")
+	list, ok := got.([]any)
+	if !ok || len(list) != 1 || list[0] != "x" {
+		t.Fatalf("got %T %#v", got, got)
+	}
+	// both nil → return extraVal as-is
+	got = appendAny(nil, nil)
+	if got != nil {
+		t.Fatalf("%v", got)
+	}
+	// merge lists
+	merged := appendAny([]any{"a"}, []any{"b"})
+	ml := merged.([]any)
+	if len(ml) != 2 || ml[0] != "a" || ml[1] != "b" {
+		t.Fatalf("%v", ml)
+	}
+}
+
+func TestRenderUserDataSkipsEmptyMounts(t *testing.T) {
+	t.Parallel()
+	got, err := RenderUserData("h", "ssh-ed25519 AAAA k", "",
+		MountSpec{Tag: "", Guest: "/x"},
+		MountSpec{Tag: "t", Guest: ""},
+		MountSpec{Tag: "ok", Guest: "/mnt"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, MountRuncmd("ok", "/mnt", "9p")) {
+		t.Fatalf("missing valid mount:\n%s", got)
+	}
+	// empty tag/guest should not produce mount -t for guest /x alone as a mount of tag ""
+	if strings.Contains(got, "mount -t 9p -o trans=virtio,version=9p2000.L  /x") {
+		t.Fatalf("should skip empty tag:\n%s", got)
+	}
+}
+
+func TestRenderUserDataMinimalDropsModulesWithExtra(t *testing.T) {
+	t.Parallel()
+	// no extra keeps modules
+	base := BaseUserDataMinimal("h", "ssh-ed25519 AAAA k")
+	if _, ok := base["cloud_config_modules"]; !ok {
+		t.Fatal("expected modules on base map")
+	}
+	got, err := RenderUserDataMinimal("h", "ssh-ed25519 AAAA k", "echo hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "cloud_config_modules") {
+		t.Fatalf("extra should drop cloud_config_modules:\n%s", got)
+	}
+	if !strings.Contains(got, "echo hi") {
+		t.Fatalf("missing extra:\n%s", got)
+	}
+}
+
+func TestMarshalCloudConfig(t *testing.T) {
+	t.Parallel()
+	s, err := marshalCloudConfig(map[string]any{"hostname": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(s, "#cloud-config\n") {
+		t.Fatalf("%s", s)
 	}
 }
 

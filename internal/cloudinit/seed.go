@@ -8,6 +8,10 @@ import (
 	"runtime"
 )
 
+// isoOS selects the ISO tool path (darwin → hdiutil; else genisoimage/mkisofs/xorriso).
+// Overridden in tests to exercise non-native branches without changing hosts.
+var isoOS = runtime.GOOS
+
 // SeedOpts configures a NoCloud seed ISO.
 type SeedOpts struct {
 	Hostname string
@@ -74,7 +78,7 @@ func WriteNoCloudOpts(dir string, opts SeedOpts) (seedPath string, err error) {
 }
 
 func makeISO(srcDir, destISO string) error {
-	if runtime.GOOS == "darwin" {
+	if isoOS == "darwin" {
 		// ISO9660 + Joliet only (no HFS) so cloud-init reliably sees volid cidata
 		cmd := exec.Command("hdiutil", "makehybrid",
 			"-o", destISO,

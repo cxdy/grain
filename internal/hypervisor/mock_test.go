@@ -248,7 +248,7 @@ func TestMockDiskFailAndQcow2(t *testing.T) {
 	}
 	d.FailClone = false
 	d.WriteQcow2 = true
-	dest := filepath.Join(t.TempDir(), "disk.img")
+	dest := filepath.Join(t.TempDir(), "sub", "disk.img")
 	if err := d.Clone(ctx, "base", dest, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -258,5 +258,16 @@ func TestMockDiskFailAndQcow2(t *testing.T) {
 	}
 	if len(b) < 4 || b[0] != 'Q' || b[1] != 'F' || b[2] != 'I' || b[3] != 0xfb {
 		t.Fatalf("want qcow2 magic, got %q", b)
+	}
+
+	// MkdirAll failure: dest parent is a file
+	dir := t.TempDir()
+	block := filepath.Join(dir, "notdir")
+	if err := os.WriteFile(block, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d2 := &MockDisk{}
+	if err := d2.Clone(ctx, "b", filepath.Join(block, "disk.img"), 0); err == nil {
+		t.Fatal("expected mkdir fail")
 	}
 }
