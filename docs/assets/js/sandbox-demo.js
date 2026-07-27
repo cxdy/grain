@@ -5,12 +5,14 @@
   var outputEl = root.querySelector("[data-demo-output]");
   var inputEl = root.querySelector("[data-demo-input]");
   var promptEl = root.querySelector("[data-demo-prompt]");
+  var ghostEl = root.querySelector("[data-demo-ghost]");
   var inputLine = root.querySelector("[data-demo-input-line]");
   var stepsEl = root.querySelector("[data-demo-steps]");
   var hintEl = root.querySelector("[data-demo-hint]");
   var nextBtn = root.querySelector("[data-demo-next]");
   var skipBtn = root.querySelector("[data-demo-skip]");
   var restartBtn = root.querySelector("[data-demo-restart]");
+  var titleEl = root.querySelector("[data-demo-title]");
   var term = root.querySelector("[data-demo-term]");
 
   var steps = [
@@ -99,8 +101,10 @@
           { text: "Welcome to Ubuntu 24.04 LTS (grain sandbox)", cls: "out", delay: 200 },
           { text: "  agent 0.2.0 · ephemeral · sbox-1", cls: "dim", delay: 160 },
         ]).then(function () {
-          ctx.mode = "guest";
-          setPrompt("ubuntu@sbox-1:~$");
+          state.mode = "guest";
+          setPrompt("ubuntu@sbox-1:~$", true);
+          setTitle("ubuntu@sbox-1: ~");
+          setGhost("uname -a");
           hintEl.textContent =
             "You're in the VM. Try uname -a, ls, or exit when done.";
           nextBtn.textContent = "Finish demo";
@@ -190,8 +194,34 @@
     return next();
   }
 
-  function setPrompt(p) {
+  function setTitle(t) {
+    if (titleEl) titleEl.textContent = t;
+  }
+
+  function setPrompt(p, guest) {
     promptEl.textContent = p;
+    promptEl.classList.toggle("is-guest", !!guest);
+    // position ghost after prompt width
+    requestAnimationFrame(function () {
+      var w = promptEl.getBoundingClientRect().width;
+      inputLine.style.setProperty("--ghost-pad", Math.ceil(w + 8) + "px");
+    });
+  }
+
+  function setGhost(text) {
+    if (!ghostEl) return;
+    if (inputEl.value) {
+      ghostEl.textContent = "";
+      return;
+    }
+    ghostEl.textContent = text || "";
+  }
+
+  function currentSuggest() {
+    if (state.mode === "guest") return "uname -a";
+    if (state.mode === "done") return "";
+    var step = steps[state.step];
+    return step ? step.suggest : "";
   }
 
   function renderSteps() {
@@ -202,15 +232,16 @@
         if (state.mode === "guest" || state.mode === "done") {
           cls = i <= state.step ? "done" : "todo";
           if (state.mode === "guest" && i === steps.length - 1) cls = "current";
+          if (state.mode === "done") cls = "done";
         }
         return (
           '<li class="' +
           cls +
           '"><span class="demo-step-idx">' +
           (i + 1) +
-          "</span>" +
+          "</span><span class="demo-step-label">' +
           escapeHtml(s.title) +
-          "</li>"
+          "</span></li>"
         );
       })
       .join("");
@@ -258,6 +289,7 @@
     var shown = force ? step.suggest : cmd.trim();
     echoCommand(shown);
     inputEl.value = "";
+    setGhost("");
     step.run({}).then(function () {
       if (state.mode === "guest") {
         renderSteps();
@@ -270,7 +302,7 @@
       }
       renderSteps();
       hintEl.textContent = steps[state.step].hint;
-      inputEl.placeholder = steps[state.step].suggest;
+      setGhost(steps[state.step].suggest);
       nextBtn.textContent = "Run step →";
     });
   }
@@ -280,6 +312,7 @@
     var raw = cmd.trim();
     echoCommand(raw || "");
     inputEl.value = "";
+    setGhost(currentSuggest());
     if (!raw) return;
 
     var key = normalizeCmd(raw);
@@ -332,7 +365,9 @@
   function finish() {
     state.mode = "done";
     state.busy = false;
-    setPrompt("$");
+    setPrompt("$", false);
+    setTitle("~ — grain — demo complete");
+    setGhost("");
     inputLine.hidden = true;
     hintEl.innerHTML =
       'Demo complete. <a href="#install">Install grain</a> or read the <a href="' +
@@ -356,22 +391,33 @@
     inputLine.hidden = false;
     inputEl.disabled = false;
     inputEl.value = "";
-    setPrompt("$");
+    setPrompt("$", false);
+    setTitle("~ — grain — interactive demo");
     nextBtn.textContent = "Run step →";
     nextBtn.onclick = function () {
       runHostStep(true);
     };
     skipBtn.hidden = false;
     hintEl.textContent = steps[0].hint;
-    inputEl.placeholder = steps[0].suggest;
+    setGhost(steps[0].suggest);
+    appendLine("Last login: demo session on ttys000", "dim");
     appendLine("grain interactive demo — simulated terminal", "dim");
-    appendLine("A grain of sand: small Linux, real workflow.", "dim");
     appendLine("", "dim");
     renderSteps();
     inputEl.focus();
   }
 
+  inputEl.addEventListener("input", function () {
+    setGhost(inputEl.value ? "" : currentSuggest());
+  });
+
   inputEl.addEventListener("keydown", function (e) {
+    if (e.key === "Tab" && !inputEl.value && currentSuggest()) {
+      e.preventDefault();
+      inputEl.value = currentSuggest();
+      setGhost("");
+      return;
+    }
     if (e.key !== "Enter" || state.busy) return;
     e.preventDefault();
     if (state.mode === "host") runHostStep(false);
