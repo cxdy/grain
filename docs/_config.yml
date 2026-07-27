@@ -137,6 +137,8 @@ docs_nav:
         url: /reference/config/
       - title: HTTP API
         url: /reference/api/
+      - title: OpenAPI explorer
+        url: /reference/openapi/
       - title: Agent protocol
         url: /reference/agent-protocol/
       - title: Go SDK

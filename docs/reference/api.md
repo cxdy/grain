@@ -23,8 +23,10 @@ curl -s http://127.0.0.1:7474/openapi.yaml
 
 ## Machine-readable schema
 
-- Served live: `GET /openapi.yaml` and `GET /openapi.json`  
-- Repo file: [`api/openapi.yaml`](https://github.com/cxdy/grain/blob/main/api/openapi.yaml)
+- **Interactive viewer:** [OpenAPI explorer]({{ '/reference/openapi/' | relative_url }}) (Swagger UI on this site)
+- Served live from a running daemon: `GET /openapi.yaml` and `GET /openapi.json`
+- Static copy on the site: [`/assets/openapi.yaml`]({{ '/assets/openapi.yaml' | relative_url }})
+- Repo source: [`api/openapi.yaml`](https://github.com/cxdy/grain/blob/main/api/openapi.yaml)
 
 ## Common routes
 
