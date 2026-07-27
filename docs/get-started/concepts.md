@@ -43,6 +43,8 @@ Automation can use:
 
 Optional Bearer auth: set `api_token` in config and `GRAIN_TOKEN` in the environment.
 
+For a **shared remote machine** (daemon as a service, teammates over SSH or SDKs), see [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}). The CLI uses the **local unix socket** on the machine where it runs; remote automation uses the TCP API or an SSH session on the host.
+
 ## Hypervisors
 
 | Value | Role |

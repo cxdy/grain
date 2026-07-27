@@ -21,6 +21,7 @@ How-to guides assume you already installed grain and created at least one sandbo
 | Guide | Audience |
 |-------|----------|
 | [Egress proxy]({{ '/guides/proxy/' | relative_url }}) | Admins locking down outbound HTTP(S) |
+| [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}) | Team box: systemd, API token, SSH tunnels, SDKs |
 | [Secrets]({{ '/guides/secrets/' | relative_url }}) | Host secrets and inject into VMs |
 | [Firecracker]({{ '/guides/firecracker/' | relative_url }}) | Linux experimental backend |
 | [Troubleshooting]({{ '/guides/troubleshooting/' | relative_url }}) | When boot, agent, or QEMU misbehaves |

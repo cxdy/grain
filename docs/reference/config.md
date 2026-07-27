@@ -13,6 +13,7 @@ socket: ~/.grain/grain.sock
 api: 127.0.0.1:7474          # TCP API + metrics; empty for unix-only
 api_token: ""                # or auth_token — Bearer required when set
 # env GRAIN_TOKEN also accepted by CLI
+# Team / remote host: keep bind on loopback, set api_token, see guides/remote-host
 cpus: 2
 memory_mb: 2048
 disk_gb: 8

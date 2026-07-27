@@ -38,6 +38,10 @@ You (operator)
 - Proxy default `0.0.0.0:3128` is intentional so SLIRP guests can reach `10.0.2.2` — restrict with host firewall if the machine is multi-user or public  
 - Set `api_token` if anything other than local clients can reach the TCP API  
 
+### Shared / remote hosts
+
+Running grain on a team machine so developers create sandboxes remotely is a supported **ops pattern**, not multi-tenant SaaS. Always set `api_token`, prefer loopback + SSH tunnel or TLS reverse proxy, set resource caps, and remember published ports stay on host loopback. Full guide: [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}).
+
 ## Images
 
 Only pull images from sources you trust (`ubuntu-cloud`, `grain-ubuntu` from your releases, `alpine-cloud` from Alpine). Verify SHA256 when provided.

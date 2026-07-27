@@ -1,0 +1,31 @@
+[Unit]
+Description=grain microVM control plane
+Documentation=https://grainvm.com/guides/remote-host/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Create with: useradd --system --home /var/lib/grain --shell /usr/sbin/nologin grain
+User=grain
+Group=grain
+# On Linux with KVM, uncomment and ensure the user is in group kvm:
+# SupplementaryGroups=kvm
+
+# Install binary to this path (or edit). Config must set data_dir/socket/api/api_token.
+ExecStart=/usr/local/bin/grain --config /etc/grain/config.yaml up --fg
+Restart=on-failure
+RestartSec=2
+
+# Optional hardening — QEMU may need broader device access; test before locking down.
+NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=full
+# ProtectHome=true
+# DeviceAllow=/dev/kvm rw
+# DeviceAllow=/dev/net/tun rw
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

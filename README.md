@@ -133,6 +133,7 @@ Full site: **[grainvm.com](https://grainvm.com)** (this repo’s `docs/` is the 
 | [guides/mounts](https://grainvm.com/guides/mounts/) | `-v HOST:GUEST`, 9p, mapped-xattr, cloud-init mounts |
 | [guides/profiles](https://grainvm.com/guides/profiles/) | named profiles, docker / k3s / act presets |
 | [guides/troubleshooting](https://grainvm.com/guides/troubleshooting/) | doctor, logs, UEFI/HVF, cloud-init, resource caps |
+| [guides/remote-host](https://grainvm.com/guides/remote-host/) | team box: systemd service, API token, SSH tunnels, SDKs |
 
 ### Recipes
 

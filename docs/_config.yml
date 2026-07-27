@@ -81,6 +81,8 @@ docs_nav:
         url: /guides/profiles/
       - title: Egress proxy
         url: /guides/proxy/
+      - title: Remote sandbox host
+        url: /guides/remote-host/
       - title: Secrets
         url: /guides/secrets/
       - title: Pause, suspend, restore
