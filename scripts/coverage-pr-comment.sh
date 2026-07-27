@@ -24,20 +24,39 @@ path, min_cov_s, sha, marker = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4
 min_cov = float(min_cov_s)
 root = ET.parse(path).getroot()
 
+# Prefer Cobertura root counters (authoritative); fall back to summing classes.
+covered = int(root.attrib.get("lines-covered") or 0)
+total = int(root.attrib.get("lines-valid") or 0)
+if total <= 0:
+    for cls in root.iter("class"):
+        for ln in cls.iter("line"):
+            total += 1
+            if int(ln.attrib.get("hits", 0)) > 0:
+                covered += 1
+if root.attrib.get("line-rate") not in (None, ""):
+    overall = float(root.attrib["line-rate"]) * 100.0
+else:
+    overall = 100.0 * covered / total if total else 0.0
+
 rows = []
-covered = total = 0
+seen = set()
 for cls in root.iter("class"):
     filename = cls.attrib.get("filename", "")
-    lines = list(cls.iter("line"))
-    if not lines:
+    if not filename or filename in seen:
         continue
-    c = sum(1 for ln in lines if int(ln.attrib.get("hits", 0)) > 0)
-    t = len(lines)
-    covered += c
-    total += t
+    seen.add(filename)
+    # Dedupe line numbers (gocover-cobertura --by-files can emit duplicates).
+    by = {}
+    for ln in cls.iter("line"):
+        n = int(ln.attrib.get("number", 0))
+        h = int(ln.attrib.get("hits", 0))
+        by[n] = max(by.get(n, 0), h)
+    if not by:
+        continue
+    c = sum(1 for h in by.values() if h > 0)
+    t = len(by)
     pct = 100.0 * c / t
-    # Compact missing ranges
-    miss_nums = [int(ln.attrib.get("number", 0)) for ln in lines if int(ln.attrib.get("hits", 0)) == 0]
+    miss_nums = sorted(n for n, h in by.items() if h == 0)
     parts = []
     i = 0
     while i < len(miss_nums):
@@ -52,7 +71,6 @@ for cls in root.iter("class"):
         miss_s = miss_s[:87] + "…"
     rows.append((pct, filename, miss_s))
 
-overall = 100.0 * covered / total if total else 0.0
 ok = overall + 1e-9 >= min_cov
 badge = "✅" if ok else "❌"
 rows.sort(key=lambda r: (r[0], r[1]))

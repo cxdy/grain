@@ -72,9 +72,10 @@ coverage:
     mapfile -t pkgs < <(go list ./... | grep -vE '/cmd/|/internal/tray')
     env -u GOROOT GOTOOLCHAIN=auto go test -count=1 "${pkgs[@]}" \
         -coverprofile coverage.raw.out -covermode count
-    # Keep single mode header; drop any residual cmd/tray lines if present.
+    # Keep single mode header; drop mains, CGO tray, and interactive PTY shell
+    # (shell_linux.go needs a real guest TTY; unit CI cannot exercise the bridge).
     head -n1 coverage.raw.out > coverage.out
-    tail -n +2 coverage.raw.out | grep -vE '/cmd/grain|/cmd/grain-agent|/internal/tray/' >> coverage.out || true
+    tail -n +2 coverage.raw.out | grep -vE '/cmd/grain|/cmd/grain-agent|/internal/tray/|shell_linux\.go' >> coverage.out || true
     rm -f coverage.raw.out
     env -u GOROOT GOTOOLCHAIN=auto go tool cover -html=coverage.out -o coverage.html
     env -u GOROOT GOTOOLCHAIN=auto go run github.com/boumenot/gocover-cobertura@v1.4.0 \

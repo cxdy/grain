@@ -3,6 +3,7 @@ package hypervisor
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -58,5 +59,29 @@ func TestClonefileFailure(t *testing.T) {
 	// clonefile uses cp -c; invalid paths should error
 	if err := clonefile("/no/such/src", "/no/such/dst"); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestLocalDiskCloneQemuOverlay(t *testing.T) {
+	if _, err := exec.LookPath("qemu-img"); err != nil {
+		t.Skip("no qemu-img")
+	}
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.qcow2")
+	// create a tiny qcow2 base
+	cmd := exec.Command("qemu-img", "create", "-f", "qcow2", base, "32M")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("qemu-img create: %v %s", err, out)
+	}
+	dest := filepath.Join(dir, "vms", "x", "disk.img")
+	d := NewLocalDisk(dir)
+	if err := d.Clone(context.Background(), base, dest, 1); err != nil {
+		t.Fatal(err)
+	}
+	// overlay should be .qcow2
+	if _, err := os.Stat(dest + ".qcow2"); err != nil {
+		if _, err2 := os.Stat(dest); err2 != nil {
+			t.Fatalf("no dest: %v %v", err, err2)
+		}
 	}
 }
