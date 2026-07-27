@@ -3,47 +3,78 @@ title: Quick start
 description: Install grain, drop in a starter config, and open a shell in a Linux microVM.
 ---
 
-From zero to a shell in a few minutes. For platforms and alternate install paths, see [Install]({{ '/get-started/install/' | relative_url }}). For a guided walkthrough with the interactive demo, see [Your first sandbox]({{ '/get-started/first-sandbox/' | relative_url }}).
+From zero to a working sandbox in a few minutes. When you finish this page you will have:
 
-## 1. Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
-
-# macOS
-brew install qemu
-
-# Debian/Ubuntu
-# sudo apt-get install -y qemu-system qemu-utils
-
-grain doctor
-```
+1. The **grain** CLI and **QEMU** installed  
+2. An optional **starter config** at `~/.grain/config.yaml`  
+3. A running microVM you can shell into and tear down  
 
 **Platforms:** macOS and Linux (amd64 / arm64). **Not supported:** Windows or WSL.
 
+Deep dives live elsewhere: [Install]({{ '/get-started/install/' | relative_url }}) · [First sandbox tutorial + demo]({{ '/get-started/first-sandbox/' | relative_url }}) · [Config reference]({{ '/reference/config/' | relative_url }}).
+
+---
+
+## 1. Install
+
+### macOS
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
+brew install qemu
+grain doctor
+```
+
+### Linux (Debian / Ubuntu)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
+sudo apt-get update
+sudo apt-get install -y qemu-system qemu-utils
+grain doctor
+```
+
+### Linux (Fedora)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
+sudo dnf install -y qemu-system-x86 qemu-img
+grain doctor
+```
+
+`grain doctor` checks QEMU, data dirs, and soft-warns if the guest agent binary is missing (OK for first pull of the golden image).
+
+Other install paths (release binary, `go install`, from source): [Install grain]({{ '/get-started/install/' | relative_url }}).
+
+---
+
 ## 2. Starter config (optional)
 
-Defaults work with no file. To customize, create `~/.grain/config.yaml`:
+Defaults work with **no** config file. A starter file is still useful for size defaults and a named **profile**.
 
-```yaml
-# ~/.grain/config.yaml
+```bash
+mkdir -p ~/.grain
+cat > ~/.grain/config.yaml <<'EOF'
+# ~/.grain/config.yaml — starter for local use
 data_dir: ~/.grain
 socket: ~/.grain/grain.sock
 api: 127.0.0.1:7474
 
-# Create defaults
-image: grain-ubuntu   # after: grain image pull grain-ubuntu
+# Defaults for `grain new`
+image: grain-ubuntu          # after: grain image pull grain-ubuntu
 cpus: 2
 memory_mb: 2048
 disk_gb: 8
 ssh_user: ubuntu
+ready_timeout: 2m
+log_level: info
 
-# Soft caps (0 = unlimited for that field when set)
+# Soft caps (stop runaway sandboxes)
 max_vms: 8
 max_cpus_total: 16
 max_memory_mb_total: 32768
 
-# Named create profiles — grain new --profile work
+# Named profile: grain new --profile work
 profiles:
   work:
     cpus: 4
@@ -54,34 +85,145 @@ profiles:
       - {host: ".", guest: "/work"}
     forwards:
       - {guest_port: 3000}   # host port auto-assigned
+EOF
 ```
 
-Full field list: [Configuration reference]({{ '/reference/config/' | relative_url }}).
+| Setting | Meaning |
+|---------|---------|
+| `api` | Daemon TCP listen (CLI also uses the unix socket by default) |
+| `image` | Default base image id for creates |
+| `cpus` / `memory_mb` / `disk_gb` | Size defaults for `grain new` |
+| `profiles.work` | Reusable create knobs + mount + port forward |
+
+All fields: [Configuration reference]({{ '/reference/config/' | relative_url }}). Remote / team hosts need a token and different bind rules — see [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}).
+
+---
 
 ## 3. First sandbox
 
 ```bash
+# Start the local daemon (once per session)
 grain up
-grain image pull grain-ubuntu   # once — golden image with guest agent
-grain new                       # or: grain new --profile work
-grain sh                        # name optional if only one VM
+
+# Download the golden base image once (agent baked in)
+grain image pull grain-ubuntu
+
+# Create a microVM (uses defaults / profile)
+grain new
+# or: grain new --profile work
+
+# Shell in (name optional if only one VM)
+grain sh
+
+# One-shot command without an interactive shell
 grain x -- uname -a
+
+# List and clean up
+grain ls
 grain rm
 grain down
+```
+
+You should see create progress (image → disk → seed → boot → agent), then something like:
+
+```text
+created sbox-1  status=running  image=grain-ubuntu  persist=false  ssh=:PORT
+next:  grain sh sbox-1
 ```
 
 | Command | What it does |
 |---------|----------------|
 | `grain up` / `down` | Start / stop the local daemon |
 | `grain image pull` | Download a base image once |
+| `grain image ls` | Show local / catalog images |
 | `grain new` | Create a microVM |
-| `grain sh` / `x` | Shell / one-shot exec |
-| `grain ls` / `rm` | List / delete |
+| `grain sh` | Interactive shell (agent PTY when healthy) |
+| `grain x -- …` | One-shot exec in the guest |
+| `grain ls` / `rm` | List / delete VMs |
+
+Ephemeral is the default: `rm`, `stop`, or daemon restart removes the VM. Use `grain new -p` for a persistent disk (`stop` / `start` later).
+
+---
+
+## 4. Useful next commands
+
+Once `grain up` is running and an image is local:
+
+```bash
+# Mount the current directory into the guest
+grain new -v "$(pwd):/work"
+grain sh
+# guest: ls /work
+
+# Publish a host port to a guest port
+grain new -P 8080:80
+grain fwd ls
+
+# Named profile from the starter config
+grain new --profile work
+
+# Keep the disk across stop/start
+grain new -p -n lab
+grain stop lab
+grain start lab
+
+# Guest file copy (agent preferred)
+grain cp ./hello.sh lab:/tmp/hello.sh
+grain x lab -- cat /tmp/hello.sh
+```
+
+Presets for heavier setups:
+
+```bash
+grain new --preset docker
+grain new --preset k3s -n lab -p
+grain act -- -l                 # nektos/act in an ephemeral sandbox
+```
+
+More: [Profiles & presets]({{ '/guides/profiles/' | relative_url }}) · [Mounts]({{ '/guides/mounts/' | relative_url }}) · [Networking]({{ '/guides/networking/' | relative_url }}) · [act recipe]({{ '/guides/recipes/act/' | relative_url }}).
+
+---
+
+## 5. If something fails
+
+```bash
+grain doctor
+grain logs <name>          # guest serial
+grain logs --qemu <name>   # hypervisor log
+```
+
+Common fixes:
+
+| Symptom | Try |
+|---------|-----|
+| `grain: command not found` | Ensure install dir is on `PATH` (`/usr/local/bin` or `~/.local/bin`) |
+| Doctor fails on QEMU | Install QEMU (step 1); reopen the terminal |
+| Image pull fails | Check network; list images with `grain image ls` |
+| Create hangs / no shell | Prefer `grain-ubuntu`; see [Troubleshooting]({{ '/guides/troubleshooting/' | relative_url }}) |
+
+---
+
+## 6. Automation (optional)
+
+The daemon exposes HTTP on the unix socket and optional TCP (`api: 127.0.0.1:7474`). Spec: [OpenAPI](https://github.com/cxdy/grain/blob/main/api/openapi.yaml).
+
+```bash
+# curl over the local socket
+curl --unix-socket ~/.grain/grain.sock http://grain/vms
+```
+
+| SDK | Install |
+|-----|---------|
+| [Go]({{ '/reference/go-sdk/' | relative_url }}) | `go get github.com/cxdy/grain/client` |
+| [TypeScript]({{ '/reference/typescript-sdk/' | relative_url }}) | `npm install @cxdy/grain` |
+| [Python]({{ '/reference/python-sdk/' | relative_url }}) | `pip install cxdy-grain` |
+
+---
 
 ## Next steps
 
-- [Your first sandbox]({{ '/get-started/first-sandbox/' | relative_url }}) — demo + flags (`-p`, `-v`, `-P`)
-- [Core concepts]({{ '/get-started/concepts/' | relative_url }}) — daemon, images, agent, API
-- [CLI reference]({{ '/reference/cli/' | relative_url }}) · [HTTP API]({{ '/reference/api/' | relative_url }})
-- SDKs: [Go]({{ '/reference/go-sdk/' | relative_url }}) · [TypeScript]({{ '/reference/typescript-sdk/' | relative_url }}) · [Python]({{ '/reference/python-sdk/' | relative_url }})
-- Recipes: [coding agent]({{ '/guides/recipes/coding-agent/' | relative_url }}), [act]({{ '/guides/recipes/act/' | relative_url }}), [k3s]({{ '/guides/recipes/k3s/' | relative_url }})
+- [Your first sandbox]({{ '/get-started/first-sandbox/' | relative_url }}) — interactive demo + deeper walkthrough  
+- [Core concepts]({{ '/get-started/concepts/' | relative_url }}) — daemon, images, agent, ephemeral vs persistent  
+- [Guides]({{ '/guides/' | relative_url }}) — images, agent, mounts, proxy, remote host  
+- [CLI reference]({{ '/reference/cli/' | relative_url }}) · [HTTP API]({{ '/reference/api/' | relative_url }})  
+- Recipes: [coding agent]({{ '/guides/recipes/coding-agent/' | relative_url }}) · [k3s]({{ '/guides/recipes/k3s/' | relative_url }}) · [CI ephemeral]({{ '/guides/recipes/ci-ephemeral/' | relative_url }})  

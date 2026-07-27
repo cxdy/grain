@@ -6,6 +6,8 @@ sandbox_demo: true
 
 By the end of this lesson you will understand the real commands to run a Linux microVM and open a shell. Prefer the **interactive demo** first, then run the same steps on your machine.
 
+For the shortest path (install + starter config + cleanup), use [Quick start]({{ '/get-started/quickstart/' | relative_url }}).
+
 ## Interactive demo
 
 Simulated terminal — nothing runs on your computer. Type the suggested commands or click **Run step**. After `grain sh`, try guest commands like `uname -a`, then `exit`.
@@ -104,4 +106,4 @@ grain down        # stop the daemon when you are done for the day
 - `sh` / `x` talk to the guest agent when possible  
 - Ephemeral VMs are disposable by design  
 
-**Next:** skim [Core concepts]({{ '/get-started/concepts/' | relative_url }}), then pick a [guide]({{ '/guides/' | relative_url }}) for mounts, proxy, or k3s.
+**Next:** [Quick start]({{ '/get-started/quickstart/' | relative_url }}) (config + common flags), [Core concepts]({{ '/get-started/concepts/' | relative_url }}), then a [guide]({{ '/guides/' | relative_url }}) for mounts, proxy, or k3s.
