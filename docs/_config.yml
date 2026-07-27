@@ -65,6 +65,8 @@ docs_nav:
   get-started:
     title: Get started
     links:
+      - title: Quick start
+        url: /get-started/quickstart/
       - title: Install grain
         url: /get-started/install/
       - title: Your first sandbox

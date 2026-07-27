@@ -93,6 +93,7 @@ grain doctor
 
 You should see checks that look healthy for your platform. Soft warnings (for example missing agent binary before the first golden image) are OK for SSH-only workflows.
 
-## Next lesson
+## Next
 
-Continue to [Your first sandbox]({{ '/get-started/first-sandbox/' | relative_url }}) to start the daemon, pull an image, and open a shell.
+- [Quick start]({{ '/get-started/quickstart/' | relative_url }}) — starter config + first sandbox in one page  
+- [Your first sandbox]({{ '/get-started/first-sandbox/' | relative_url }}) — guided tutorial + interactive demo

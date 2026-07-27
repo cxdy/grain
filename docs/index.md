@@ -14,8 +14,8 @@ description: grain runs disposable Linux sandboxes locally — install in one co
       </p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#install">Install grain</a>
+        <a class="btn btn-ghost" href="{{ '/get-started/quickstart/' | relative_url }}">Quick start</a>
         <a class="btn btn-ghost" href="#demo-section" data-scroll-demo>Try interactive demo</a>
-        <a class="btn btn-ghost" href="{{ '/get-started/first-sandbox/' | relative_url }}">Full tutorial</a>
       </div>
       <p class="hero-meta">macOS Apple Silicon &amp; Linux · QEMU · optional Firecracker · Go, TypeScript &amp; Python SDKs</p>
     </div>
@@ -161,7 +161,7 @@ description: grain runs disposable Linux sandboxes locally — install in one co
       <div class="audience">
         <h3>End users</h3>
         <p>Install, first sandbox, daily CLI, recipes for coding agents, k3s, and <code>grain act</code>.</p>
-        <a class="btn btn-sm btn-ghost" href="{{ '/get-started/install/' | relative_url }}">Start here →</a>
+        <a class="btn btn-sm btn-ghost" href="{{ '/get-started/quickstart/' | relative_url }}">Start here →</a>
       </div>
       <div class="audience">
         <h3>Administrators</h3>

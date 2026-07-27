@@ -36,4 +36,4 @@ How-to guides assume you already installed grain and created at least one sandbo
 | [CI ephemeral]({{ '/guides/recipes/ci-ephemeral/' | relative_url }}) | Create → test → destroy |
 | [GitHub Actions (act)]({{ '/guides/recipes/act/' | relative_url }}) | Run `act` inside an isolated microVM |
 
-If you are brand new, start with the [install tutorial]({{ '/get-started/install/' | relative_url }}) instead.
+If you are brand new, start with the [quick start]({{ '/get-started/quickstart/' | relative_url }}) instead.
