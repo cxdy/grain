@@ -1,0 +1,15 @@
+#cloud-config
+# grain preset: act — Docker Engine + nektos/act for local GitHub Actions
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - docker.io
+runcmd:
+  - [ systemctl, enable, --now, docker ]
+  - [ sh, -c, "usermod -aG docker ubuntu 2>/dev/null || true" ]
+  - [ sh, -c, "usermod -aG docker grain 2>/dev/null || true" ]
+  # Official install script → /usr/local/bin/act
+  - [ sh, -c, "curl -fsSL https://raw.githubusercontent.com/nektos/act/master/install.sh | bash -s -- -b /usr/local/bin" ]
+  - [ sh, -c, "mkdir -p /var/lib/grain && touch /var/lib/grain/userdata-ran" ]

@@ -11,7 +11,7 @@ import (
 var files embed.FS
 
 // known order for stable List output (others sorted after).
-var preferred = []string{"docker", "k3s"}
+var preferred = []string{"docker", "k3s", "act"}
 
 // Get returns the embedded cloud-config userdata for a named preset.
 func Get(name string) (string, error) {
@@ -71,6 +71,9 @@ func List() []string {
 func DefaultResources(name string) (cpus, memoryMB int) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "k3s":
+		return 2, 4096
+	case "act":
+		// Docker + act runners are memory-hungry; give a lab-sized box.
 		return 2, 4096
 	default:
 		return 0, 0
