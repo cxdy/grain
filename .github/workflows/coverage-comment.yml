@@ -119,5 +119,6 @@ jobs:
           show_branch: false
           show_class_names: false
           show_missing: true
-          link_missing_lines: true
+          show_missing_max_length: 80
+          link_missing_lines: false
           only_changed_files: false
