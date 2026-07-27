@@ -9,12 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.1.0] - 2026-07-27
+
+First public release: local Linux microVM control plane for macOS and Linux.
+
+### Added
+
 - **Community docs** — [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md); site page [get-started/contributing](https://grainvm.com/get-started/contributing/); maintainer [docs/RELEASE.md](docs/RELEASE.md) (v0.1.0 checklist).
 - **`grain act`** — run [nektos/act](https://github.com/nektos/act) inside an ephemeral microVM (`--preset act`: Docker Engine + act); mounts the project at `/work`, waits for docker/act, streams the run, deletes the sandbox unless `--keep`. Recipe: [guides/recipes/act](https://grainvm.com/guides/recipes/act/).
 - **Python client SDK** — `sdk/python` (`cxdy-grain`, `import grain`); stdlib-only TCP/Unix socket client with create/stream, exec, lifecycle, forwards, and guest fs/cp. Docs: [reference/python-sdk](https://grainvm.com/reference/python-sdk/).
 - **Guest agent (`grain-agent`)** — in-guest HTTP server for health, streaming/buffered exec, interactive shell (PTY), file copy, filesystem ops, stats, and secret materialization; deploy over SSH when missing; optional vsock transport with TCP hostfwd fallback.
 - **Create wait modes** — `auto` (default: agent when image HasAgent, else ssh), `ssh`, `agent`, `userdata`.
-- **Golden image `grain-ubuntu`** — bake scripts, CI bake workflow, pull from GitHub Release tag `golden-latest` with companion `.sha256` sidecars; minimal cloud-init seed for agent-ready clones; auto default when local Ready.
+- **Golden image `grain-ubuntu`** — bake scripts, CI bake workflow, pull from GitHub Release tag `golden-latest` with companion `.sha256` sidecars (arm64 + amd64); minimal cloud-init seed for agent-ready clones; auto default when local Ready.
 - **Multi-distro catalog** — `ubuntu-cloud` (Ubuntu 24.04 minimal) and `alpine-cloud` (Alpine generic UEFI + cloud-init; SSH user `alpine`).
 - **Host egress proxy** — default-deny allowlist (`proxy up/down/allow/deny/ls/client`) with optional Authorization inject from host secrets; `new --proxy` for guest `HTTPS_PROXY`.
 - **Secrets store** — host-side `secret ls|set|rm|inject` under `~/.grain/secrets`; agent materialize into the guest.
@@ -39,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release binaries can ship the guest agent for multi-arch deploys.
 - **WaitAgent** short-probes then SSH-deploys instead of spending the full create timeout probing a missing agent (fixes `grain act` / non-golden `--wait agent` hangs).
 
+### Fixed
+
+- QEMU **OVMF** for amd64 cloud images; CI bake installs OVMF + ISO tools.
+- Agent transport **auto** requires a *writable* `/dev/vhost-vsock` (fixes GitHub Actions golden bake Permission denied).
+- Golden bake prep commands run entirely in-guest via `sh -c`.
+
 ### Explicitly deferred (out of scope for v0.1)
 
 - macOS menu-bar tray app, Rosetta x86_64 guests, GPU/PCI passthrough
@@ -49,4 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
-- v0.1.0-dev journey: control plane → cloud images & SSH → guest agent → golden bake/publish → proxy/secrets → Firecracker spike → multi-distro + TS SDK polish.
+- Platforms: **macOS and Linux** only (amd64 / arm64). Golden images: `golden-latest` on GitHub Releases.
+- Install: `curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash` (or release assets for `v0.1.0`).
+
+[Unreleased]: https://github.com/cxdy/grain/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/cxdy/grain/releases/tag/v0.1.0

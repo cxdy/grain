@@ -4,19 +4,19 @@ Practical gates before tagging **v0.1.0**. Do not start a long golden bake from 
 
 ## Binaries & golden
 
-- [ ] **arm64 + amd64 golden** published and pullable on tag **`golden-latest`**
+- [x] **arm64 + amd64 golden** published and pullable on tag **`golden-latest`**
 - [ ] Release binaries for macOS/Linux × amd64/arm64 build cleanly from the release tag
 
 ## Community & legal
 
-- [ ] **CONTRIBUTING.md**, **SECURITY.md**, and **CODE_OF_CONDUCT.md** present at repo root
+- [x] **CONTRIBUTING.md**, **SECURITY.md**, and **CODE_OF_CONDUCT.md** present at repo root
 - [ ] **Repo public** (github.com/cxdy/grain)
-- [ ] LICENSE remains **Apache-2.0** (do not relicense for this cut)
+- [x] LICENSE remains **Apache-2.0** (do not relicense for this cut)
 
 ## Version & changelog
 
-- [ ] **CHANGELOG**: move `[Unreleased]` notes into **`[0.1.0]`** with date; leave a fresh Unreleased section
-- [ ] **Version pins** at **0.1.0** (not `0.1.0-dev`):
+- [x] **CHANGELOG**: move `[Unreleased]` notes into **`[0.1.0]`** with date; leave a fresh Unreleased section
+- [x] **Version pins** at **0.1.0** (not `0.1.0-dev`):
   - `Makefile` `VERSION`
   - `cmd/grain` / `cmd/grain-agent` version ldflags as used by `make build`
 - [ ] Tag **`v0.1.0`** and attach release binaries (and notes pointing at CHANGELOG + docs)

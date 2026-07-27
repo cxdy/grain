@@ -1,6 +1,6 @@
 # grain — local Linux microVM sandboxes
 
-VERSION ?= 0.1.0-dev
+VERSION ?= 0.1.0
 BIN     ?= bin/grain
 DIST    ?= dist
 export CGO_ENABLED ?= 0

@@ -105,7 +105,7 @@ func (s *Server) info(w http.ResponseWriter, _ *http.Request) {
 }
 
 // Version is set from main via init or ldflags later.
-var Version = "0.1.0-dev"
+var Version = "0.1.0"
 
 func (s *Server) listVMs(w http.ResponseWriter, r *http.Request) {
 	list, err := s.mgr.List()
