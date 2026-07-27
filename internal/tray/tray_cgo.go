@@ -1,4 +1,5 @@
-// Package tray provides a menu bar / system tray for grain (macOS + Linux).
+//go:build cgo && !windows
+
 package tray
 
 import (
@@ -15,21 +16,7 @@ import (
 //go:embed icon.png
 var iconPNG []byte
 
-// Status is a periodic snapshot for the tray title/tooltip.
-type Status struct {
-	Title   string
-	Tooltip string
-}
-
-// Options configures the tray loop.
-type Options struct {
-	Version string
-	// Status is polled every few seconds while the tray runs.
-	Status func(ctx context.Context) Status
-	OnQuit func()
-}
-
-// Run blocks until the tray exits.
+// Run blocks until the tray exits. Requires a CGO-enabled build.
 func Run(opts Options) error {
 	if opts.Status == nil {
 		opts.Status = func(context.Context) Status {
@@ -57,7 +44,6 @@ func onReady(opts Options) {
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit tray", "Leave the tray (daemon keeps running)")
 
-	// Status poller
 	go func() {
 		t := time.NewTicker(3 * time.Second)
 		defer t.Stop()

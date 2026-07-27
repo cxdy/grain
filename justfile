@@ -17,17 +17,32 @@ dist := "dist"
 default:
     @just --list
 
+# Install tool versions (mise) and git hooks (pre-commit).
+init:
+    command -v mise >/dev/null 2>&1 && mise install || true
+    if command -v pre-commit >/dev/null 2>&1; then \
+        pre-commit install; \
+    else \
+        echo "pre-commit not found; install via mise or: pip install pre-commit"; \
+        false; \
+    fi
+
 # Unit tests (mock hypervisor — no QEMU required).
 test:
-    go test ./... -count=1
+    env -u GOROOT GOTOOLCHAIN=auto go test ./... -count=1
 
 # Unit tests + CLI build.
 all: test build
 
-# Build the grain CLI into bin/grain.
+# Build the grain CLI into bin/grain (CGO off for portable binary).
 build:
     mkdir -p bin
-    go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
+    CGO_ENABLED=0 go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
+
+# Build CLI with CGO (needed for grain tray on macOS/Linux).
+build-tray:
+    mkdir -p bin
+    CGO_ENABLED=1 go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
 
 # Guest agent for the host architecture (bin/grain-agent).
 agent:
@@ -49,6 +64,18 @@ cover:
 # gofmt all packages.
 fmt:
     go fmt ./...
+
+# Run golangci-lint.
+lint:
+    env -u GOROOT GOTOOLCHAIN=auto golangci-lint run
+
+# Lint markdown with markdownlint-cli2.
+markdownlint:
+    npx --yes markdownlint-cli2
+
+# Run pre-commit on all files.
+pre-commit:
+    pre-commit run --all-files
 
 # Snapshot GoReleaser artifacts (tarballs + checksums), no publish.
 # Requires: go install github.com/goreleaser/goreleaser/v2@latest

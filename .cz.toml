@@ -1,0 +1,73 @@
+[tool.commitizen]
+version = "0.2.0"
+
+# Defaults, plus prefixes commonly used by GitHub merges/rebases.
+allowed_prefixes = [
+  "Merge",
+  "Revert",
+  "Pull request",
+  "fixup!",
+  "squash!",
+]
+
+name = "cz_customize"
+
+example = "feat(cli): add grain tray status helper"
+
+# `bump` is an excluded commit type from changelog parsing.
+commit_parser = "^(?P<change_type>feat|fix|doc|perf|ref|test|chore|ci|revert)s?(?:\\((?P<scope>\\S+)\\))?(?P<breaking>!)?:\\s(?P<message>.+)"
+
+# Used by `cz check` / commit-msg validation.
+schema_pattern = "^(?P<change_type>feat|fix|doc|perf|ref|test|chore|ci|revert|bump)s?(?:\\((?P<scope>\\S+)\\))?(?P<breaking>!)?:\\s(?P<message>.+)"
+
+message_template = "{{change_type}}{% if breaking %}!{% endif %}: {{message}}"
+schema = """<type>(<scope>): <subject>
+<BLANK LINE>
+<body>
+<BLANK LINE>
+<footer>"""
+
+bump_map = { "^.+!$" = "MAJOR", "feat" = "MINOR", "fix" = "PATCH", "perf" = "PATCH", "ref" = "PATCH", "chore" = "PATCH", "revert" = "MINOR" }
+
+change_type_order = ["feat", "fix", "perf", "ref"]
+
+bump_pattern = '^((BREAKING[\-\ ]CHANGE|\w+)(\(.+\))?!?):'
+changelog_pattern = '^((BREAKING[\-\ ]CHANGE|\w+)(\(.+\))?!?):'
+
+[tool.commitizen.customize.change_type_map]
+feat = "✨ Features"
+fix = "🐛 Fixes"
+doc = "📝 Docs"
+perf = "⚡ Performance Improvements"
+ref = "♻️ Refactors"
+test = "✅ Tests"
+chore = "🧹 Chores"
+ci = "👷 CI Updates"
+revert = "⏪ Revert"
+
+[[tool.commitizen.customize.questions]]
+type = "list"
+name = "change_type"
+message = "Select the type of change you are committing"
+choices = [
+  { value = "feat", name = "✨ Features" },
+  { value = "fix", name = "🐛 Fixes" },
+  { value = "doc", name = "📝 Docs" },
+  { value = "perf", name = "⚡ Performance Improvements" },
+  { value = "ref", name = "♻️ Refactors" },
+  { value = "test", name = "✅ Tests" },
+  { value = "chore", name = "🧹 Chores" },
+  { value = "ci", name = "👷 CI Updates" },
+  { value = "revert", name = "⏪ Revert" },
+]
+
+[[tool.commitizen.customize.questions]]
+type = "input"
+name = "message"
+message = "Commit subject line"
+
+[[tool.commitizen.customize.questions]]
+default = false
+type = "confirm"
+name = "breaking"
+message = "Is this a breaking change?"

@@ -12,18 +12,23 @@ Also read [SECURITY.md](SECURITY.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md
 
 ## Prerequisites
 
-- **Go 1.23+**
+- **Go 1.25+** (see [`.tool-versions`](.tool-versions); [mise](https://mise.jdx.dev/) recommended)
+- **[just](https://github.com/casey/just)**
 - **QEMU** for real VMs (`brew install qemu` on macOS; `qemu-system` + `qemu-img` on Linux)
-- **make**
+- Optional: **pre-commit**, **golangci-lint** (also listed in `.tool-versions`)
 
 ```bash
+just init          # mise install (if available) + pre-commit hooks
 just test          # unit tests (mock hypervisor — no QEMU required)
 just smoke-api     # CLI + daemon e2e without QEMU
 just build
+just lint          # golangci-lint
 ./bin/grain doctor # dependency check (QEMU, image, optional agent binary)
 ```
 
 Unit tests use a **mock hypervisor**. Live QEMU is optional for day-to-day development; run it when you change boot, networking, or guest paths.
+
+Commits should follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, …). With hooks installed, `commit-msg` is checked via commitizen.
 
 ### Guest agent binary
 

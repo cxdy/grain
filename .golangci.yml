@@ -1,0 +1,16 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - misspell
+    - unconvert
+    - unparam
+    - gosec
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

@@ -1,0 +1,11 @@
+# Globs for markdownlint-cli2 (pre-commit + local runs).
+config: .markdownlint.yaml
+globs:
+  - "**/*.md"
+ignores:
+  - "docs/_site/**"
+  - "docs/vendor/**"
+  - "node_modules/**"
+  - "sdk/ts/node_modules/**"
+  - "sdk/python/.venv/**"
+  - "dist/**"
