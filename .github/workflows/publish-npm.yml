@@ -1,0 +1,91 @@
+# Publish sdk/ts (@cxdy/grain) to npm via Trusted Publishing (OIDC).
+# No long-lived npm token — configure the publisher once on npmjs.com:
+#
+#   https://www.npmjs.com/package/@cxdy/grain/access
+#   (Package → Settings → Trusted Publisher)
+#
+#   Organization or user:  cxdy
+#   Repository:            grain
+#   Workflow filename:     publish-npm.yml
+#   Environment name:      npm
+#   Allowed actions:       npm publish
+#
+# Also create a GitHub Actions environment named `npm` on this repo
+# (Settings → Environments). Optional: require reviewers.
+#
+# Requires Node ≥22.14 and npm CLI ≥11.5.1 for OIDC.
+#
+# Triggers:
+#   - Tag push: sdk-ts-v*  (e.g. sdk-ts-v0.1.1; must match package.json version)
+#   - Manual:   workflow_dispatch (publishes version in sdk/ts/package.json)
+name: Publish TypeScript SDK
+
+on:
+  push:
+    tags:
+      - "sdk-ts-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build and publish @cxdy/grain
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@cxdy/grain
+    permissions:
+      id-token: write # OIDC for npm trusted publishing
+      contents: read
+
+    defaults:
+      run:
+        working-directory: sdk/ts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure npm CLI supports OIDC (≥11.5.1)
+        run: |
+          npm install -g npm@latest
+          node -v
+          npm -v
+
+      - name: Read package version
+        id: version
+        run: |
+          ver=$(node -p "require('./package.json').version")
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Package version from package.json: $ver"
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/sdk-ts-v')
+        working-directory: .
+        run: |
+          tag="${GITHUB_REF_NAME#sdk-ts-v}"
+          pkg="${{ steps.version.outputs.version }}"
+          if [[ "$tag" != "$pkg" ]]; then
+            echo "::error::Tag version ($tag) does not match package.json version ($pkg)"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        # OIDC: do not set NODE_AUTH_TOKEN. npm detects GitHub Actions and
+        # exchanges the id-token for a short-lived publish credential.
+        # Provenance is generated automatically with trusted publishing.
+        run: npm publish --access public

@@ -167,6 +167,12 @@ npm run build   # tsc → dist/
 
 Package is ESM-only (`"type": "module"`) with `.d.ts` types.
 
+## Publishing
+
+Maintainers publish to npm via GitHub Actions Trusted Publishing (OIDC; no
+long-lived npm token in secrets). See [developer/releasing](https://grainvm.com/developer/releasing/)
+and workflow [`.github/workflows/publish-npm.yml`](../../.github/workflows/publish-npm.yml).
+
 ## API reference
 
 Daemon OpenAPI: [`api/openapi.yaml`](https://github.com/cxdy/grain/blob/main/api/openapi.yaml). Go SDK: [`github.com/cxdy/grain/client`](https://pkg.go.dev/github.com/cxdy/grain/client). Docs: [grainvm.com/reference/typescript-sdk](https://grainvm.com/reference/typescript-sdk/).

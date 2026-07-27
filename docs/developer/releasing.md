@@ -133,6 +133,55 @@ Workflow: [`.github/workflows/publish-python.yml`](https://github.com/cxdy/grain
 3. Confirm the run on GitHub Actions and the new files on
    [pypi.org/project/cxdy-grain](https://pypi.org/project/cxdy-grain/).
 
+## TypeScript SDK (`@cxdy/grain`) — npm Trusted Publishing
+
+The TypeScript client lives in [`sdk/ts`](https://github.com/cxdy/grain/tree/main/sdk/ts)
+and publishes as [`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain) via
+[Trusted Publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC). No
+long-lived npm token is stored in GitHub secrets.
+
+Workflow: [`.github/workflows/publish-npm.yml`](https://github.com/cxdy/grain/blob/main/.github/workflows/publish-npm.yml).
+
+Requires **Node ≥ 22.14** and **npm CLI ≥ 11.5.1** on the runner (the workflow
+installs a current npm).
+
+### One-time setup
+
+1. **GitHub** — create an Actions environment named **`npm`** on `cxdy/grain`
+   (Settings → Environments → New environment). Optional: require reviewers.
+2. **npm** — open the package settings → **Trusted Publisher** → GitHub Actions:
+
+   | Field | Value |
+   |-------|--------|
+   | Organization or user | `cxdy` |
+   | Repository | `grain` |
+   | Workflow filename | `publish-npm.yml` |
+   | Environment name | `npm` |
+   | Allowed actions | `npm publish` |
+
+   Package page: [npmjs.com/package/@cxdy/grain](https://www.npmjs.com/package/@cxdy/grain)
+   (manage access / settings as owner).
+
+3. Optional hardening after the first successful OIDC publish: package
+   **Settings → Publishing access** → require 2FA and disallow long-lived tokens.
+
+### Publish a new version
+
+1. Bump `version` in [`sdk/ts/package.json`](https://github.com/cxdy/grain/blob/main/sdk/ts/package.json)
+   (and lockfile if needed). Merge to `main`.
+2. Either:
+
+   ```bash
+   # Tag-driven (version must match package.json, e.g. 0.1.1 → sdk-ts-v0.1.1)
+   git tag sdk-ts-v0.1.1
+   git push origin sdk-ts-v0.1.1
+   ```
+
+   or run **Actions → Publish TypeScript SDK → Run workflow** (`workflow_dispatch`).
+
+3. Confirm the run on GitHub Actions and the new version on
+   [npmjs.com/package/@cxdy/grain](https://www.npmjs.com/package/@cxdy/grain).
+
 ## Install after release
 
 ```bash
