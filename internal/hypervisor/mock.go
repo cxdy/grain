@@ -12,10 +12,14 @@ import (
 )
 
 type MockRuntime struct {
-	mu        sync.Mutex
-	alive     map[string]bool
-	paused    map[string]bool
-	FailStart bool
+	mu         sync.Mutex
+	alive      map[string]bool
+	paused     map[string]bool
+	FailStart  bool
+	FailStop   bool
+	FailPause  bool
+	FailResume bool
+	FailSaveVM bool
 }
 
 func NewMockRuntime() *MockRuntime {
@@ -45,6 +49,9 @@ func (m *MockRuntime) Start(_ context.Context, inst *vm.Instance, _ string) erro
 func (m *MockRuntime) Stop(_ context.Context, inst *vm.Instance) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.FailStop {
+		return fmt.Errorf("mock stop failed")
+	}
 	delete(m.alive, inst.Name)
 	delete(m.paused, inst.Name)
 	inst.PID = 0
@@ -56,6 +63,9 @@ func (m *MockRuntime) Stop(_ context.Context, inst *vm.Instance) error {
 func (m *MockRuntime) Pause(_ context.Context, inst *vm.Instance) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.FailPause {
+		return fmt.Errorf("mock pause failed")
+	}
 	if !m.alive[inst.Name] {
 		return fmt.Errorf("vm %q is not running", inst.Name)
 	}
@@ -69,6 +79,9 @@ func (m *MockRuntime) Pause(_ context.Context, inst *vm.Instance) error {
 func (m *MockRuntime) Resume(_ context.Context, inst *vm.Instance) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.FailResume {
+		return fmt.Errorf("mock resume failed")
+	}
 	if !m.alive[inst.Name] {
 		return fmt.Errorf("vm %q is not running", inst.Name)
 	}
@@ -83,6 +96,9 @@ func (m *MockRuntime) Resume(_ context.Context, inst *vm.Instance) error {
 func (m *MockRuntime) SaveVM(_ context.Context, inst *vm.Instance, tag string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.FailSaveVM {
+		return fmt.Errorf("mock savevm failed")
+	}
 	if !m.alive[inst.Name] {
 		return fmt.Errorf("vm %q is not running", inst.Name)
 	}
@@ -112,22 +128,37 @@ func (m *MockRuntime) ForceDead(name string) {
 }
 
 type MockDisk struct {
-	clones atomic.Int32
+	clones         atomic.Int32
+	FailEnsureBase bool
+	FailClone      bool
+	// WriteQcow2 also writes destPath+".qcow2" so manager qcow2 detection runs.
+	WriteQcow2 bool
 }
 
 func NewMockDisk() *MockDisk { return &MockDisk{} }
 
 func (d *MockDisk) EnsureBase(_ context.Context, imageID string) (string, error) {
+	if d.FailEnsureBase {
+		return "", fmt.Errorf("mock ensure base failed")
+	}
 	return "base:" + imageID, nil
 }
 
 func (d *MockDisk) Clone(_ context.Context, baseDisk, destPath string, sizeGB int) error {
 	_ = baseDisk
 	_ = sizeGB
+	if d.FailClone {
+		return fmt.Errorf("mock clone failed")
+	}
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(destPath, []byte("mock-disk"), 0o644); err != nil {
+	payload := []byte("mock-disk")
+	if d.WriteQcow2 {
+		// QCOW2 magic so diskLooksQcow2(path) is true for suspend snapshot paths.
+		payload = []byte{'Q', 'F', 'I', 0xfb, 0, 0, 0, 0}
+	}
+	if err := os.WriteFile(destPath, payload, 0o644); err != nil {
 		return err
 	}
 	d.clones.Add(1)

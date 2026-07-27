@@ -1,8 +1,8 @@
 name: Coverage comment
 
-# Posts the cobertura PR comment using the base repository's GITHUB_TOKEN.
-# That works for PRs from forks, where the pull_request workflow itself only
-# has a read-only token and cannot create comments.
+# Fork PRs only: same-repo PRs get the cobertura table from ci.yml directly.
+# This workflow posts the PR comment using the base repository's GITHUB_TOKEN
+# after CI uploads the coverage-report artifact (fork tokens are read-only).
 #
 # Security: this workflow must NOT checkout or execute code from the PR.
 # It only downloads the coverage artifact produced by CI and comments on the PR.
@@ -119,5 +119,6 @@ jobs:
           show_branch: false
           show_class_names: false
           show_missing: true
-          link_missing_lines: true
+          show_missing_max_length: 80
+          link_missing_lines: false
           only_changed_files: false

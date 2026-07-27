@@ -6,11 +6,13 @@ on:
   pull_request:
     branches: [main]
 
-# Fork PRs get a read-only GITHUB_TOKEN. Do not try to post PR comments here.
-# Coverage comments are posted by coverage-comment.yml via workflow_run (base-repo
-# token + artifact from this job).
+# Same-repo PRs: post coverage comment from this job.
+# Fork PRs: GITHUB_TOKEN is read-only; coverage-comment.yml (workflow_run)
+# can post with a base-repo token after downloading the artifact.
 permissions:
   contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   test:
@@ -33,13 +35,26 @@ jobs:
       - name: Coverage
         run: just coverage
 
-      # Artifact is consumed by coverage-comment.yml (workflow_run) so fork PRs
-      # can still get a report comment with a write-capable base-repo token.
-      # Include pr-number.txt: workflow_run.pull_requests is often empty for
-      # cross-repo (fork) PRs, and commits/{sha}/pulls also fails for fork heads.
-      # github.event.pull_request.number is reliable on pull_request events.
+      # Compact PR comment: one-line summary + full table under <details>.
+      - name: Coverage PR comment
+        if: >
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_SHA: ${{ github.sha }}
+          COVERAGE_XML: coverage.xml
+          MIN_COVERAGE: "75"
+        run: |
+          chmod +x scripts/coverage-pr-comment.sh
+          scripts/coverage-pr-comment.sh
+
       - name: Prepare coverage artifact
-        if: github.event_name == 'pull_request'
+        if: >
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name != github.repository
         run: |
           set -euo pipefail
           echo -n "${{ github.event.pull_request.number }}" > pr-number.txt
@@ -47,7 +62,9 @@ jobs:
           test -f coverage.xml
 
       - name: Upload coverage report
-        if: github.event_name == 'pull_request'
+        if: >
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name != github.repository
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report

@@ -64,20 +64,29 @@ cover:
 # Profile without -race for cobertura (race + cover is slower / noisier in CI).
 # Writes coverage.out, coverage.html, and coverage.xml for PR comments.
 # Excludes cmd/* (main packages) and tray (CGO UI) from the profile + 75% gate.
+# Packages are skipped at test time too: instrumenting mains/tray can fail with
+# "go: no such tool covdata" on some toolchains and would abort set -e.
 coverage:
     #!/usr/bin/env bash
     set -euo pipefail
-    env -u GOROOT GOTOOLCHAIN=auto go test -count=1 ./... \
+    mapfile -t pkgs < <(go list ./... | grep -vE '/cmd/|/internal/tray')
+    env -u GOROOT GOTOOLCHAIN=auto go test -count=1 "${pkgs[@]}" \
         -coverprofile coverage.raw.out -covermode count
-    # Drop mains and CGO tray from the gated profile (keep single mode header).
+    # Keep single mode header; drop mains, CGO tray, and interactive PTY shell
+    # (shell_linux.go needs a real guest TTY; unit CI cannot exercise the bridge).
     head -n1 coverage.raw.out > coverage.out
-    tail -n +2 coverage.raw.out | grep -vE '/cmd/grain|/cmd/grain-agent|/internal/tray/' >> coverage.out || true
+    tail -n +2 coverage.raw.out | grep -vE '/cmd/grain|/cmd/grain-agent|/internal/tray/|shell_linux\.go' >> coverage.out || true
     rm -f coverage.raw.out
     env -u GOROOT GOTOOLCHAIN=auto go tool cover -html=coverage.out -o coverage.html
     env -u GOROOT GOTOOLCHAIN=auto go run github.com/boumenot/gocover-cobertura@v1.4.0 \
         --by-files -ignore-gen-files < coverage.out > coverage.xml
     total=$(env -u GOROOT GOTOOLCHAIN=auto go tool cover -func=coverage.out | awk '/^total:/{print $3}')
     echo "total coverage: ${total} (cmd + tray excluded)"
+    # Cobertura line-rate (what the PR comment gates on) is typically a few points
+    # under statement coverage — print both.
+    if [[ -f coverage.xml ]]; then
+      python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('coverage.xml').getroot(); lr=float(r.attrib.get('line-rate') or 0)*100; print('cobertura line-rate: %.1f%% (%s/%s)' % (lr, r.attrib.get('lines-covered'), r.attrib.get('lines-valid')))"
+    fi
     pct=$(echo "$total" | tr -d '%')
     awk -v p="$pct" 'BEGIN{ if ((p+0) < 75.0) { printf "coverage %.1f%% is below 75%% minimum\n", p+0; exit 1 } }'
 
