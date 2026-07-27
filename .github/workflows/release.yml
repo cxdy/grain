@@ -1,5 +1,5 @@
 # Cross-build CLI + guest agent and publish a GitHub Release (GoReleaser).
-# Pattern follows grex: tag push → goreleaser-action → checksums + notes.
+# Tag push (v*) → goreleaser-action → archives + checksums + notes.
 #
 # Golden qcow2 images stay on the separate "Bake golden image" workflow
 # (tag golden-latest), not this release.

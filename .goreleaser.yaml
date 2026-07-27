@@ -1,6 +1,5 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# Inspired by grex (.goreleaser.yaml): multi-platform CLI archives, checksums,
-# github-native notes. Grain also ships guest agent binaries (Linux only).
+# Cross-platform grain CLI archives + Linux guest agent; checksums and GitHub notes.
 version: 2
 
 project_name: grain
@@ -70,7 +69,7 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
-# Release notes via GitHub's generate-notes API (same approach as grex).
+# Release notes via GitHub's generate-notes API.
 changelog:
   use: github-native
 

@@ -1,5 +1,4 @@
 # grain development commands. Run `just` to list recipes.
-# Inspired by grex: just + svu next for tags, GoReleaser on v* tags.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
