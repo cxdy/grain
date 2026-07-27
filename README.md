@@ -4,6 +4,8 @@
 
 **Documentation:** [grainvm.com](https://grainvm.com) · Install, guides, API, and SDKs.
 
+**Platforms:** macOS and Linux (amd64 / arm64). **Not supported:** Windows or WSL.
+
 Ephemeral by default. Persistent when you want. Short commands. Local-first.
 
 ```text

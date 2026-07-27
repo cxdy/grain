@@ -36,7 +36,7 @@ detect_os() {
   u="$(uname -s | tr '[:upper:]' '[:lower:]')"
   case "$u" in
     darwin|linux) echo "$u" ;;
-    *) die "unsupported OS: $u (need darwin or linux)" ;;
+    *) die "unsupported OS: $u (need darwin or linux; Windows/WSL are not supported)" ;;
   esac
 }
 

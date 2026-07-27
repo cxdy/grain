@@ -5,9 +5,20 @@ description: Install the grain CLI on macOS or Linux, verify dependencies, and p
 
 This tutorial gets the **grain** binary onto your machine and checks that QEMU (or your chosen hypervisor) is ready. When you finish, you will be able to run `grain version` and `grain doctor`.
 
+## Supported platforms
+
+| Host | Architectures | Notes |
+|------|---------------|--------|
+| **macOS** | arm64 (Apple Silicon), amd64 (Intel) | Apple Silicon recommended; QEMU + HVF |
+| **Linux** | amd64, arm64 | QEMU; **KVM** strongly recommended |
+
+**Not supported:** Windows, **WSL** / WSL2, and other non-`darwin`/`linux` hosts. grain runs nested Linux microVMs (QEMU); WSL2 is already a VM and nested virtualization is unreliable for this use case. From Windows, drive a remote grain daemon via the [HTTP API]({{ '/reference/api/' | relative_url }}) or [SDKs]({{ '/reference/go-sdk/' | relative_url }}) instead.
+
+The install script only accepts `darwin` and `linux` and will exit with `unsupported OS` otherwise.
+
 ## What you need
 
-- **macOS** (Apple Silicon recommended) or **Linux** (amd64 or arm64)
+- A supported host (table above)
 - Network access once (download CLI and base image)
 - **QEMU** for real VMs (default backend)
 

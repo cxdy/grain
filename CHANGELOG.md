@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full HA multi-node cluster networking (single-node k3s preset only)
 - Production-hardened Firecracker (still experimental)
 - Measured sub-second marketing claims without hardware bench (use `scripts/bench-create.sh`)
+- Windows host and **WSL / WSL2** (macOS + Linux only; use remote API/SDK from Windows if needed)
 
 ### Notes
 

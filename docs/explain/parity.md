@@ -34,6 +34,7 @@ This documents grain’s local microVM product surface as of the Unreleased / v0
 | GPU passthrough | Niche; QEMU-only stretch |
 | Multi-node overlay networking | Single-node labs covered by presets |
 | Sub-300ms marketing | Use `scripts/bench-create.sh` on real hardware |
+| Windows / WSL host | Nested microVMs need real KVM/HVF; WSL2 nested virt is unreliable — remote API/SDK instead |
 
 ## Quick verification
 

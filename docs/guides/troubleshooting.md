@@ -4,11 +4,16 @@ description: "Diagnose boot, agent, and QEMU issues."
 ---
 
 
+## Supported platforms
+
+grain supports **macOS** and **Linux** only (amd64 / arm64). **Windows and WSL are not supported** — the CLI installer rejects them, and nested QEMU inside WSL2 is not a supported configuration. See [Install → Supported platforms]({{ '/get-started/install/' | relative_url }}).
+
 ## `grain doctor`
 
 ```bash
 grain doctor
 ```
+
 
 Checks:
 
