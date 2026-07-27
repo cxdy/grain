@@ -152,7 +152,7 @@ paths:
       parameters:
         - name: stream
           in: query
-          description: Set to `1` for NDJSON create progress stream
+          description: "Set to `1` for NDJSON create progress stream"
           schema:
             type: string
             enum: ["1"]
@@ -185,7 +185,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Instance"
         "200":
-          description: NDJSON create stream (`stream=1`)
+          description: "NDJSON create stream (`stream=1`)"
           content:
             application/x-ndjson:
               schema:
@@ -494,7 +494,7 @@ paths:
           explode: true
         - name: buffered
           in: query
-          description: `true` (default) returns JSON ExecResult; `false` streams NDJSON frames
+          description: "`true` (default) returns JSON ExecResult; `false` streams NDJSON frames"
           schema:
             type: string
             enum: ["true", "false"]
