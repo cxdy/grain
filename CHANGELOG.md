@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-27
+
+### Fixed
+
+- **`grain new` create wait** — for agent-ready images (`grain-ubuntu` / HasAgent), wait the full readiness budget for the guest agent instead of falling back to SSH after ~45s. SSH deploy is still used when needed, but agent health is raced so a late-up agent finishes create without hanging on SSH.
+- **Ctrl+C during create** — no longer marks a live VM as `status=error`. The guest stays **running** so `grain sh` / `grain ls` work. `grain ls` also reconciles stale `error`/`creating` to `running` when the hypervisor process is still alive.
+
 ## [0.2.0] - 2026-07-27
 
 ### Added
@@ -124,7 +131,8 @@ First public release: local Linux microVM control plane for macOS and Linux.
 - Platforms: **macOS and Linux** only (amd64 / arm64). Golden images: `golden-latest` on GitHub Releases.
 - Install: `curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash` (or release assets for `v0.1.0`).
 
-[Unreleased]: https://github.com/cxdy/grain/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/cxdy/grain/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/cxdy/grain/releases/tag/v0.2.1
 [0.2.0]: https://github.com/cxdy/grain/releases/tag/v0.2.0
 [0.1.4]: https://github.com/cxdy/grain/releases/tag/v0.1.4
 [0.1.3]: https://github.com/cxdy/grain/releases/tag/v0.1.3
