@@ -29,7 +29,7 @@ just lint          # golangci-lint
 
 Unit tests use a **mock hypervisor**. Live QEMU is optional for day-to-day development; run it when you change boot, networking, or guest paths.
 
-**Coverage:** CI runs `just coverage` and posts a cobertura PR comment (minimum **75%** statement coverage; `cmd/*` mains and `internal/tray` CGO UI are excluded from the gated profile).
+**Coverage:** CI runs `just coverage` and posts a **cobertura table as a PR comment** (minimum **75%** statement coverage; `cmd/*` mains and `internal/tray` CGO UI are excluded from the gated profile). Same-repo PRs get the comment from the CI job; fork PRs use the `Coverage comment` workflow after CI finishes.
 
 Commits should follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, …). With hooks installed, `commit-msg` is checked via commitizen.
 
