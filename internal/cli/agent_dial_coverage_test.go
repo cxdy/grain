@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cxdy/grain/internal/api"
 )
@@ -47,7 +48,7 @@ func startFakeAgent(t *testing.T, streamHandler func(w http.ResponseWriter, r *h
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	_, portStr, err := net.SplitHostPort(ln.Addr().String())
 	if err != nil {
@@ -90,9 +91,9 @@ func TestDialGuestAgentHealthFail(t *testing.T) {
 	// Accept and close immediately (or hang) — better: serve 503
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "no", 503)
+		http.Error(w, "no", http.StatusServiceUnavailable)
 	})
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close(); _ = ln.Close() }()
 	_, portStr, _ := net.SplitHostPort(ln.Addr().String())

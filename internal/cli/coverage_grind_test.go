@@ -197,12 +197,12 @@ func TestShellViaAgentLiveDial(t *testing.T) {
 
 func TestCmdShForceAgentUnavailable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/healthz":
-			w.WriteHeader(200)
-		case r.URL.Path == "/vms":
+		switch r.URL.Path {
+		case "/healthz":
+			w.WriteHeader(http.StatusOK)
+		case "/vms":
 			_ = json.NewEncoder(w).Encode([]*vm.Instance{{Name: "s", Status: vm.StatusRunning}})
-		case r.URL.Path == "/vms/s":
+		case "/vms/s":
 			_ = json.NewEncoder(w).Encode(&vm.Instance{Name: "s", Status: vm.StatusRunning})
 		default:
 			http.NotFound(w, r)
@@ -223,10 +223,10 @@ func TestCmdShForceAgentUnavailable(t *testing.T) {
 
 func TestCmdShForceSSHDeadPort(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/healthz":
-			w.WriteHeader(200)
-		case r.URL.Path == "/vms/s":
+		switch r.URL.Path {
+		case "/healthz":
+			w.WriteHeader(http.StatusOK)
+		case "/vms/s":
 			_ = json.NewEncoder(w).Encode(&vm.Instance{
 				Name: "s", Status: vm.StatusRunning, IP: "127.0.0.1", SSHPort: 1,
 			})

@@ -250,7 +250,7 @@ func TestRunGrainActStreamFallback(t *testing.T) {
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/exec"):
 			if r.URL.Query().Get("buffered") == "false" {
 				streamHits.Add(1)
-				http.Error(w, "no stream", 503)
+				http.Error(w, "no stream", http.StatusServiceUnavailable)
 				return
 			}
 			// waitActReady probe OR buffered fallback after stream fail
@@ -288,7 +288,7 @@ func TestRunGrainActStreamFallback(t *testing.T) {
 func TestRunGrainActHealthFail(t *testing.T) {
 	// Point at closed server
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "down", 503)
+		http.Error(w, "down", http.StatusServiceUnavailable)
 	}))
 	url := srv.URL
 	srv.Close()
