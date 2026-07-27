@@ -3,8 +3,8 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cxdy-grain"
-version = "0.1.1"
+name = "grainvm"
+version = "0.1.2"
 description = "Python client for the grain microVM daemon HTTP API"
 readme = "README.md"
 license = "Apache-2.0"

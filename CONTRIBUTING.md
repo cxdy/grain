@@ -43,7 +43,7 @@ Prefer `grain image pull grain-ubuntu` (golden from tag `golden-latest`) so crea
 - **SDKs stay thin HTTP clients** — no imports of `internal/`:
   - Go: [`client/`](client/)
   - TypeScript: [`sdk/ts`](sdk/ts) (`@cxdy/grain`)
-  - Python: [`sdk/python`](sdk/python) (`cxdy-grain`)
+  - Python: [`sdk/python`](sdk/python) (`grainvm`, `import grain`)
 - Match existing style: concise comments, table-driven tests, clear error messages.
 
 ## Pull requests

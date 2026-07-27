@@ -92,20 +92,21 @@ Workflow: [`.github/workflows/release.yml`](https://github.com/cxdy/grain/blob/m
 **Golden images** (`grain-ubuntu` on tag `golden-latest`) are **not** part of
 GoReleaser — use the bake workflow / local bake scripts.
 
-## Python SDK (`cxdy-grain`) — PyPI Trusted Publishing
+## Python SDK (`grainvm`) — PyPI Trusted Publishing
 
 The Python client lives in [`sdk/python`](https://github.com/cxdy/grain/tree/main/sdk/python)
-and publishes as [`cxdy-grain`](https://pypi.org/project/cxdy-grain/) via
+and publishes as [`grainvm`](https://pypi.org/project/grainvm/) via
 [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC). No
 long-lived PyPI API token is stored in GitHub secrets.
 
-Workflow: [`.github/workflows/publish-python.yml`](https://github.com/cxdy/grain/blob/main/.github/workflows/publish-python.yml).
+Import remains `import grain`. Workflow:
+[`.github/workflows/publish-python.yml`](https://github.com/cxdy/grain/blob/main/.github/workflows/publish-python.yml).
 
 ### One-time setup
 
 1. **GitHub** — create an Actions environment named **`pypi`** on `cxdy/grain`
    (Settings → Environments → New environment). Optional: require reviewers.
-2. **PyPI** — on the project, open **Publishing** and add a GitHub publisher:
+2. **PyPI** — create or open project **`grainvm`**, then **Publishing** → add a GitHub publisher:
 
    | Field | Value |
    |-------|--------|
@@ -114,7 +115,7 @@ Workflow: [`.github/workflows/publish-python.yml`](https://github.com/cxdy/grain
    | Workflow name | `publish-python.yml` |
    | Environment name | `pypi` |
 
-   Direct link: [pypi.org/manage/project/cxdy-grain/settings/publishing/](https://pypi.org/manage/project/cxdy-grain/settings/publishing/)
+   Direct link (after the project exists): [pypi.org/manage/project/grainvm/settings/publishing/](https://pypi.org/manage/project/grainvm/settings/publishing/)
 
 ### Publish a new version
 
@@ -123,15 +124,15 @@ Workflow: [`.github/workflows/publish-python.yml`](https://github.com/cxdy/grain
 2. Either:
 
    ```bash
-   # Tag-driven (version must match pyproject, e.g. 0.1.1 → sdk-python-v0.1.1)
-   git tag sdk-python-v0.1.1
-   git push origin sdk-python-v0.1.1
+   # Tag-driven (version must match pyproject, e.g. 0.1.2 → sdk-python-v0.1.2)
+   git tag sdk-python-v0.1.2
+   git push origin sdk-python-v0.1.2
    ```
 
    or run **Actions → Publish Python SDK → Run workflow** (`workflow_dispatch`).
 
 3. Confirm the run on GitHub Actions and the new files on
-   [pypi.org/project/cxdy-grain](https://pypi.org/project/cxdy-grain/).
+   [pypi.org/project/grainvm](https://pypi.org/project/grainvm/).
 
 ## TypeScript SDK (`@cxdy/grain`) — npm Trusted Publishing
 

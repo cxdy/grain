@@ -1,7 +1,7 @@
-# Publish sdk/python (cxdy-grain) to PyPI via Trusted Publishing (OIDC).
+# Publish sdk/python (grainvm) to PyPI via Trusted Publishing (OIDC).
 # No long-lived PyPI API token — configure the publisher once on PyPI:
 #
-#   https://pypi.org/manage/project/cxdy-grain/settings/publishing/
+#   https://pypi.org/manage/project/grainvm/settings/publishing/
 #
 #   Owner:        cxdy
 #   Repository:   grain
@@ -12,7 +12,7 @@
 # (Settings → Environments). Optional: require reviewers on that environment.
 #
 # Triggers:
-#   - Tag push: sdk-python-v*  (e.g. sdk-python-v0.1.1; must match pyproject version)
+#   - Tag push: sdk-python-v*  (e.g. sdk-python-v0.1.2; must match pyproject version)
 #   - Manual:   workflow_dispatch (publishes version in sdk/python/pyproject.toml)
 name: Publish Python SDK
 
@@ -27,11 +27,12 @@ permissions:
 
 jobs:
   publish:
-    name: Build and publish cxdy-grain
+    name: Build and publish grainvm
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/cxdy-grain
+      url: https://pypi.org/p/grainvm
+
     permissions:
       id-token: write # OIDC for PyPI trusted publishing
       contents: read

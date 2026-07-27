@@ -24,7 +24,7 @@ Practical gates before tagging **v0.1.0**. Do not start a long golden bake from 
 ## Packages
 
 - [x] **npm** [`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain) published from `sdk/ts`
-- [x] **PyPI** [`cxdy-grain`](https://pypi.org/project/cxdy-grain/) published from `sdk/python`
+- [x] **PyPI** [`grainvm`](https://pypi.org/project/grainvm/) published from `sdk/python`
 
 ## Smoke (human or scripted)
 

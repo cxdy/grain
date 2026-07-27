@@ -237,7 +237,7 @@ curl --unix-socket ~/.grain/grain.sock http://grain/vms
 |-----|---------|
 | [Go]({{ '/reference/go-sdk/' | relative_url }}) | `go get github.com/cxdy/grain/client` |
 | [TypeScript]({{ '/reference/typescript-sdk/' | relative_url }}) | `npm install @cxdy/grain` |
-| [Python]({{ '/reference/python-sdk/' | relative_url }}) | `pip install cxdy-grain` |
+| [Python]({{ '/reference/python-sdk/' | relative_url }}) | `pip install grainvm` |
 
 ---
 

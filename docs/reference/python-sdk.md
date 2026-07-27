@@ -3,13 +3,13 @@ title: Python SDK
 description: Stdlib Python client for the grain daemon — TCP or Unix socket, create, exec, lifecycle, and more.
 ---
 
-PyPI: **[`cxdy-grain`](https://pypi.org/project/cxdy-grain/)** (import as `grain`).  
+PyPI: **[`grainvm`](https://pypi.org/project/grainvm/)** (import as `grain`).  
 Source: [`sdk/python`](https://github.com/cxdy/grain/tree/main/sdk/python).
 
 ## Install
 
 ```bash
-pip install cxdy-grain
+pip install grainvm
 ```
 
 Requires **Python 3.9+**. **Zero runtime dependencies** (stdlib `http.client` only).
