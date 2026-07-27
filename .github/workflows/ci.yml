@@ -13,6 +13,7 @@ permissions:
   contents: read
   pull-requests: write
   issues: write # PR comments use the issues comments API
+  checks: write # cobertura-action also creates a check run
 
 jobs:
   test:
@@ -41,6 +42,9 @@ jobs:
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
         uses: 5monkeys/cobertura-action@v14
+        env:
+          # Action still ships Node 20; allow until upstream moves to Node 24.
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           report_name: coverage
