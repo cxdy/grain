@@ -118,10 +118,10 @@ func TestCheckUpToDate(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	res, err := update.Check(update.Options{
-		Current:    "v0.2.2",
-		DataDir:    t.TempDir(),
-		APIURL:     srv.URL,
-		HTTPClient: srv.Client(),
+		Current:      "v0.2.2",
+		DataDir:      t.TempDir(),
+		APIURL:       srv.URL,
+		HTTPClient:   srv.Client(),
 		ForceRefresh: true,
 	})
 	if err != nil {
