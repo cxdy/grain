@@ -39,6 +39,8 @@ The script:
 
 Default install locations: `/usr/local/bin` if writable, otherwise `~/.local/bin`. Override with `GRAIN_INSTALL_DIR`.
 
+After install, the script asks whether to **enable MCP by default** (`mcp.enabled` in `~/.grain/config.yaml`). Non-interactive installs skip the prompt; use `GRAIN_ENABLE_MCP=1` or `0` to force yes/no. If you skip, you can enable later with `grain up --mcp` — see [MCP server]({{ '/guides/mcp/' | relative_url }}).
+
 ## Upgrade
 
 ```bash

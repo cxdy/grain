@@ -9,6 +9,8 @@ MCP is built into the main **`grain` binary**. It talks to a **running grain dae
 
 ## Quick start
 
+The install script can enable MCP by default (`mcp.enabled: true` in `~/.grain/config.yaml`). Otherwise:
+
 ```bash
 grain up --mcp                 # daemon + Streamable HTTP MCP
 # or permanently in ~/.grain/config.yaml:
