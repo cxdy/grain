@@ -1,8 +1,6 @@
-// Command mcp-handshake drives initialize + tools/list against a grain-mcp
-// child process over stdio. Used for launch verification (not a reimplementation
-// of tool registration — tools come from the child binary).
+// Command mcp-handshake drives initialize + tools/list against `grain mcp` over stdio.
 //
-//	go run ./scripts/mcp-handshake.go ./bin/grain-mcp
+//	go run ./scripts/mcp-handshake.go ./bin/grain
 package main
 
 import (
@@ -17,25 +15,16 @@ import (
 )
 
 func main() {
-	bin := "./bin/grain-mcp"
+	bin := "./bin/grain"
 	if len(os.Args) > 1 {
 		bin = os.Args[1]
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, bin)
+	cmd := exec.CommandContext(ctx, bin, "mcp")
 	cmd.Env = os.Environ()
-	// Point at a mock HTTP daemon if GRAIN_API already set; else handshake
-	// still works — tools/list does not require a live daemon call.
-	// Dial happens at process start; ensure GRAIN_API is set by the caller when needed.
 
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	// Prefer CommandTransport so we exercise the real binary's stdio path.
-	_ = clientTransport
-	_ = serverTransport
-
-	// Use CommandTransport bound to the binary.
 	ct := &mcp.CommandTransport{Command: cmd}
 	cli := mcp.NewClient(&mcp.Implementation{Name: "handshake", Version: "0"}, nil)
 	sess, err := cli.Connect(ctx, ct, nil)
@@ -64,7 +53,6 @@ func main() {
 	}, "", "  ")
 	fmt.Println(string(out))
 
-	// Required lifecycle tools
 	need := []string{
 		"grain_health", "grain_list_vms", "grain_get_vm", "grain_create_vm",
 		"grain_start_vm", "grain_stop_vm", "grain_delete_vm", "grain_exec",

@@ -25,7 +25,13 @@ ssh_user: ubuntu
 ready_timeout: 2m
 log_level: info
 check_updates: true          # stderr note when a newer GitHub Release exists (CLI only)
+
+mcp:
+  enabled: false             # true = grain up starts MCP Streamable HTTP
+  listen: 127.0.0.1:7476     # MCP endpoint http://LISTEN/mcp
 ```
+
+Or one-shot: `grain up --mcp`. Stdio for IDE hosts: `grain mcp`. See [MCP server]({{ '/guides/mcp/' | relative_url }}).
 
 Upgrade notices (not `grain update` itself) can also be disabled with env:
 

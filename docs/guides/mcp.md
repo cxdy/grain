@@ -3,79 +3,90 @@ title: MCP server
 description: Connect Claude Code, Codex, OpenCode, Grok Build, and other MCP hosts to grain sandboxes.
 ---
 
-The **grain MCP server** (`grain-mcp`) exposes sandbox lifecycle tools over the [Model Context Protocol](https://modelcontextprotocol.io/) so coding agents can create, inspect, run commands in, and delete grain microVMs.
+grain exposes sandbox tools over the [Model Context Protocol](https://modelcontextprotocol.io/) so coding agents can create, inspect, run commands in, and delete microVMs.
 
-It is a thin stdio MCP process that calls a **running grain daemon** via the same HTTP/unix API as the CLI and Go SDK. It does not start QEMU itself.
+MCP is built into the main **`grain` binary**. It talks to a **running grain daemon** via the same HTTP/unix API as the CLI.
 
-## Prerequisites
+## Quick start
 
-1. Install grain and QEMU ([install]({{ '/get-started/install/' | relative_url }})).
-2. Start the daemon:
+```bash
+grain up --mcp                 # daemon + Streamable HTTP MCP
+# or permanently in ~/.grain/config.yaml:
+# mcp:
+#   enabled: true
+#   listen: 127.0.0.1:7476
 
-   ```bash
-   grain up
-   grain image pull grain-ubuntu   # recommended for agent-ready boots
-   ```
+grain image pull grain-ubuntu
+```
 
-3. Build or run the MCP server from a checkout:
+Default MCP HTTP endpoint: **`http://127.0.0.1:7476/mcp`**.
 
-   ```bash
-   just build-mcp          # → bin/grain-mcp
-   # or
-   go run ./cmd/grain-mcp
-   ```
+For IDE hosts that spawn a stdio server:
 
-## Connection env
+```bash
+grain mcp                      # stdio (daemon must already be up)
+```
 
-| Variable | Meaning |
-|----------|---------|
-| *(default)* | Unix socket `~/.grain/grain.sock` (from config `socket` / data dir) |
-| `GRAIN_SOCKET` | Override unix socket path |
-| `GRAIN_API` | HTTP base URL for a remote or TCP-bound daemon (e.g. `http://127.0.0.1:7474`) |
-| `GRAIN_TOKEN` | Bearer token when the daemon has `api_token` / `auth_token` |
-| `GRAIN_CONFIG` | Optional path to grain `config.yaml` |
+## Configuration
 
-Same semantics as the grain CLI remote mode.
+```yaml
+mcp:
+  enabled: false             # true = grain up always starts MCP HTTP
+  listen: 127.0.0.1:7476     # Streamable HTTP bind (path /mcp)
+```
+
+| Field | Meaning |
+|-------|---------|
+| `mcp.enabled` | Co-start MCP Streamable HTTP with the daemon |
+| `mcp.listen` | `host:port` (default `127.0.0.1:7476`) |
+
+CLI:
+
+| Command | Transport |
+|---------|-----------|
+| `grain up --mcp` | Daemon + MCP HTTP in one process |
+| `grain mcp` | MCP **stdio** (spawn from host config) |
+| `grain mcp --http` | MCP HTTP only (daemon must already be up) |
+| `grain mcp --http --listen 127.0.0.1:7476` | Override listen address |
 
 ## Host configuration
 
-### Claude Code / generic MCP (`mcpServers`)
+### Stdio (Claude Code, Codex, OpenCode, …)
 
 ```json
 {
   "mcpServers": {
     "grain": {
-      "command": "/path/to/grain/bin/grain-mcp",
-      "args": [],
-      "env": {
-        "GRAIN_API": "http://127.0.0.1:7474",
-        "GRAIN_TOKEN": ""
-      }
+      "command": "grain",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-Local socket only (no `GRAIN_API`):
+Use an absolute path to `grain` if it is not on the host’s `PATH`. Ensure `grain up` (optionally with `--mcp`) is running first.
 
-```json
-{
-  "mcpServers": {
-    "grain": {
-      "command": "/path/to/grain/bin/grain-mcp",
-      "args": []
-    }
-  }
-}
+### Streamable HTTP
+
+Point MCP HTTP clients at:
+
+```text
+http://127.0.0.1:7476/mcp
 ```
 
-### OpenCode / Codex / other stdio hosts
+after `grain up --mcp` or `mcp.enabled: true`.
 
-Point the host at the same `command` (absolute path to `grain-mcp` or `go run` wrapper). Transport is **stdio** (JSON-RPC). Ensure `grain up` is running before the host starts the server.
+## Connection to the daemon
 
-### Grok Build / OpenAPI-compatible tool hosts
+When tools run, the MCP layer dials the daemon like the CLI:
 
-If the host supports MCP over stdio, use the same command block. If it only supports OpenAPI HTTP tools, use the grain [HTTP API]({{ '/reference/api/' | relative_url }}) / [OpenAPI]({{ '/reference/openapi/' | relative_url }}) directly instead of `grain-mcp`.
+| Variable / config | Meaning |
+|-------------------|---------|
+| *(default)* | Unix socket `~/.grain/grain.sock` |
+| `GRAIN_SOCKET` | Override socket path |
+| `GRAIN_API` | HTTP base URL (`http://127.0.0.1:7474`) |
+| `GRAIN_TOKEN` | Bearer token when required |
+| `api` / `api_token` | Daemon listen + auth (config) |
 
 ## Tools
 
@@ -104,8 +115,6 @@ If the host supports MCP over stdio, use the same command block. If it only supp
 | `mounts` | `["/host/path:/guest/path"]` |
 | `userdata` | Cloud-init string |
 
-Results are JSON text content. API failures surface as MCP tool errors.
-
 ## Typical agent flow
 
 1. `grain_health` — confirm daemon  
@@ -117,10 +126,11 @@ Results are JSON text content. API failures surface as MCP tool errors.
 
 - No interactive PTY shell, act recipe, proxy UI, or image bake via MCP (use CLI).
 - Create waits for readiness in-process (can take minutes with cold images).
-- Hosts must not block stdio; long create/exec holds the tool call until the daemon responds.
+- If the daemon is already up without MCP, use `grain mcp --http` or restart with `grain down && grain up --mcp`.
 
 ## See also
 
 - [HTTP API]({{ '/reference/api/' | relative_url }})
 - [Go SDK]({{ '/reference/go-sdk/' | relative_url }})
 - [CLI]({{ '/reference/cli/' | relative_url }})
+- [Configuration]({{ '/reference/config/' | relative_url }})

@@ -47,6 +47,12 @@ func TestDefaults(t *testing.T) {
 	if !c.CheckUpdates {
 		t.Fatal("check_updates should default true")
 	}
+	if c.MCP.Enabled {
+		t.Fatal("mcp.enabled should default false")
+	}
+	if c.MCP.Listen != "127.0.0.1:7476" {
+		t.Fatalf("mcp.listen %q", c.MCP.Listen)
+	}
 }
 
 func TestLoadMissingUsesDefaults(t *testing.T) {

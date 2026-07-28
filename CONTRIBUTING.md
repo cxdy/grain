@@ -23,7 +23,7 @@ just test          # unit tests (mock hypervisor — no QEMU required)
 just smoke-api     # CLI + daemon e2e without QEMU
 just coverage      # coverprofile + cobertura XML; fails under 75% (cmd/* excluded)
 just build
-just build-mcp     # MCP stdio server → bin/grain-mcp (needs grain up at runtime)
+just mcp-handshake # optional: initialize + tools/list via grain mcp
 just lint          # golangci-lint
 ./bin/grain doctor # dependency check (QEMU, image, optional agent binary)
 ```

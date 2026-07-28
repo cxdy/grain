@@ -20,6 +20,7 @@ import (
 	"github.com/cxdy/grain/internal/daemon"
 	"github.com/cxdy/grain/internal/guest"
 	"github.com/cxdy/grain/internal/image"
+	grainmcp "github.com/cxdy/grain/internal/mcp"
 	"github.com/cxdy/grain/internal/observability"
 	"github.com/cxdy/grain/internal/proxy"
 	"github.com/cxdy/grain/internal/vm"
@@ -56,6 +57,8 @@ func Root(version string) *cobra.Command {
   grain new --wait agent      wait for agent (ssh|agent|userdata)
   grain act -- [act-args]     run GitHub Actions via act in a sandbox
   grain update [--check]      check for / install latest release
+  grain mcp [--http]          MCP tool server (stdio or Streamable HTTP)
+  grain up --mcp              start daemon + MCP HTTP (see config mcp:)
   grain stop / start    stop or restart a persistent VM
   grain pause / resume  QMP freeze/unfreeze guest vCPUs
   grain suspend / restore  stop process (free RAM); restore from disk/snapshot
@@ -102,6 +105,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 		cmdDown(&cfgPath),
 		cmdUninstall(&cfgPath),
 		cmdUpdate(&cfgPath, version),
+		cmdMCP(&cfgPath, version),
 		cmdNew(&cfgPath),
 		cmdAct(&cfgPath),
 		cmdStop(&cfgPath),
@@ -146,13 +150,29 @@ func loadCfg(path *string) (config.Config, error) {
 
 func cmdUp(cfgPath *string) *cobra.Command {
 	fg := false
+	enableMCP := false
 	cmd := &cobra.Command{
 		Use:   "up",
 		Short: "Start the grain daemon",
+		Long: `Start the grain daemon (unix socket + optional TCP API).
+
+  grain up              background daemon
+  grain up --fg         foreground (logs on stderr)
+  grain up --mcp        also serve MCP Streamable HTTP (see config mcp.listen)
+
+MCP can also be enabled permanently:
+
+  mcp:
+    enabled: true
+    listen: 127.0.0.1:7476
+`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
 				return err
+			}
+			if enableMCP {
+				cfg.MCP.Enabled = true
 			}
 			if err := requireLocalDaemon(cfg, "grain up"); err != nil {
 				return err
@@ -162,6 +182,9 @@ func cmdUp(cfgPath *string) *cobra.Command {
 			// Already healthy — do not spawn a second daemon.
 			if err := probeDaemonHealth(cfg); err == nil {
 				printDaemonUp("grain already up", cfg)
+				if enableMCP {
+					fmt.Fprintln(os.Stderr, "note: daemon already running — restart with grain down && grain up --mcp to attach MCP in-process, or run: grain mcp --http")
+				}
 				return nil
 			}
 			// Live pid but unhealthy (half-up / stuck on port): force user to down first.
@@ -179,6 +202,9 @@ func cmdUp(cfgPath *string) *cobra.Command {
 				c := exec.Command(exe, "up", "--fg")
 				if *cfgPath != "" {
 					c.Args = append(c.Args, "--config", *cfgPath)
+				}
+				if cfg.MCP.Enabled {
+					c.Args = append(c.Args, "--mcp")
 				}
 				// Detach from the controlling terminal's process group so a later
 				// shell Ctrl+C does not deliver SIGINT to the daemon.
@@ -230,6 +256,7 @@ func cmdUp(cfgPath *string) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&fg, "fg", false, "run in foreground")
+	cmd.Flags().BoolVar(&enableMCP, "mcp", false, "also serve MCP Streamable HTTP (mcp.listen, default 127.0.0.1:7476/mcp)")
 	return cmd
 }
 
@@ -312,6 +339,13 @@ func printDaemonUp(header string, cfg config.Config) {
 	if cfg.API != "" {
 		fmt.Printf("  api     http://%s\n", cfg.API)
 		fmt.Printf("  metrics http://%s/metrics\n", cfg.API)
+	}
+	if cfg.MCP.Enabled {
+		listen := cfg.MCP.Listen
+		if listen == "" {
+			listen = "127.0.0.1:7476"
+		}
+		fmt.Printf("  mcp     %s\n", grainmcp.HTTPEndpoint(listen))
 	}
 }
 

@@ -62,13 +62,15 @@ Optional starter config and more flags: **[quick start](https://grainvm.com/get-
 
 ### MCP (coding agents)
 
-Expose sandboxes to Claude Code, Codex, OpenCode, Grok Build, and other MCP hosts:
+MCP is built into `grain` (not a separate binary):
 
 ```bash
-just build-mcp    # bin/grain-mcp (stdio; needs grain up)
+grain up --mcp                 # daemon + MCP at http://127.0.0.1:7476/mcp
+# IDE stdio host:
+#   command: grain, args: ["mcp"]
 ```
 
-→ [MCP server guide](https://grainvm.com/guides/mcp/) (tool list + host config)
+→ [MCP server guide](https://grainvm.com/guides/mcp/)
 
 ---
 

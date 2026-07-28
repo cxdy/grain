@@ -27,8 +27,9 @@ See [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}) for firew
 
 | Command | Description |
 |---------|-------------|
-| `grain up [--fg]` | Start daemon (background by default; reports already up if healthy) |
+| `grain up [--fg] [--mcp]` | Start daemon (background by default; `--mcp` also serves MCP Streamable HTTP) |
 | `grain down` | Stop daemon via pidfile (cleans stale pid/socket) |
+| `grain mcp [--http] [--listen addr]` | MCP tool server (stdio default; `--http` uses `mcp.listen`) |
 | `grain update [--check] [--force]` | Check GitHub Releases and install the latest CLI (re-runs the install script) |
 | `grain uninstall [--purge] [-y]` | Remove CLI binary; `--purge` also deletes the data directory |
 | `grain doctor` | Dependency checks |
