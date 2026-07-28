@@ -39,7 +39,9 @@ func RunHTTP(ctx context.Context, listen, version string, c *client.Client, log 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return srv
 	}, &mcp.StreamableHTTPOptions{
-		// Stateless-friendly JSON responses work well for local tool hosts.
+		// Stateless + JSON responses: concurrent tool calls from hosts (e.g. Grok)
+		// each get a full request/response without sharing a sticky session stream.
+		Stateless:    true,
 		JSONResponse: true,
 	})
 	mux := http.NewServeMux()
