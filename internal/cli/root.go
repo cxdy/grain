@@ -26,6 +26,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func init() {
+	// Run root + intermediate PersistentPreRun hooks (upgrade notices + local-daemon gates).
+	cobra.EnableTraverseRunHooks = true
+}
+
 // Root builds the grain CLI. Short commands by design.
 func Root(version string) *cobra.Command {
 	api.Version = version
@@ -50,6 +55,7 @@ func Root(version string) *cobra.Command {
   grain new --network overlay share L2 between VMs
   grain new --wait agent      wait for agent (ssh|agent|userdata)
   grain act -- [act-args]     run GitHub Actions via act in a sandbox
+  grain update [--check]      check for / install latest release
   grain stop / start    stop or restart a persistent VM
   grain pause / resume  QMP freeze/unfreeze guest vCPUs
   grain suspend / restore  stop process (free RAM); restore from disk/snapshot
@@ -77,10 +83,25 @@ Remote team host (CLI dials HTTP instead of local socket):
 	root.PersistentFlags().StringVar(&cfgPath, "config", "", "config file (default ~/.grain/config.yaml)")
 	root.PersistentFlags().StringVar(&apiURLFlag, "api", "", "remote daemon API URL (e.g. http://host:7474); overrides GRAIN_API and config api_url")
 
+	// Soft upgrade notices (disabled via check_updates / GRAIN_CHECK_UPDATES).
+	// With EnableTraverseRunHooks, this still runs for nested commands that define
+	// their own PersistentPreRunE (image, proxy).
+	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if cmd == nil || cmd.Parent() == nil {
+			return
+		}
+		cfg, err := loadCfg(&cfgPath)
+		if err != nil {
+			cfg = config.Defaults()
+		}
+		maybePrintUpdateNotice(cfg, version, cmd.Name())
+	}
+
 	root.AddCommand(
 		cmdUp(&cfgPath),
 		cmdDown(&cfgPath),
 		cmdUninstall(&cfgPath),
+		cmdUpdate(&cfgPath, version),
 		cmdNew(&cfgPath),
 		cmdAct(&cfgPath),
 		cmdStop(&cfgPath),
@@ -1067,6 +1088,7 @@ func cmdVersion(v string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print version",
+		Long:  `Print the grain CLI version. Use grain update --check to compare against the latest release.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println(v)
 		},

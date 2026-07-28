@@ -51,7 +51,7 @@ func TestRootSubcommandsPresent(t *testing.T) {
 		"up", "down", "new", "act", "stop", "start", "pause", "resume",
 		"suspend", "restore", "ls", "rm", "sh", "x", "cp", "fs", "logs",
 		"fwd", "stats", "secret", "proxy", "profile", "image", "agent",
-		"doctor", "version",
+		"doctor", "update", "version",
 	}
 	for _, name := range want {
 		found := false

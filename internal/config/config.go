@@ -100,6 +100,12 @@ type Config struct {
 	// Profiles are named create presets for `grain new --profile NAME`.
 	// Resolve order: CLI flags (explicit) > profile fields > global defaults.
 	Profiles map[string]Profile `yaml:"profiles"`
+
+	// CheckUpdates enables occasional upgrade notices on CLI commands (default true).
+	// When a newer GitHub Release exists, grain prints a one-line stderr note.
+	// Disable with check_updates: false, GRAIN_CHECK_UPDATES=0, or GRAIN_NO_UPDATE_CHECK=1.
+	// Always available: grain update --check / grain update.
+	CheckUpdates bool `yaml:"check_updates"`
 }
 
 // Profile is a named set of create-time defaults (see Profiles).
@@ -367,6 +373,7 @@ func Defaults() Config {
 		MaxMemoryMBTotal: 32768,
 		MaxCPUsPerVM:     8,
 		MaxMemoryMBPerVM: 16384,
+		CheckUpdates:     true,
 	}
 }
 

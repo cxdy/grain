@@ -29,9 +29,19 @@ See [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}) for firew
 |---------|-------------|
 | `grain up [--fg]` | Start daemon (background by default; reports already up if healthy) |
 | `grain down` | Stop daemon via pidfile (cleans stale pid/socket) |
+| `grain update [--check] [--force]` | Check GitHub Releases and install the latest CLI (re-runs the install script) |
 | `grain uninstall [--purge] [-y]` | Remove CLI binary; `--purge` also deletes the data directory |
 | `grain doctor` | Dependency checks |
 | `grain version` | Print version |
+
+### `grain update`
+
+| Flag | Meaning |
+|------|---------|
+| `--check` | Only compare current vs latest release (exit **1** if an update is available) |
+| `--force` | Re-run the installer even when already on the latest release |
+
+Most other commands may print a one-line stderr note when a newer release is known (cached for 24h). Disable notices with `check_updates: false` in config, `GRAIN_CHECK_UPDATES=0`, or `GRAIN_NO_UPDATE_CHECK=1`.
 
 ## Images
 
