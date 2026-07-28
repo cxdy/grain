@@ -60,6 +60,16 @@ grain down
 
 Optional starter config and more flags: **[quick start](https://grainvm.com/get-started/quickstart/)**.
 
+### MCP (coding agents)
+
+Expose sandboxes to Claude Code, Codex, OpenCode, Grok Build, and other MCP hosts:
+
+```bash
+just build-mcp    # bin/grain-mcp (stdio; needs grain up)
+```
+
+→ [MCP server guide](https://grainvm.com/guides/mcp/) (tool list + host config)
+
 ---
 
 ## Workloads

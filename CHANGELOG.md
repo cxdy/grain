@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`grain-mcp`** — Model Context Protocol server (`cmd/grain-mcp`, `just build-mcp`) so Claude Code, Codex, OpenCode, Grok Build, and other MCP hosts can create/list/get/start/stop/delete sandboxes and `exec` via the daemon API (stdio; `GRAIN_API` / `GRAIN_TOKEN` / socket). Guide: [MCP server](https://grainvm.com/guides/mcp/).
 - **`grain update`** — check GitHub Releases for a newer CLI and re-run the install script (`--check` report-only with exit 1 when outdated; `--force` reinstalls even when current).
 - **Upgrade notices** — most commands may print a one-line stderr hint when a newer release is known (24h cache under `~/.grain/cache/`). Disable with `check_updates: false`, `GRAIN_CHECK_UPDATES=0`, or `GRAIN_NO_UPDATE_CHECK=1`.
 

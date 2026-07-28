@@ -110,6 +110,8 @@ docs_nav:
         url: /guides/proxy/
       - title: Remote sandbox host
         url: /guides/remote-host/
+      - title: MCP server
+        url: /guides/mcp/
       - title: Secrets
         url: /guides/secrets/
       - title: Pause, suspend, restore

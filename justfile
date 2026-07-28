@@ -39,6 +39,15 @@ build:
     mkdir -p bin
     CGO_ENABLED=0 go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
 
+# MCP server for IDE/agent hosts (stdio). Requires a running grain daemon for tools that hit the API.
+build-mcp:
+    mkdir -p bin
+    CGO_ENABLED=0 go build -ldflags "{{ ldflags }}" -o bin/grain-mcp ./cmd/grain-mcp
+
+# Drive initialize + tools/list against bin/grain-mcp (stdio handshake).
+mcp-handshake: build-mcp
+    go run scripts/mcp-handshake.go ./bin/grain-mcp
+
 # Guest agent for the host architecture (bin/grain-agent).
 agent:
     mkdir -p bin
