@@ -24,7 +24,18 @@ image: auto                  # auto | ubuntu-cloud | grain-ubuntu | alpine-cloud
 ssh_user: ubuntu
 ready_timeout: 2m
 log_level: info
+check_updates: true          # stderr note when a newer GitHub Release exists (CLI only)
 ```
+
+Upgrade notices (not `grain update` itself) can also be disabled with env:
+
+| Env | Effect |
+|-----|--------|
+| `GRAIN_CHECK_UPDATES=0` / `false` / `off` | Disable notices |
+| `GRAIN_CHECK_UPDATES=1` / `true` / `on` | Force-enable notices |
+| `GRAIN_NO_UPDATE_CHECK=1` | Disable notices |
+
+Use `grain update --check` anytime; `grain update` installs the latest release via the public install script.
 
 ### Daemon listen vs CLI remote URL
 

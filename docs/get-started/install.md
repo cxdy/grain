@@ -39,6 +39,15 @@ The script:
 
 Default install locations: `/usr/local/bin` if writable, otherwise `~/.local/bin`. Override with `GRAIN_INSTALL_DIR`.
 
+## Upgrade
+
+```bash
+grain update              # install latest if newer than current
+grain update --check      # report only (exit 1 when an update is available)
+```
+
+`grain update` re-runs the same install script as first-time install (GitHub Release binary preferred). Occasional upgrade notices on other commands can be turned off with `check_updates: false` or `GRAIN_CHECK_UPDATES=0`.
+
 ### Install QEMU
 
 **macOS**

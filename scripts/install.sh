@@ -382,6 +382,7 @@ print_next_steps() {
   printf 'Docs:    https://grainvm.com\n'
   printf 'act:     https://grainvm.com/guides/recipes/act/\n'
   printf 'k3s:     https://grainvm.com/guides/recipes/k3s/\n'
+  printf 'Upgrade:   grain update      # or: grain update --check\n'
   printf 'Uninstall: grain uninstall   # or: grain uninstall --purge -y\n'
 }
 

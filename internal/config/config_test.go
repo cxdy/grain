@@ -44,6 +44,9 @@ func TestDefaults(t *testing.T) {
 	if c.MaxMemoryMBPerVM != 16384 {
 		t.Fatalf("max_memory_mb_per_vm %d", c.MaxMemoryMBPerVM)
 	}
+	if !c.CheckUpdates {
+		t.Fatal("check_updates should default true")
+	}
 }
 
 func TestLoadMissingUsesDefaults(t *testing.T) {
@@ -61,7 +64,7 @@ func TestLoadYAML(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	body := []byte("cpus: 4\nmemory_mb: 4096\nhypervisor: mock\nmax_vms: 2\nmax_cpus_per_vm: 4\nagent_transport: vsock\n")
+	body := []byte("cpus: 4\nmemory_mb: 4096\nhypervisor: mock\nmax_vms: 2\nmax_cpus_per_vm: 4\nagent_transport: vsock\ncheck_updates: false\n")
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +80,9 @@ func TestLoadYAML(t *testing.T) {
 	}
 	if c.AgentTransport != "vsock" {
 		t.Fatalf("agent_transport %s", c.AgentTransport)
+	}
+	if c.CheckUpdates {
+		t.Fatal("check_updates: false should stick")
 	}
 	// zero duration filled in
 	if c.ReadyTimeout < time.Second {
