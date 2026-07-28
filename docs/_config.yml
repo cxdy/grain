@@ -102,8 +102,6 @@ docs_nav:
         url: /guides/multi-arch/
       - title: Virtio GPU
         url: /guides/gpu/
-      - title: Menu bar tray
-        url: /guides/tray/
       - title: Mounts & shares
         url: /guides/mounts/
       - title: Profiles & presets

@@ -50,7 +50,6 @@ func Root(version string) *cobra.Command {
   grain new --network overlay share L2 between VMs
   grain new --wait agent      wait for agent (ssh|agent|userdata)
   grain act -- [act-args]     run GitHub Actions via act in a sandbox
-  grain tray                  menu bar / system tray control
   grain stop / start    stop or restart a persistent VM
   grain pause / resume  QMP freeze/unfreeze guest vCPUs
   grain suspend / restore  stop process (free RAM); restore from disk/snapshot
@@ -105,7 +104,6 @@ Remote team host (CLI dials HTTP instead of local socket):
 		cmdImage(&cfgPath),
 		cmdAgent(&cfgPath),
 		cmdDoctor(&cfgPath),
-		cmdTray(&cfgPath, version),
 		cmdVersion(version),
 	)
 	return root

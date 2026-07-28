@@ -51,7 +51,7 @@ func TestRootSubcommandsPresent(t *testing.T) {
 		"up", "down", "new", "act", "stop", "start", "pause", "resume",
 		"suspend", "restore", "ls", "rm", "sh", "x", "cp", "fs", "logs",
 		"fwd", "stats", "secret", "proxy", "profile", "image", "agent",
-		"doctor", "tray", "version",
+		"doctor", "version",
 	}
 	for _, name := range want {
 		found := false
@@ -237,15 +237,6 @@ func TestCmdProfileSubcommands(t *testing.T) {
 	root := cmdProfile(&cfg)
 	if len(root.Commands()) != 1 || root.Commands()[0].Name() != "ls" {
 		t.Fatalf("profile cmds: %v", root.Commands())
-	}
-}
-
-func TestCmdTrayWindowsUnsupported(t *testing.T) {
-	// Construction only — RunE on non-windows still needs tray lib.
-	cfg := ""
-	cmd := cmdTray(&cfg, "v")
-	if cmd.Use != "tray" {
-		t.Fatalf("Use=%q", cmd.Use)
 	}
 }
 
