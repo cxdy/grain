@@ -82,7 +82,7 @@ out.append(marker)
 out.append(f"**Coverage** (lines): `{shown}%` {badge} — minimum `{int(min_cov)}%`")
 if sha:
     out.append("")
-    out.append(f"<sub>commit `{sha[:7]}` · {covered}/{total} lines · cmd/* and tray excluded</sub>")
+    out.append(f"<sub>commit `{sha[:7]}` · {covered}/{total} lines · cmd/* excluded</sub>")
 out.append("")
 out.append("<details>")
 out.append(f"<summary>Coverage report by file ({shown}% overall — click to expand)</summary>")

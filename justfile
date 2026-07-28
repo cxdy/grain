@@ -39,11 +39,6 @@ build:
     mkdir -p bin
     CGO_ENABLED=0 go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
 
-# Build CLI with CGO (needed for grain tray on macOS/Linux).
-build-tray:
-    mkdir -p bin
-    CGO_ENABLED=1 go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
-
 # Guest agent for the host architecture (bin/grain-agent).
 agent:
     mkdir -p bin
@@ -63,25 +58,25 @@ cover:
 
 # Profile without -race for cobertura (race + cover is slower / noisier in CI).
 # Writes coverage.out, coverage.html, and coverage.xml for PR comments.
-# Excludes cmd/* (main packages) and tray (CGO UI) from the profile + 75% gate.
-# Packages are skipped at test time too: instrumenting mains/tray can fail with
+# Excludes cmd/* (main packages) from the profile + 75% gate.
+# Packages are skipped at test time too: instrumenting mains can fail with
 # "go: no such tool covdata" on some toolchains and would abort set -e.
 coverage:
     #!/usr/bin/env bash
     set -euo pipefail
-    mapfile -t pkgs < <(go list ./... | grep -vE '/cmd/|/internal/tray')
+    mapfile -t pkgs < <(go list ./... | grep -vE '/cmd/')
     env -u GOROOT GOTOOLCHAIN=auto go test -count=1 "${pkgs[@]}" \
         -coverprofile coverage.raw.out -covermode count
-    # Keep single mode header; drop mains, CGO tray, and interactive PTY shell
+    # Keep single mode header; drop mains and interactive PTY shell
     # (shell_linux.go needs a real guest TTY; unit CI cannot exercise the bridge).
     head -n1 coverage.raw.out > coverage.out
-    tail -n +2 coverage.raw.out | grep -vE '/cmd/grain|/cmd/grain-agent|/internal/tray/|shell_linux\.go' >> coverage.out || true
+    tail -n +2 coverage.raw.out | grep -vE '/cmd/grain|/cmd/grain-agent|shell_linux\.go' >> coverage.out || true
     rm -f coverage.raw.out
     env -u GOROOT GOTOOLCHAIN=auto go tool cover -html=coverage.out -o coverage.html
     env -u GOROOT GOTOOLCHAIN=auto go run github.com/boumenot/gocover-cobertura@v1.4.0 \
         --by-files -ignore-gen-files < coverage.out > coverage.xml
     total=$(env -u GOROOT GOTOOLCHAIN=auto go tool cover -func=coverage.out | awk '/^total:/{print $3}')
-    echo "total coverage: ${total} (cmd + tray excluded)"
+    echo "total coverage: ${total} (cmd excluded)"
     # Cobertura line-rate (what the PR comment gates on) is typically a few points
     # under statement coverage — print both.
     if [[ -f coverage.xml ]]; then
