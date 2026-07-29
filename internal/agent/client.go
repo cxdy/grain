@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/cxdy/grain/internal/osc52"
 	"golang.org/x/term"
 )
 
@@ -409,6 +410,12 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 	stdout := opts.Stdout
 	if stdout == nil {
 		stdout = os.Stdout
+	}
+	// Host-side OSC 52 intercept so tools in the guest (Grok Build, etc.) can
+	// set the *local* clipboard over grain sh / remote API shell. Disable with
+	// GRAIN_OSC52_CLIPBOARD=0.
+	if osc52.Enabled() {
+		stdout = osc52.NewWriter(stdout)
 	}
 	// Stderr is reserved for future local diagnostics (raw-mode / dial hints).
 	_ = opts.Stderr
