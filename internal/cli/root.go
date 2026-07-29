@@ -1126,7 +1126,7 @@ func cmdStatus(cfgPath *string) *cobra.Command {
 		Long: `Print a short status line for a sandbox: instance state plus guest
 readiness protocol fields when the agent is reachable.
 
-See https://grainvm.com/docs/0.2.2/explain/readiness/ for the readiness contract.`,
+See https://grainvm.com/docs/0.3.0/explain/readiness/ for the readiness contract.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
