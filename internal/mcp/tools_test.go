@@ -82,7 +82,7 @@ func mockDaemon(t *testing.T, vms map[string]*client.Instance) *httptest.Server 
 			}
 			_ = json.NewEncoder(w).Encode(inst)
 		default:
-			http.Error(w, "method", 405)
+			http.Error(w, "method", http.StatusMethodNotAllowed)
 		}
 	})
 	mux.HandleFunc("/vms/", func(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +98,7 @@ func mockDaemon(t *testing.T, vms map[string]*client.Instance) *httptest.Server 
 
 		if len(parts) >= 2 && parts[1] == "exec" {
 			if r.Method != http.MethodPost {
-				http.Error(w, "method", 405)
+				http.Error(w, "method", http.StatusMethodNotAllowed)
 				return
 			}
 			if _, ok := vms[name]; !ok {
@@ -253,7 +253,7 @@ func mockDaemon(t *testing.T, vms map[string]*client.Instance) *httptest.Server 
 			delete(vms, name)
 			w.WriteHeader(http.StatusOK)
 		default:
-			http.Error(w, "method", 405)
+			http.Error(w, "method", http.StatusMethodNotAllowed)
 		}
 	})
 	return httptest.NewServer(mux)
@@ -444,7 +444,7 @@ func TestWriteReadFileRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err := sess.CallTool(t.Context(), &mcp.CallToolParams{
-		Name: grainmcp.ToolReadFile,
+		Name:      grainmcp.ToolReadFile,
 		Arguments: map[string]any{"name": "s1", "path": "/tmp/hello.txt"},
 	})
 	if err != nil {
@@ -489,12 +489,11 @@ func TestDeleteIdempotent(t *testing.T) {
 	res, err := sess.CallTool(t.Context(), &mcp.CallToolParams{
 		Name: grainmcp.ToolDeleteVM, Arguments: map[string]any{"name": "nope"},
 	})
-	// may error from handler isNotFound or return missing
+	// Idempotent: missing VM either returns ok+missing or a not-found error from the client.
 	if err != nil {
-		// if error path, check message
-		if !strings.Contains(err.Error(), "not found") && !strings.Contains(err.Error(), "404") {
-			// toolErr returns error - isNotFound should catch
-			// our mock returns 404 which becomes client error with not found hopefully
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "not found") && !strings.Contains(msg, "404") {
+			t.Fatalf("unexpected delete missing error: %v", err)
 		}
 	} else {
 		txt := textOf(t, res)
@@ -503,26 +502,29 @@ func TestDeleteIdempotent(t *testing.T) {
 		}
 	}
 	// create then delete twice
-	_, _ = sess.CallTool(t.Context(), &mcp.CallToolParams{
+	if _, err := sess.CallTool(t.Context(), &mcp.CallToolParams{
 		Name: grainmcp.ToolCreateVM, Arguments: map[string]any{"name": "d1"},
-	})
-	_, err = sess.CallTool(t.Context(), &mcp.CallToolParams{
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sess.CallTool(t.Context(), &mcp.CallToolParams{
 		Name: grainmcp.ToolDeleteVM, Arguments: map[string]any{"name": "d1"},
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	res2, err := sess.CallTool(t.Context(), &mcp.CallToolParams{
 		Name: grainmcp.ToolDeleteVM, Arguments: map[string]any{"name": "d1"},
 	})
 	if err != nil {
-		// second delete: not found → idempotent
-		if !strings.Contains(strings.ToLower(err.Error()), "not found") {
-			// or success with missing
-			t.Log(err)
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "not found") && !strings.Contains(msg, "404") {
+			t.Fatalf("second delete should be idempotent: %v", err)
 		}
-	} else {
-		_ = textOf(t, res2)
+		return
+	}
+	txt := textOf(t, res2)
+	if !strings.Contains(txt, "missing") && !strings.Contains(txt, "ok") {
+		t.Fatalf("second delete result: %s", txt)
 	}
 }
 
@@ -535,8 +537,8 @@ func TestWorkspaceAndForwardsAndImages(t *testing.T) {
 	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
 		Name: grainmcp.ToolWorkspace,
 		Arguments: map[string]any{
-			"name":     "ws1",
-			"host_dir": wd,
+			"name":      "ws1",
+			"host_dir":  wd,
 			"first_cmd": "uname",
 		},
 	})
@@ -549,7 +551,7 @@ func TestWorkspaceAndForwardsAndImages(t *testing.T) {
 	}
 	// forward
 	_, err = sess.CallTool(ctx, &mcp.CallToolParams{
-		Name: grainmcp.ToolForwardAdd,
+		Name:      grainmcp.ToolForwardAdd,
 		Arguments: map[string]any{"name": "ws1", "guest_port": 8080, "host_port": 0},
 	})
 	if err != nil {
@@ -594,7 +596,7 @@ func TestPutGetTar(t *testing.T) {
 	raw := []byte("not-a-real-tar-but-ok")
 	b64 := base64.StdEncoding.EncodeToString(raw)
 	_, err := sess.CallTool(t.Context(), &mcp.CallToolParams{
-		Name: grainmcp.ToolPutTar,
+		Name:      grainmcp.ToolPutTar,
 		Arguments: map[string]any{"name": "s1", "path": "/tmp/x", "base64": b64},
 	})
 	if err != nil {

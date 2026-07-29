@@ -299,11 +299,11 @@ type execIn struct {
 }
 
 type writeFileIn struct {
-	Name     string `json:"name" jsonschema:"sandbox/VM name"`
-	Path     string `json:"path" jsonschema:"absolute guest path"`
-	Content  string `json:"content,omitempty" jsonschema:"file text content"`
-	Base64   string `json:"base64,omitempty" jsonschema:"base64-encoded bytes (if set, used instead of content)"`
-	Mode     string `json:"mode,omitempty" jsonschema:"file mode e.g. 0644"`
+	Name    string `json:"name" jsonschema:"sandbox/VM name"`
+	Path    string `json:"path" jsonschema:"absolute guest path"`
+	Content string `json:"content,omitempty" jsonschema:"file text content"`
+	Base64  string `json:"base64,omitempty" jsonschema:"base64-encoded bytes (if set, used instead of content)"`
+	Mode    string `json:"mode,omitempty" jsonschema:"file mode e.g. 0644"`
 }
 
 type readFileIn struct {
@@ -362,14 +362,14 @@ type fsPathIn struct {
 }
 
 type actIn struct {
-	HostDir string   `json:"host_dir,omitempty" jsonschema:"project dir (default cwd); mounted at /work"`
-	Name    string   `json:"name,omitempty" jsonschema:"sandbox name"`
-	Keep    bool     `json:"keep,omitempty" jsonschema:"keep VM after act exits"`
-	CPUs    int      `json:"cpus,omitempty"`
-	MemoryMB int     `json:"memory_mb,omitempty"`
-	Image   string   `json:"image,omitempty"`
-	Timeout string   `json:"timeout,omitempty" jsonschema:"overall timeout default 15m"`
-	ActArgs []string `json:"act_args,omitempty" jsonschema:"args passed to act (default -l)"`
+	HostDir  string   `json:"host_dir,omitempty" jsonschema:"project dir (default cwd); mounted at /work"`
+	Name     string   `json:"name,omitempty" jsonschema:"sandbox name"`
+	Keep     bool     `json:"keep,omitempty" jsonschema:"keep VM after act exits"`
+	CPUs     int      `json:"cpus,omitempty"`
+	MemoryMB int      `json:"memory_mb,omitempty"`
+	Image    string   `json:"image,omitempty"`
+	Timeout  string   `json:"timeout,omitempty" jsonschema:"overall timeout default 15m"`
+	ActArgs  []string `json:"act_args,omitempty" jsonschema:"args passed to act (default -l)"`
 }
 
 type k3sIn struct {
@@ -609,11 +609,11 @@ func (s *Server) toolExec(ctx context.Context, req *mcp.CallToolRequest, in exec
 			return toolErr(fmt.Errorf("exec stream: %w", err))
 		}
 		return toolJSON(map[string]any{
-			"stdout":   res.Stdout,
-			"stderr":   res.Stderr,
+			"stdout":    res.Stdout,
+			"stderr":    res.Stderr,
 			"exit_code": res.ExitCode,
-			"streamed": false,
-			"note":     "stream failed; returned buffered result",
+			"streamed":  false,
+			"note":      "stream failed; returned buffered result",
 		})
 	}
 	out := map[string]any{
@@ -1083,10 +1083,7 @@ func (s *Server) toolK3s(ctx context.Context, _ *mcp.CallToolRequest, in k3sIn) 
 		}
 	}
 	// k3s labs are persistent by default; set ephemeral=true for disposable clusters.
-	persistent := true
-	if in.Ephemeral {
-		persistent = false
-	}
+	persistent := !in.Ephemeral
 
 	var mounts []string
 	if d := strings.TrimSpace(in.HostDir); d != "" {
