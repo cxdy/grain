@@ -156,6 +156,14 @@ func runDoctor(cfg config.Config) error {
 			}
 			return nil
 		})
+		// KVM is mandatory for Firecracker (no TCG fallback, unlike QEMU).
+		// Skip the node check on non-Linux — the OS gate above already fails doctor.
+		if runtime.GOOS == "linux" {
+			check("/dev/kvm", checkDevKVM)
+			if hint := kvmNestedVirtHint(); hint != "" {
+				fmt.Printf("  · %s\n", hint)
+			}
+		}
 		// Kernel soft check (Start will hard-fail if missing).
 		kpath := strings.TrimSpace(cfg.KernelPath)
 		if kpath == "" {
@@ -255,6 +263,65 @@ func runDoctor(cfg config.Config) error {
 	}
 	fmt.Println("all good")
 	return nil
+}
+
+// kvmDevicePath is the character device Firecracker needs. Overridable in tests.
+var kvmDevicePath = "/dev/kvm"
+
+// checkDevKVM reports whether /dev/kvm exists and is usable (RDWR open).
+func checkDevKVM() error {
+	path := kvmDevicePath
+	if path == "" {
+		path = "/dev/kvm"
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("missing — Firecracker requires KVM (%s). If this host is itself a VM, enable nested virtualization on the outer hypervisor so the guest CPU exposes vmx (Intel) or svm (AMD), then modprobe kvm && modprobe kvm_intel|kvm_amd", path)
+	}
+	if st.IsDir() {
+		return fmt.Errorf("%s is a directory (expected char device)", path)
+	}
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("not accessible (%v) — add the grain daemon user to the kvm group or grant RW on %s (e.g. setfacl -m u:$(whoami):rw %s)", err, path, path)
+	}
+	_ = f.Close()
+	return nil
+}
+
+// kvmNestedVirtHint returns a soft advisory when CPU flags look incompatible
+// with nested KVM (empty string = no note). Linux-only; reads /proc/cpuinfo.
+func kvmNestedVirtHint() string {
+	b, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return ""
+	}
+	// flags lines only — avoid matching model names.
+	hasHV := false
+	hasNest := false
+	for _, line := range strings.Split(string(b), "\n") {
+		low := strings.ToLower(line)
+		if !strings.HasPrefix(low, "flags") && !strings.HasPrefix(low, "features") {
+			continue
+		}
+		// Token match so we do not hit substrings inside other flags.
+		fields := strings.Fields(low)
+		for _, f := range fields {
+			switch f {
+			case "hypervisor":
+				hasHV = true
+			case "vmx", "svm":
+				hasNest = true
+			}
+		}
+	}
+	if hasHV && !hasNest {
+		return "CPU is a VM without nested virt flags (no vmx/svm) — enable nested virtualization on the outer host or Firecracker cannot use KVM"
+	}
+	if !hasNest {
+		return "CPU flags lack vmx/svm — hardware virtualization may be disabled in firmware/BIOS"
+	}
+	return ""
 }
 
 // qemuSupportsQMP reports whether the QEMU binary documents a -qmp flag.

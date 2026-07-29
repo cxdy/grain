@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Sandbox recipes** — portable YAML (`apiVersion: grain/v1`, `kind: Sandbox`) for create options + ordered bootstrap steps that implement the readiness protocol. CLI: `grain new --recipe file.yaml`, `grain recipe validate|show`. Examples: `examples/recipes/`. Docs: [Sandbox recipes](https://grainvm.com/docs/main/get-started/recipe/).
 - **Guest readiness protocol** — custom images/bootstrap write `/var/lib/grain/readiness/*`; agent `GET /health` includes `readiness` and `GET /readiness`; create wait mode `bootstrap` polls until `state=ready` (fails on `failed`/timeout, VM left running). CLI: `grain status`, create progress surfaces guest messages. Docs: [Readiness protocol](https://grainvm.com/docs/0.3.0/explain/readiness/). Helper: `scripts/grain-ready-report.sh`.
+
+### Fixed
+
+- **Firecracker doctor** — when `hypervisor: firecracker`, `grain doctor` hard-fails if `/dev/kvm` is missing or not RDWR-accessible (plus a soft nested-virt CPU flag hint).
+- **Firecracker start errors** — if Firecracker dies right after opening its API socket (typical missing-KVM path), create returns `firecracker exited immediately` with the log tail and a KVM hint, instead of a misleading later `vsock … unreachable` agent wait error.
 - **MCP in the main binary** — `grain up --mcp` / config `mcp.enabled` + `mcp.listen` (default `127.0.0.1:7476/mcp` Streamable HTTP); `grain mcp` for stdio IDE hosts. Guide: [MCP server](https://grainvm.com/guides/mcp/).
 - **Install script MCP prompt** — asks whether to enable MCP by default in `~/.grain/config.yaml` (`GRAIN_ENABLE_MCP=1|0` for non-interactive); declining prints `grain up --mcp` and config snippets.
 - **Expanded MCP tools** — streaming `grain_exec` (timeout, progress); write/read file + tar; fs readdir/stat/mkdir/rm; agent_health, logs, stats; workspace_sandbox helper; live port forwards; image list/pull; `grain_act` (GitHub Actions via act); `grain_k3s` lab; create defaults `grain-ubuntu` + `wait=agent`; idempotent delete.
