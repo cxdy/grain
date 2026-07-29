@@ -120,6 +120,17 @@ grain sh --agent sbox-1          # require agent PTY (error if unavailable)
 grain sh --ssh sbox-1            # force classic SSH
 ```
 
+### Clipboard (OSC 52)
+
+TUIs inside the guest (for example **Grok Build**) often copy via **OSC 52** escape sequences so the selection can reach the host over a PTY. `grain sh` intercepts those sequences on the **host CLI** and writes the payload to the local clipboard (`pbcopy` on macOS; `wl-copy` / `xclip` / `xsel` on Linux), including over remote `GRAIN_API` shells.
+
+| Env | Effect |
+|-----|--------|
+| `GRAIN_OSC52_CLIPBOARD=0` | Disable host clipboard intercept |
+| `GRAIN_OSC52_PASSTHROUGH=0` | After copying, do not re-emit OSC 52 to the terminal |
+
+Sequences are still passed through by default so terminals with native OSC 52 (iTerm2, Ghostty, Kitty, …) keep working.
+
 Protocol: WebSocket binary frames carry PTY bytes both ways; optional text JSON control frames resize the PTY (`{"type":"resize","cols":N,"rows":M}`). The agent spawns a login shell as uid 1000 when present, otherwise root. Local stdin is put in raw mode when attached to a TTY; `SIGWINCH` is forwarded as resize frames.
 
 ### Copy
