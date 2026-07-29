@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -187,5 +189,87 @@ func TestDialVsockDirect(t *testing.T) {
 	// as long as we exercised the dial path.
 	if err != nil {
 		t.Logf("dialVsock unreachable: %v", err)
+	}
+}
+
+type pipeConn struct {
+	net.Conn
+	closed bool
+}
+
+func (p *pipeConn) Close() error {
+	p.closed = true
+	return p.Conn.Close()
+}
+
+func TestDialVsockSuccessPath(t *testing.T) {
+	// Inject a successful probe dial so dialVsock builds the vsock HTTP client.
+	old := vsockDial
+	t.Cleanup(func() { vsockDial = old })
+
+	// First call (probe) succeeds and is closed; subsequent DialContext calls get fresh pipes.
+	vsockDial = func(cid, port uint32) (net.Conn, error) {
+		c1, c2 := net.Pipe()
+		// Close remote side so unused pipes do not leak; probe only needs Accept-side close.
+		go func() { _ = c2.Close() }()
+		return &pipeConn{Conn: c1}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	c, err := dialVsock(ctx, 3, DefaultVsockPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BaseURL != "http://vsock" {
+		t.Fatalf("BaseURL %q", c.BaseURL)
+	}
+	if c.HTTP == nil || c.HTTP.Transport == nil {
+		t.Fatal("expected custom transport")
+	}
+
+	// Exercise DialContext success + cancel paths on the transport.
+	tr := c.HTTP.Transport.(*http.Transport)
+	dctx, dcancel := context.WithTimeout(context.Background(), time.Second)
+	defer dcancel()
+	conn, err := tr.DialContext(dctx, "tcp", "ignored:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.Close()
+
+	// DialContext with already-canceled context.
+	cctx, ccancel := context.WithCancel(context.Background())
+	ccancel()
+	if _, err := tr.DialContext(cctx, "tcp", "x"); err == nil {
+		t.Fatal("expected cancel error from DialContext")
+	}
+
+	// Dial prefers successful vsock over TCP.
+	c2, err := Dial(context.Background(), Target{CID: 3, Port: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.BaseURL != "http://vsock" {
+		t.Fatalf("prefer vsock BaseURL, got %q", c2.BaseURL)
+	}
+}
+
+func TestDialVsockDialError(t *testing.T) {
+	old := vsockDial
+	t.Cleanup(func() { vsockDial = old })
+	vsockDial = func(cid, port uint32) (net.Conn, error) {
+		return nil, fmt.Errorf("vsock down")
+	}
+	if _, err := dialVsock(context.Background(), 1, 2); err == nil {
+		t.Fatal("expected error")
+	}
+	// Dial falls back to TCP when Port set.
+	c, err := Dial(context.Background(), Target{CID: 1, Port: 4242})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BaseURL != "http://127.0.0.1:4242" {
+		t.Fatalf("BaseURL %q", c.BaseURL)
 	}
 }

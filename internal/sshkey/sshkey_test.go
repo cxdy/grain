@@ -82,3 +82,35 @@ func TestEnsureNestedDataDir(t *testing.T) {
 		t.Fatal("empty pub")
 	}
 }
+
+func TestEnsureMkdirFails(t *testing.T) {
+	t.Parallel()
+	// dataDir is a file → MkdirAll under it fails
+	base := t.TempDir()
+	file := filepath.Join(base, "notadir")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := sshkey.Ensure(file); err == nil {
+		t.Fatal("expected mkdir error")
+	}
+}
+
+func TestEnsureWritePrivFails(t *testing.T) {
+	t.Parallel()
+	// Read-only ssh dir: generate needs to write priv key
+	dir := t.TempDir()
+	sshDir := filepath.Join(dir, "ssh")
+	if err := os.MkdirAll(sshDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	// On some systems root can still write; skip if write succeeds
+	if f, err := os.OpenFile(filepath.Join(sshDir, "probe"), os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+		_ = f.Close()
+		_ = os.Remove(filepath.Join(sshDir, "probe"))
+		t.Skip("filesystem allows write despite 0555")
+	}
+	if _, _, err := sshkey.Ensure(dir); err == nil {
+		t.Fatal("expected write error")
+	}
+}

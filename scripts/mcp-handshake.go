@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,10 +14,14 @@ import (
 )
 
 func main() {
-	bin := "./bin/grain"
-	if len(os.Args) > 1 {
-		bin = os.Args[1]
+	if err := runHandshake(os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
+}
+
+func runHandshake(args []string) error {
+	bin := pickGrainBin(args)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -29,8 +32,7 @@ func main() {
 	cli := mcp.NewClient(&mcp.Implementation{Name: "handshake", Version: "0"}, nil)
 	sess, err := cli.Connect(ctx, ct, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "connect: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("connect: %w", err)
 	}
 	defer sess.Close()
 
@@ -38,37 +40,31 @@ func main() {
 
 	tools, err := sess.ListTools(ctx, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "tools/list: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("tools/list: %w", err)
 	}
-	names := make([]string, 0, len(tools.Tools))
+	type named struct {
+		Name        string
+		Description string
+	}
+	var list []named
 	for _, t := range tools.Tools {
-		names = append(names, t.Name)
+		list = append(list, named{Name: t.Name, Description: t.Description})
 		fmt.Printf("tool: %s — %s\n", t.Name, t.Description)
 	}
-	out, _ := json.MarshalIndent(map[string]any{
-		"ok":    true,
-		"count": len(names),
-		"tools": names,
-	}, "", "  ")
-	fmt.Println(string(out))
+	// collectToolNames expects a concrete slice type — map manually
+	names := make([]string, 0, len(list))
+	for _, t := range list {
+		names = append(names, t.Name)
+	}
+	out, err := formatToolsJSON(names)
+	if err != nil {
+		return err
+	}
+	fmt.Println(out)
 
-	need := []string{
-		"grain_health", "grain_list_vms", "grain_get_vm", "grain_create_vm",
-		"grain_start_vm", "grain_stop_vm", "grain_delete_vm", "grain_exec",
-		"grain_write_file", "grain_read_file", "grain_agent_health", "grain_logs",
-		"grain_stats", "grain_workspace_sandbox", "grain_forward_add", "grain_forward_remove",
-		"grain_image_list", "grain_image_pull", "grain_fs_readdir", "grain_act", "grain_k3s",
-	}
-	have := map[string]bool{}
-	for _, n := range names {
-		have[n] = true
-	}
-	for _, n := range need {
-		if !have[n] {
-			fmt.Fprintf(os.Stderr, "missing required tool %q\n", n)
-			os.Exit(1)
-		}
+	if miss := missingRequired(names, requiredMCPTools()); len(miss) > 0 {
+		return fmt.Errorf("%s", reportMissing(miss))
 	}
 	fmt.Println("expanded tools: ok")
+	return nil
 }

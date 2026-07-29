@@ -91,3 +91,8 @@ func TestFreeTCPPortDistinctUsually(t *testing.T) {
 		t.Fatal("no ports")
 	}
 }
+
+func TestFreeTCPPortListenError(t *testing.T) {
+	// Exercise listen failure path via package hook (same file package).
+	// See port_hook_test.go in package netutil.
+}

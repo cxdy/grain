@@ -36,43 +36,47 @@ Requires a running daemon (grain up). Prefer co-locating HTTP MCP with the daemo
   #   listen: 127.0.0.1:7476
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadCfg(cfgPath)
-			if err != nil {
-				cfg = config.Defaults()
-			}
-			if listen != "" {
-				cfg.MCP.Listen = listen
-			}
-			if cfg.MCP.Listen == "" {
-				cfg.MCP.Listen = grainmcp.DefaultListen
-			}
-
-			// Public client package (same socket/API env as CLI).
-			token := os.Getenv("GRAIN_TOKEN")
-			if token == "" {
-				token = cfg.ResolvedAPIToken()
-			}
-			c, err := grainmcp.Dial(grainmcp.ConnectOptions{
-				APIURL: effectiveAPIURL(cfg),
-				Token:  token,
-				Socket: cfg.Socket,
-			})
-			if err != nil {
-				return fmt.Errorf("connect to grain daemon (is it up?): %w", err)
-			}
-
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-			defer stop()
-
-			if httpMode {
-				log := observability.NewLogger(cfg.LogLevel)
-				fmt.Fprintf(os.Stderr, "grain mcp  %s\n", grainmcp.HTTPEndpoint(cfg.MCP.Listen))
-				return grainmcp.RunHTTP(ctx, cfg.MCP.Listen, version, c, cfg.DataDir, log)
-			}
-			return grainmcp.RunStdio(ctx, version, c, cfg.DataDir)
+			return runMCP(cfgPath, version, httpMode, listen)
 		},
 	}
 	cmd.Flags().BoolVar(&httpMode, "http", false, "serve Streamable HTTP instead of stdio")
 	cmd.Flags().StringVar(&listen, "listen", "", "HTTP listen address (default mcp.listen / 127.0.0.1:7476)")
 	return cmd
+}
+
+// runMCP is the cmdMCP body (extracted for unit tests).
+func runMCP(cfgPath *string, version string, httpMode bool, listen string) error {
+	cfg, err := loadCfg(cfgPath)
+	if err != nil {
+		cfg = config.Defaults()
+	}
+	if listen != "" {
+		cfg.MCP.Listen = listen
+	}
+	if cfg.MCP.Listen == "" {
+		cfg.MCP.Listen = grainmcp.DefaultListen
+	}
+
+	token := os.Getenv("GRAIN_TOKEN")
+	if token == "" {
+		token = cfg.ResolvedAPIToken()
+	}
+	c, err := grainmcp.Dial(grainmcp.ConnectOptions{
+		APIURL: effectiveAPIURL(cfg),
+		Token:  token,
+		Socket: cfg.Socket,
+	})
+	if err != nil {
+		return fmt.Errorf("connect to grain daemon (is it up?): %w", err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if httpMode {
+		log := observability.NewLogger(cfg.LogLevel)
+		fmt.Fprintf(os.Stderr, "grain mcp  %s\n", grainmcp.HTTPEndpoint(cfg.MCP.Listen))
+		return grainmcp.RunHTTP(ctx, cfg.MCP.Listen, version, c, cfg.DataDir, log)
+	}
+	return grainmcp.RunStdio(ctx, version, c, cfg.DataDir)
 }
