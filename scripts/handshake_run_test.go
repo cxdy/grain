@@ -130,7 +130,8 @@ func TestMainPathViaRunHandshake(t *testing.T) {
 	err := runHandshake([]string{"mcp-handshake"})
 	if err == nil {
 		// If ./bin/grain exists and works, that's fine too.
+		t.Log("default ./bin/grain handshake succeeded")
 		return
 	}
-	_ = err
+	t.Logf("default bin path connect failed as expected: %v", err)
 }
