@@ -1,8 +1,17 @@
 ---
-title: Architecture
+title: "Architecture (daemon, hypervisor, guest agent)"
 description: How the grain daemon, hypervisor, guest agent, and CLI fit together.
 section: explain
+keywords:
+  - architecture
+  - daemon
+  - hypervisor
+  - qemu
 ---
+
+{{< only-need href="get-started/concepts/" >}}
+Names and mental model without the full system diagram.
+{{< /only-need >}}
 
 ## Big picture
 
@@ -58,4 +67,4 @@ SSH is excellent for interactive login and bootstrap. The agent is better for:
 - File and filesystem operations without scp edge cases  
 - Readiness probes (`/health`) independent of shell profiles  
 
-See [Agent vs SSH](/docs/0.2.2/explain/agent-vs-ssh/).
+See [Agent vs SSH](../agent-vs-ssh/).

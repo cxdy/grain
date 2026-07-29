@@ -1,7 +1,13 @@
 ---
-title: TypeScript SDK
+title: "TypeScript SDK (@cxdy/grain)"
 description: Node-friendly fetch client for the grain daemon (@cxdy/grain under sdk/ts).
 section: reference
+keywords:
+  - TypeScript
+  - SDK
+  - Node
+  - npm
+  - "@cxdy/grain"
 ---
 
 npm: **[`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain)**.  
@@ -118,6 +124,6 @@ For full file and secrets helpers, use the CLI, curl, or the Go client until tho
 
 ## See also
 
-- [HTTP API](/docs/0.2.2/reference/api/)  
-- [Go SDK](/docs/0.2.2/reference/go-sdk/)  
+- [HTTP API](../api/)  
+- [Go SDK](../go-sdk/)  
 - Source README: [`sdk/ts/README.md`](https://github.com/cxdy/grain/blob/main/sdk/ts/README.md)  

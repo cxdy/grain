@@ -1,9 +1,18 @@
 ---
-title: "Recipe: coding agent sandbox"
-description: How-to recipe from the grain documentation set.
+title: "Coding agent sandbox (mounted repo)"
+description: Isolated agent or tool in a microVM with your repo mounted read-write.
 section: guides
+keywords:
+  - coding agent
+  - recipe
+  - mount
+  - agent sandbox
+  - repo
 ---
 
+{{< only-need href="get-started/quickstart/" >}}
+Create + mount + shell covers most of this without the full recipe.
+{{< /only-need >}}
 
 Run an agent (or any tool) inside an isolated Linux microVM, with your repo mounted read-write, then copy results back to the host.
 

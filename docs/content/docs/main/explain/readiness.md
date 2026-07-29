@@ -1,12 +1,24 @@
 ---
-title: Readiness protocol
-description: Contract for custom images and bootstrap authors so grain can report progress and only mark a sandbox ready when you say so.
+title: "Readiness protocol (custom images & bootstrap)"
+description: "Full contract: guest readiness files, agent health fields, wait=bootstrap, and when a sandbox is considered ready."
 section: explain
+keywords:
+  - readiness
+  - bootstrap
+  - wait bootstrap
+  - userdata_ran
+  - custom image
 ---
+
+{{< only-need href="get-started/bootstrap/" >}}
+Paste cloud-init, run `grain new --wait bootstrap`, and watch `grain status` — without reading the full contract first.
+{{< /only-need >}}
 
 Custom images and long first-boot setup need a **shared contract** with grain: how to report *what is happening*, when the sandbox is **done**, and when it **failed**—so `grain new`, create streams, `grain health`, and `grain status` stay accurate.
 
-This page is that contract. **Sandbox recipe files** (declarative create + bootstrap steps) are a later layer that *implements* this protocol; stock goldens already satisfy a compatible subset without changes.
+**Ready means:** the VM is up, the guest agent is healthy, and bootstrap completed with **zero failures** (`state=ready`). Failure or timeout does **not** report ready.
+
+This page is the full contract. Stock goldens already satisfy a compatible subset without custom files. **Sandbox recipe files** (declarative create + bootstrap steps) are a later layer that *implements* this protocol.
 
 ## Goals
 
@@ -179,7 +191,7 @@ Use **`--wait bootstrap`** only when your image or userdata implements this prot
 
 ## See also
 
-- [Guest agent](/docs/main/guides/agent/)
-- [Profiles and presets](/docs/main/guides/profiles/)
-- [Images and golden boots](/docs/main/guides/images/)
-- [CLI](/docs/main/reference/cli/)
+- [Guest agent](../guides/agent/)
+- [Profiles and presets](../guides/profiles/)
+- [Images and golden boots](../guides/images/)
+- [CLI](../reference/cli/)

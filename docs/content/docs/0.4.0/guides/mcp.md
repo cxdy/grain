@@ -1,8 +1,19 @@
 ---
-title: MCP server
+title: "MCP server (guides entry → MCP section)"
 description: Connect Claude Code, Codex, OpenCode, Grok Build, and other MCP hosts to grain sandboxes.
 section: guides
+keywords:
+  - MCP
+  - Claude
+  - Codex
+  - Cursor
+  - agents
+  - tools
 ---
+
+{{< only-need href="mcp/" >}}
+Prefer the MCP section for overview, hosts, and tools — this page is a guides mirror.
+{{< /only-need >}}
 
 grain exposes sandbox tools over the [Model Context Protocol](https://modelcontextprotocol.io/) so coding agents can create, inspect, run commands in, and delete microVMs.
 
@@ -164,9 +175,9 @@ grain_k3s  name=lab  (optional host_dir)
 
 ## See also
 
-- [HTTP API](/docs/0.4.0/reference/api/)
-- [Go SDK](/docs/0.4.0/reference/go-sdk/)
-- [CLI](/docs/0.4.0/reference/cli/)
-- [Configuration](/docs/0.4.0/reference/config/)
-- [act recipe](/docs/0.4.0/guides/recipes/act/)
-- [k3s recipe](/docs/0.4.0/guides/recipes/k3s/)
+- [HTTP API](../../reference/api/)
+- [Go SDK](../../reference/go-sdk/)
+- [CLI](../../reference/cli/)
+- [Configuration](../../reference/config/)
+- [act recipe](../recipes/act/)
+- [k3s recipe](../recipes/k3s/)

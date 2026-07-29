@@ -1,8 +1,19 @@
 ---
-title: GitHub Actions with act
+title: "GitHub Actions with act (isolated CI)"
 description: Run nektos/act inside a grain microVM — isolated GitHub Actions without polluting host Docker.
 section: guides
+keywords:
+  - act
+  - GitHub Actions
+  - CI
+  - Docker
+  - workflows
+  - grain act
 ---
+
+{{< only-need href="get-started/quickstart/" >}}
+General sandbox create/shell first — come here for `grain act` workflows.
+{{< /only-need >}}
 
 [nektos/act](https://github.com/nektos/act) runs GitHub Actions workflows on your machine using Docker. **grain act** boots an isolated Linux microVM with Docker + act, mounts your project, runs act, then tears the sandbox down.
 
@@ -88,13 +99,13 @@ grain rm act-lab
 
 ## Tips
 
-- **Secrets:** do not bake CI secrets into the image. Prefer act’s secret flags, or [grain proxy](/docs/0.2.2/guides/proxy/) for HTTP APIs.  
+- **Secrets:** do not bake CI secrets into the image. Prefer act’s secret flags, or [grain proxy](../../proxy/) for HTTP APIs.  
 - **Large workflows:** raise `--mem` / `--cpus` / `--timeout`.  
 - **Debug:** `--keep` then `grain logs <name>` and `grain sh <name>`.  
 - **act config:** commit a `.actrc` in the repo; it is visible at `/work`.  
 
 ## See also
 
-- [Docker socket recipe](/docs/0.2.2/guides/recipes/docker-socket/)  
-- [CI ephemeral recipe](/docs/0.2.2/guides/recipes/ci-ephemeral/)  
-- [Guest agent](/docs/0.2.2/guides/agent/)  
+- [Docker socket recipe](../docker-socket/)  
+- [CI ephemeral recipe](../ci-ephemeral/)  
+- [Guest agent](../../agent/)  

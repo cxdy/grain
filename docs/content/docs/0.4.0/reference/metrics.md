@@ -1,7 +1,11 @@
 ---
-title: Metrics
+title: "Metrics (Prometheus)"
 description: Prometheus metrics exposed by the grain daemon.
 section: reference
+keywords:
+  - metrics
+  - Prometheus
+  - observability
 ---
 
 ## Endpoint

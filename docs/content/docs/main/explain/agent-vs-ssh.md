@@ -1,8 +1,19 @@
 ---
-title: Agent vs SSH
+title: "Agent vs SSH (when each path is used)"
 description: When grain uses the guest agent, when it falls back to SSH, and why both exist.
 section: explain
+keywords:
+  - agent
+  - SSH
+  - grain-agent
+  - wait modes
+  - transport
+  - vsock
 ---
+
+{{< only-need href="guides/agent/" >}}
+Practical agent CLI/API how-to — this page is the decision model.
+{{< /only-need >}}
 
 ## Roles
 
@@ -42,4 +53,4 @@ Host → agent:
 - **Day-to-day automation:** agent (`x`, `cp`, `fs`, API exec)  
 - **Debugging a broken agent:** `grain sh --ssh` and `grain logs`  
 - **Images:** prefer `grain-ubuntu` so agent is already present  
-- **Security-sensitive tokens:** prefer [egress proxy](/docs/0.2.2/guides/proxy/) over writing secrets into the guest when possible  
+- **Security-sensitive tokens:** prefer [egress proxy](../guides/proxy/) over writing secrets into the guest when possible  

@@ -1,9 +1,18 @@
 ---
-title: "Recipe: ephemeral CI — create → exec tests → rm"
-description: How-to recipe from the grain documentation set.
+title: "Ephemeral CI (create → test → rm)"
+description: "Disposable Linux runner: one VM per job, no leftover state."
 section: guides
+keywords:
+  - CI
+  - ephemeral
+  - recipe
+  - automation
+  - create destroy
 ---
 
+{{< only-need href="get-started/quickstart/" >}}
+Manual create/shell/rm first — this page is a scripted CI pattern.
+{{< /only-need >}}
 
 Use grain as a disposable Linux runner: one VM per job, no leftover state.
 

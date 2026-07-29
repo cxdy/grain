@@ -708,6 +708,49 @@ pre code {
   margin: 0 0 1.75rem;
 }
 
+/* "If you only need…" callout — points at shorter guides */
+.docs-only-need {
+  margin: 0 0 1.5rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+}
+.docs-only-need-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--brand-dim);
+}
+[data-theme="dark"] .docs-only-need-label {
+  color: var(--brand);
+}
+.docs-only-need-body {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.docs-only-need-body a {
+  font-weight: 600;
+}
+.docs-only-need-link {
+  white-space: nowrap;
+}
+
+/* Search hit section chip */
+.search-results .s-meta {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 0.15rem;
+}
+
 .paths {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

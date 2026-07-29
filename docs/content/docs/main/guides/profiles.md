@@ -1,9 +1,22 @@
 ---
-title: "Profiles and presets"
-description: "Named create defaults and docker / k3s / act presets."
+title: "Profiles and presets (reuse create defaults)"
+description: "Named create defaults in config, plus docker / k3s / act cloud-init presets."
 section: guides
+keywords:
+  - profile
+  - preset
+  - docker
+  - k3s
+  - act
 ---
 
+{{< only-need href="get-started/quickstart/" >}}
+Create one sandbox and open a shell without profiles yet.
+{{< /only-need >}}
+
+{{< only-need href="get-started/bootstrap/" >}}
+Custom install steps that must finish before ready (`--wait bootstrap`).
+{{< /only-need >}}
 
 ## Named profiles
 
@@ -51,7 +64,7 @@ Embedded cloud-init fragments applied with `grain new --preset NAME` or `profile
 
 Presets merge into userdata with the structured cloud-init merge (safe with `--userdata-file`).
 
-For long custom first-boot work that should block create until *you* say ready, implement the [Readiness protocol](/docs/main/explain/readiness/) and use `grain new --wait bootstrap`.
+For long custom first-boot work that should block create until *you* say ready, implement the [Readiness protocol](../../explain/readiness/) and use `grain new --wait bootstrap`.
 
 ```bash
 grain new --preset docker
@@ -68,7 +81,7 @@ grain act -- -l
 grain act -- -j test
 ```
 
-See the [act recipe](/docs/main/guides/recipes/act/).
+See the [act recipe](../recipes/act/).
 
 ## Combining
 

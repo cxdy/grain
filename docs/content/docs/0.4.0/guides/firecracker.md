@@ -1,9 +1,20 @@
 ---
-title: "Firecracker on Linux"
+title: "Firecracker on Linux (experimental)"
 description: "Experimental Firecracker hypervisor backend."
 section: guides
+keywords:
+  - Firecracker
+  - KVM
+  - hypervisor
+  - Linux
+  - experimental
+  - vsock
+  - rootfs
 ---
 
+{{< only-need href="get-started/quickstart/" >}}
+Default backend is QEMU — use that path unless you need Firecracker.
+{{< /only-need >}}
 
 grain can launch sandboxes with [Firecracker](https://firecracker-microvm.github.io/) instead of QEMU.
 
@@ -41,7 +52,7 @@ grain’s catalog images (`ubuntu-cloud`, `grain-ubuntu`) are **qcow2 cloud imag
 2. If the VM disk is still **qcow2**, Start runs `qemu-img convert -O raw` into `disk.raw` under the VM dir (when `qemu-img` is available). Otherwise Start refuses with a conversion hint.
 3. Standard Ubuntu cloud images need a **matching Firecracker-capable kernel**; they are not drop-in FC guests without extra work (kernel + init + virtio drivers).
 
-See also [images.md](/docs/0.4.0/guides/images/) for QEMU/golden workflow; FC is a separate experimental path.
+See also [Images](../images/) for QEMU/golden workflow; FC is a separate experimental path.
 
 ### Suggested layout
 
@@ -114,7 +125,7 @@ grain stop <name>
 
 ## Related
 
-- [images.md](/docs/0.4.0/guides/images/) — base images, golden bake (QEMU-oriented)
-- [networking.md](/docs/0.4.0/guides/networking/) — QEMU SLIRP / hostfwd (not used by FC yet)
-- [agent.md](/docs/0.4.0/guides/agent/) — guest agent HTTP API
-- [troubleshooting.md](/docs/0.4.0/guides/troubleshooting/) — doctor and logs
+- [Images](../images/) — base images, golden bake (QEMU-oriented)
+- [Networking](../networking/) — QEMU SLIRP / hostfwd (not used by FC yet)
+- [Guest agent](../agent/) — guest agent HTTP API
+- [Troubleshooting](../troubleshooting/) — doctor and logs

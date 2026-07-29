@@ -1,7 +1,13 @@
 ---
-title: Agent protocol
+title: "Agent protocol (guest HTTP API)"
 description: HTTP endpoints exposed by grain-agent inside each guest.
 section: reference
+keywords:
+  - agent protocol
+  - grain-agent
+  - health
+  - exec
+  - vsock
 ---
 
 The guest agent listens on **TCP `:7475`** (and optionally **vsock port 7475**). The host reaches it via SLIRP hostfwd (`Instance.agent_port`) or AF_VSOCK when configured.
@@ -23,7 +29,7 @@ JSON body (GET):
 | `agent_version` | Agent version |
 | `agent_uptime_sec` | Seconds since agent start |
 | `userdata_ran` | True if `/var/lib/grain/userdata-ran` exists |
-| `readiness` | Optional object from the [Readiness protocol](/docs/0.4.0/explain/readiness/) (`state`, `phase`, `message`, …) |
+| `readiness` | Optional object from the [Readiness protocol](../../explain/readiness/) (`state`, `phase`, `message`, …) |
 
 ## Readiness
 
@@ -31,7 +37,7 @@ JSON body (GET):
 GET /readiness
 ```
 
-Returns the same object as `health.readiness` (empty object if no `/var/lib/grain/readiness/` files). See [Readiness protocol](/docs/0.4.0/explain/readiness/).
+Returns the same object as `health.readiness` (empty object if no `/var/lib/grain/readiness/` files). See [Readiness protocol](../../explain/readiness/).
 
 ## Exec
 
@@ -84,4 +90,4 @@ Body includes name, base64 data, mode, optional path (default under `/run/grain/
 
 ## Host CLI mapping
 
-See [Guest agent guide](/docs/0.4.0/guides/agent/) and [CLI reference](/docs/0.4.0/reference/cli/).
+See [Guest agent guide](../../guides/agent/) and [CLI reference](../cli/).

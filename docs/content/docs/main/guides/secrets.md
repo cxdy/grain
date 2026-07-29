@@ -1,8 +1,18 @@
 ---
-title: Secrets
+title: "Secrets (host store + guest inject)"
 description: Store secrets on the host and materialize them into a guest VM without baking them into images.
 section: guides
+keywords:
+  - secrets
+  - inject
+  - credentials
+  - materialize
+  - grain secret
 ---
+
+{{< only-need href="guides/proxy/" >}}
+API tokens the guest should never see as files — use egress proxy inject.
+{{< /only-need >}}
 
 ## Host store
 
@@ -35,7 +45,7 @@ grain secret inject sbox-1 db-pass --path /etc/app/secret
 
 ## Compared to the egress proxy
 
-| Feature | Secrets inject | [Egress proxy](/docs/0.2.2/guides/proxy/) |
+| Feature | Secrets inject | [Egress proxy](../proxy/) |
 |---------|----------------|--------------|
 | Where secret lives | File **inside** the guest | Only on the **host**; injected on matching HTTP(S) requests |
 | Best for | Config files, certs, app secrets the process must read | API tokens you do not want in the sandbox filesystem |

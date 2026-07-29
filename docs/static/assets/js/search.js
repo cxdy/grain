@@ -26,7 +26,7 @@
   function tokenize(q) {
     return q
       .toLowerCase()
-      .split(/[^a-z0-9+#.\/-]+/i)
+      .split(/[^a-z0-9+#.\/_-]+/i)
       .filter(function (t) {
         return t.length > 1;
       });
@@ -35,14 +35,22 @@
   function scoreDoc(doc, tokens) {
     var title = (doc.title || "").toLowerCase();
     var desc = (doc.description || "").toLowerCase();
+    var section = (doc.section || "").toLowerCase();
+    var keywords = (doc.keywords || "").toLowerCase();
     var content = (doc.content || "").toLowerCase();
+    var url = (doc.url || "").toLowerCase();
     var score = 0;
     for (var i = 0; i < tokens.length; i++) {
       var t = tokens[i];
-      if (title === t) score += 50;
-      if (title.indexOf(t) !== -1) score += 20;
-      if (desc.indexOf(t) !== -1) score += 10;
-      if (content.indexOf(t) !== -1) score += 3;
+      if (title === t) score += 60;
+      else if (title.indexOf(t) !== -1) score += 28;
+      if (keywords.indexOf(t) !== -1) score += 22;
+      if (desc.indexOf(t) !== -1) score += 14;
+      if (section.indexOf(t) !== -1) score += 8;
+      if (url.indexOf(t) !== -1) score += 6;
+      if (content.indexOf(t) !== -1) score += 2;
+      // Prefer get-started / short guides slightly for "how do I" queries
+      if (url.indexOf("/get-started/") !== -1 && score > 0) score += 4;
     }
     return score;
   }
@@ -63,6 +71,19 @@
       .slice(0, 12);
   }
 
+  function sectionLabel(s) {
+    if (!s) return "";
+    var map = {
+      "get-started": "Learn",
+      guides: "Do",
+      explain: "Understand",
+      reference: "Look up",
+      mcp: "MCP",
+      developer: "Developer",
+    };
+    return map[s] || s;
+  }
+
   function render(hits) {
     active = -1;
     if (!input.value.trim()) {
@@ -72,25 +93,27 @@
     }
     resultsEl.hidden = false;
     if (!hits.length) {
-      resultsEl.innerHTML = '<p class="search-empty">No results.</p>';
+      resultsEl.innerHTML =
+        '<p class="search-empty">No results. Try install, MCP, bootstrap, act, k3s…</p>';
       return;
     }
     resultsEl.innerHTML = hits
       .map(function (h, i) {
-        var d = h.doc;
         return (
           '<a href="' +
-          d.url +
+          h.doc.url +
           '" data-idx="' +
           i +
-          '"><div class="s-title"></div><div class="s-desc"></div></a>'
+          '"><div class="s-meta"></div><div class="s-title"></div><div class="s-desc"></div></a>'
         );
       })
       .join("");
     var links = resultsEl.querySelectorAll("a");
     hits.forEach(function (h, i) {
+      links[i].querySelector(".s-meta").textContent = sectionLabel(h.doc.section);
       links[i].querySelector(".s-title").textContent = h.doc.title || h.doc.url;
-      links[i].querySelector(".s-desc").textContent = h.doc.description || h.doc.url;
+      links[i].querySelector(".s-desc").textContent =
+        h.doc.description || h.doc.url;
     });
   }
 
