@@ -1,7 +1,7 @@
 ---
-title: Documentation (main)
-description: Bleeding-edge docs from the main branch.
-version: "main"
+title: Documentation
+description: grain 0.3.0 documentation.
+version: "0.3.0"
 ---
 
-These docs track **git main** and may describe unreleased features. Prefer the latest release unless you are developing grain itself.
+Welcome to the grain **v0.3.0** docs. Use the sidebar to browse Learn, MCP, Guides, Reference, and Explain pages.
