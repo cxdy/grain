@@ -44,6 +44,9 @@ type FirecrackerRuntime struct {
 	KernelPath string // optional vmlinux override
 }
 
+// runtimeGOOS is the OS gate for Start (overridable in tests).
+var runtimeGOOS = runtime.GOOS
+
 // NewFirecrackerRuntime constructs a Firecracker Runtime.
 // binary empty → "firecracker" (PATH lookup at Start).
 // kernelPath empty → DataDir/kernels/vmlinux at Start.
@@ -136,8 +139,8 @@ func MarshalFCConfig(cfg fcConfig) ([]byte, error) {
 }
 
 func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskPath string) error {
-	if runtime.GOOS != "linux" {
-		return fmt.Errorf("firecracker requires linux (current OS: %s)", runtime.GOOS)
+	if runtimeGOOS != "linux" {
+		return fmt.Errorf("firecracker requires linux (current OS: %s)", runtimeGOOS)
 	}
 
 	bin, err := exec.LookPath(f.Binary)

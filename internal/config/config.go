@@ -106,6 +106,19 @@ type Config struct {
 	// Disable with check_updates: false, GRAIN_CHECK_UPDATES=0, or GRAIN_NO_UPDATE_CHECK=1.
 	// Always available: grain update --check / grain update.
 	CheckUpdates bool `yaml:"check_updates"`
+
+	// MCP configures the Model Context Protocol server co-located with the daemon
+	// (Streamable HTTP) or used by `grain mcp` defaults.
+	MCP MCPConfig `yaml:"mcp"`
+}
+
+// MCPConfig is the optional MCP tool server (see docs/guides/mcp.md).
+type MCPConfig struct {
+	// Enabled starts Streamable HTTP MCP when the daemon runs (grain up / grain up --mcp).
+	Enabled bool `yaml:"enabled"`
+	// Listen is host:port for Streamable HTTP MCP (default 127.0.0.1:7476).
+	// Endpoint path is /mcp (e.g. http://127.0.0.1:7476/mcp).
+	Listen string `yaml:"listen"`
 }
 
 // Profile is a named set of create-time defaults (see Profiles).
@@ -374,6 +387,10 @@ func Defaults() Config {
 		MaxCPUsPerVM:     8,
 		MaxMemoryMBPerVM: 16384,
 		CheckUpdates:     true,
+		MCP: MCPConfig{
+			Enabled: false,
+			Listen:  "127.0.0.1:7476",
+		},
 	}
 }
 
@@ -450,6 +467,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.ProxyListen == "" {
 		c.ProxyListen = d.ProxyListen
+	}
+	if c.MCP.Listen == "" {
+		c.MCP.Listen = d.MCP.Listen
 	}
 }
 

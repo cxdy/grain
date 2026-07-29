@@ -55,6 +55,11 @@ func Dial(ctx context.Context, t Target) (*Client, error) {
 	}, nil
 }
 
+// vsockDial opens an AF_VSOCK connection (overridable in tests).
+var vsockDial = func(cid, port uint32) (net.Conn, error) {
+	return vsock.Dial(cid, port, nil)
+}
+
 // dialVsock builds a Client that dials AF_VSOCK for every HTTP connection.
 // It probes connectivity once so Dial can fall back to TCP when vsock is down.
 func dialVsock(ctx context.Context, cid, port uint32) (*Client, error) {
@@ -68,7 +73,7 @@ func dialVsock(ctx context.Context, cid, port uint32) (*Client, error) {
 	}
 	ch := make(chan dialResult, 1)
 	go func() {
-		c, err := vsock.Dial(cid, port, nil)
+		c, err := vsockDial(cid, port)
 		ch <- dialResult{c, err}
 	}()
 
@@ -92,7 +97,7 @@ func dialVsock(ctx context.Context, cid, port uint32) (*Client, error) {
 			}
 			done := make(chan res, 1)
 			go func() {
-				c, err := vsock.Dial(cid, port, nil)
+				c, err := vsockDial(cid, port)
 				done <- res{c, err}
 			}()
 			select {

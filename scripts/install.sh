@@ -335,6 +335,183 @@ install_from_go() {
   return 0
 }
 
+# Default MCP listen (must match internal/config Defaults).
+MCP_LISTEN_DEFAULT="127.0.0.1:7476"
+
+grain_config_path() {
+  printf '%s\n' "${HOME}/.grain/config.yaml"
+}
+
+# Enable mcp.enabled in ~/.grain/config.yaml (create or merge).
+enable_mcp_config() {
+  local cfg dir
+  dir="${HOME}/.grain"
+  cfg="$(grain_config_path)"
+  mkdir -p "$dir" || die "cannot create ${dir}"
+
+  if [[ ! -f "$cfg" ]]; then
+    cat >"$cfg" <<EOF
+# written by grain install.sh
+mcp:
+  enabled: true
+  listen: ${MCP_LISTEN_DEFAULT}
+EOF
+    ok "MCP enabled by default (${cfg})"
+    info "grain up will serve MCP at http://${MCP_LISTEN_DEFAULT}/mcp"
+    return 0
+  fi
+
+  # Existing config: prefer Python for a safe merge when available.
+  if command -v python3 >/dev/null 2>&1; then
+    if python3 - "$cfg" "$MCP_LISTEN_DEFAULT" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+listen = sys.argv[2]
+text = path.read_text(encoding="utf-8")
+lines = text.splitlines(keepends=True)
+out = []
+i = 0
+in_mcp = False
+saw_mcp = False
+saw_enabled = False
+while i < len(lines):
+    line = lines[i]
+    stripped = line.lstrip()
+    indent = len(line) - len(stripped)
+    if stripped.startswith("mcp:") and (indent == 0 or not in_mcp):
+        saw_mcp = True
+        in_mcp = True
+        out.append(line if line.endswith("\n") else line + "\n")
+        i += 1
+        # consume mcp block (indented more than mcp key)
+        mcp_indent = indent
+        block = []
+        while i < len(lines):
+            l2 = lines[i]
+            if l2.strip() == "":
+                block.append(l2)
+                i += 1
+                continue
+            ind2 = len(l2) - len(l2.lstrip())
+            if ind2 <= mcp_indent and l2.lstrip() and not l2.lstrip().startswith("#"):
+                break
+            if l2.lstrip().startswith("enabled:"):
+                saw_enabled = True
+                prefix = l2[: len(l2) - len(l2.lstrip())]
+                block.append(f"{prefix}enabled: true\n")
+            else:
+                block.append(l2 if l2.endswith("\n") else l2 + "\n")
+            i += 1
+        if not saw_enabled:
+            block.insert(0, "  enabled: true\n")
+        # ensure listen present
+        if not any(b.lstrip().startswith("listen:") for b in block):
+            block.append(f"  listen: {listen}\n")
+        out.extend(block)
+        in_mcp = False
+        continue
+    out.append(line if line.endswith("\n") else line + "\n")
+    i += 1
+if not saw_mcp:
+    if out and not str(out[-1]).endswith("\n"):
+        out[-1] = str(out[-1]) + "\n"
+    if out and out[-1].strip() != "":
+        out.append("\n")
+    out.append("mcp:\n")
+    out.append("  enabled: true\n")
+    out.append(f"  listen: {listen}\n")
+path.write_text("".join(out), encoding="utf-8")
+PY
+    then
+      ok "MCP enabled by default (${cfg})"
+      info "grain up will serve MCP at http://${MCP_LISTEN_DEFAULT}/mcp"
+      return 0
+    fi
+    warn "could not merge MCP into ${cfg}; appending section"
+  fi
+
+  # Fallback: append if no top-level mcp: key.
+  if grep -qE '^mcp:' "$cfg" 2>/dev/null; then
+    if grep -qE '^[[:space:]]+enabled:' "$cfg" 2>/dev/null; then
+      # Best-effort: flip first enabled under file (may match other keys; rare).
+      if sed -i.bak -E 's/^([[:space:]]+enabled:)[[:space:]]*.*/\1 true/' "$cfg" 2>/dev/null; then
+        rm -f "${cfg}.bak"
+        ok "MCP enabled by default (${cfg})"
+        return 0
+      fi
+    fi
+    warn "existing mcp section in ${cfg}; set enabled: true manually"
+    print_mcp_enable_later
+    return 0
+  fi
+  {
+    printf '\n'
+    printf 'mcp:\n'
+    printf '  enabled: true\n'
+    printf '  listen: %s\n' "$MCP_LISTEN_DEFAULT"
+  } >>"$cfg"
+  ok "MCP enabled by default (${cfg})"
+  info "grain up will serve MCP at http://${MCP_LISTEN_DEFAULT}/mcp"
+}
+
+print_mcp_enable_later() {
+  printf '\n'
+  info "MCP was not enabled by default. Turn it on anytime:"
+  printf '  grain up --mcp\n'
+  printf '  # or in %s:\n' "$(grain_config_path)"
+  printf '  # mcp:\n'
+  printf '  #   enabled: true\n'
+  printf '  #   listen: %s\n' "$MCP_LISTEN_DEFAULT"
+  printf '  # docs: https://grainvm.com/guides/mcp/\n'
+}
+
+# Prompt (or honor GRAIN_ENABLE_MCP) for default MCP on grain up.
+maybe_configure_mcp() {
+  local reply=""
+  # Non-interactive override for CI / curl automation.
+  case "${GRAIN_ENABLE_MCP:-}" in
+    1|true|yes|y|Y)
+      enable_mcp_config
+      return 0
+      ;;
+    0|false|no|n|N)
+      print_mcp_enable_later
+      return 0
+      ;;
+  esac
+
+  printf '\n'
+  printf '%s\n' "${BOLD}MCP (Model Context Protocol)${RESET}"
+  printf '  Expose sandboxes to coding agents (Claude Code, Codex, …).\n'
+  printf '  When enabled, grain up serves MCP at http://%s/mcp\n' "$MCP_LISTEN_DEFAULT"
+
+  # curl|bash has no stdin for answers — use the controlling terminal when present.
+  if [[ -r /dev/tty ]]; then
+    printf '  Enable MCP by default on grain up? [y/N] ' >/dev/tty
+    # shellcheck disable=SC2162
+    read -r reply </dev/tty || reply=""
+  elif [[ -t 0 ]]; then
+    printf '  Enable MCP by default on grain up? [y/N] '
+    # shellcheck disable=SC2162
+    read -r reply || reply=""
+  else
+    info "non-interactive install — skipping MCP prompt (set GRAIN_ENABLE_MCP=1 to enable)"
+    print_mcp_enable_later
+    return 0
+  fi
+
+  case "$(printf '%s' "$reply" | tr '[:upper:]' '[:lower:]')" in
+    y|yes)
+      enable_mcp_config
+      ;;
+    *)
+      print_mcp_enable_later
+      ;;
+  esac
+}
+
 print_next_steps() {
   local dest_dir="$1"
   local dest="${dest_dir}/${BIN_NAME}"
@@ -349,6 +526,9 @@ print_next_steps() {
     printf '    export PATH="%s:$PATH"\n' "$dest_dir"
     printf '  binary: %s\n' "$dest"
   fi
+
+  maybe_configure_mcp
+
   printf '\n'
   printf '%s\n' "${BOLD}Next steps${RESET}"
   printf '  1. Install QEMU (required for real VMs):\n'
@@ -380,6 +560,7 @@ print_next_steps() {
   printf '\n'
   printf 'Guest agent for non-golden images is under ~/.grain/agent/\n'
   printf 'Docs:    https://grainvm.com\n'
+  printf 'MCP:     https://grainvm.com/guides/mcp/\n'
   printf 'act:     https://grainvm.com/guides/recipes/act/\n'
   printf 'k3s:     https://grainvm.com/guides/recipes/k3s/\n'
   printf 'Upgrade:   grain update      # or: grain update --check\n'

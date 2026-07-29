@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cxdy/grain/client"
 	"github.com/cxdy/grain/internal/api"
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/hypervisor"
 	"github.com/cxdy/grain/internal/manager"
+	grainmcp "github.com/cxdy/grain/internal/mcp"
 	"github.com/cxdy/grain/internal/observability"
 	"github.com/cxdy/grain/internal/store"
 )
@@ -111,8 +113,27 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	pidPath := filepath.Join(cfg.DataDir, "grain.pid")
 	_ = os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0o644)
 
+	// Optional MCP Streamable HTTP (same process as the daemon).
+	mcpCancel := func() {}
+	if cfg.MCP.Enabled {
+		mcpCtx, cancel := context.WithCancel(context.Background())
+		mcpCancel = cancel
+		go func() {
+			// Dial the unix socket we just opened so tools use the live control plane.
+			c, err := client.DialUnixToken(cfg.Socket, cfg.ResolvedAPIToken())
+			if err != nil {
+				log.Error("mcp dial local socket", "err", err)
+				return
+			}
+			if err := grainmcp.RunHTTP(mcpCtx, cfg.MCP.Listen, api.Version, c, cfg.DataDir, log); err != nil {
+				log.Error("mcp server", "err", err)
+			}
+		}()
+	}
+
 	<-ctx.Done()
 	log.Info("shutting down")
+	mcpCancel()
 	shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = unixSrv.Shutdown(shCtx)

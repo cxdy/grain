@@ -42,13 +42,16 @@ Examples:
 	return cmd
 }
 
+// executablePath is os.Executable (overridable in tests so we never delete the test binary).
+var executablePath = os.Executable
+
 func runUninstall(cfg config.Config, purge, yes bool) error {
 	// Local only — do not stop a remote host daemon when CLI is in remote mode.
 	if !remoteMode(cfg) {
 		stopLocalDaemonBestEffort(cfg)
 	}
 
-	bin, err := os.Executable()
+	bin, err := executablePath()
 	if err != nil {
 		return fmt.Errorf("locate grain binary: %w", err)
 	}

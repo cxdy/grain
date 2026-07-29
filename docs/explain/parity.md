@@ -21,6 +21,7 @@ grain’s local microVM product surface as of the v0.2 line.
 | Resource caps, profiles, presets | Done |
 | Egress proxy (default-deny + secret inject) | Done |
 | Go / TypeScript / Python SDKs + OpenAPI | Done |
+| MCP server (`grain up --mcp` / `grain mcp`) for agent hosts | Done |
 | Install script, recipes, create bench | Done |
 | Guest arch selection (`--arch`, incl. x86_64 on Apple Silicon via QEMU) | Done |
 | Virtio GPU (`--gpu` / `gpu: virtio`) | Done |

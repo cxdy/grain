@@ -39,6 +39,7 @@ grain new --preset k3s -n lab -p --wait userdata
 |-------|----------|
 | [Egress proxy]({{ '/guides/proxy/' | relative_url }}) | Admins locking down outbound HTTP(S) |
 | [Remote sandbox host]({{ '/guides/remote-host/' | relative_url }}) | Team box: systemd, API token, SSH tunnels, SDKs |
+| [MCP server]({{ '/guides/mcp/' | relative_url }}) | Claude Code / Codex / OpenCode / Grok Build tool host |
 | [Secrets]({{ '/guides/secrets/' | relative_url }}) | Host secrets and inject into VMs |
 | [Firecracker]({{ '/guides/firecracker/' | relative_url }}) | Linux experimental backend |
 | [Troubleshooting]({{ '/guides/troubleshooting/' | relative_url }}) | When boot, agent, or QEMU misbehaves |

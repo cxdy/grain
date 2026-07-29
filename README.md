@@ -60,6 +60,18 @@ grain down
 
 Optional starter config and more flags: **[quick start](https://grainvm.com/get-started/quickstart/)**.
 
+### MCP (coding agents)
+
+MCP is built into `grain` (not a separate binary):
+
+```bash
+grain up --mcp                 # daemon + MCP at http://127.0.0.1:7476/mcp
+# IDE stdio host:
+#   command: grain, args: ["mcp"]
+```
+
+→ [MCP server guide](https://grainvm.com/guides/mcp/)
+
 ---
 
 ## Workloads

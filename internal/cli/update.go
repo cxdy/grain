@@ -50,8 +50,11 @@ Upgrade notices on other commands can be disabled:
 	return cmd
 }
 
+// checkForUpdate is update.Check (overridable in tests).
+var checkForUpdate = update.Check
+
 func runUpdate(cfg config.Config, version string, checkOnly, force bool) error {
-	res, err := update.Check(update.Options{
+	res, err := checkForUpdate(update.Options{
 		Current:      version,
 		DataDir:      cfg.DataDir,
 		ForceRefresh: true,

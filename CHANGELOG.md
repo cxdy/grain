@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP in the main binary** — `grain up --mcp` / config `mcp.enabled` + `mcp.listen` (default `127.0.0.1:7476/mcp` Streamable HTTP); `grain mcp` for stdio IDE hosts. Guide: [MCP server](https://grainvm.com/guides/mcp/).
+- **Install script MCP prompt** — asks whether to enable MCP by default in `~/.grain/config.yaml` (`GRAIN_ENABLE_MCP=1|0` for non-interactive); declining prints `grain up --mcp` and config snippets.
+- **Expanded MCP tools** — streaming `grain_exec` (timeout, progress); write/read file + tar; fs readdir/stat/mkdir/rm; agent_health, logs, stats; workspace_sandbox helper; live port forwards; image list/pull; `grain_act` (GitHub Actions via act); `grain_k3s` lab; create defaults `grain-ubuntu` + `wait=agent`; idempotent delete.
+
 - **`grain update`** — check GitHub Releases for a newer CLI and re-run the install script (`--check` report-only with exit 1 when outdated; `--force` reinstalls even when current).
 - **Upgrade notices** — most commands may print a one-line stderr hint when a newer release is known (24h cache under `~/.grain/cache/`). Disable with `check_updates: false`, `GRAIN_CHECK_UPDATES=0`, or `GRAIN_NO_UPDATE_CHECK=1`.
 
