@@ -5,7 +5,7 @@ description: Connect Claude Code, Codex, OpenCode, Grok Build, and other MCP hos
 
 grain exposes sandbox tools over the [Model Context Protocol](https://modelcontextprotocol.io/) so coding agents can create, inspect, run commands in, and delete microVMs.
 
-MCP is built into the main **`grain` binary**. It talks to a **running grain daemon** via the same HTTP/unix API as the CLI.
+MCP is built into the main **`grain` binary**. It talks to a **running grain daemon** via the same HTTP/unix API as the CLI (plus host-local image/log helpers).
 
 ## Quick start
 
@@ -18,7 +18,7 @@ grain up --mcp                 # daemon + Streamable HTTP MCP
 #   enabled: true
 #   listen: 127.0.0.1:7476
 
-grain image pull grain-ubuntu
+grain image pull grain-ubuntu  # or grain_image_pull via MCP
 ```
 
 Default MCP HTTP endpoint: **`http://127.0.0.1:7476/mcp`**.
@@ -53,7 +53,7 @@ CLI:
 
 ## Host configuration
 
-### Stdio (Claude Code, Codex, OpenCode, …)
+### Stdio (Claude Code, Codex, OpenCode, Grok Build, …)
 
 ```json
 {
@@ -66,11 +66,17 @@ CLI:
 }
 ```
 
-Use an absolute path to `grain` if it is not on the host’s `PATH`. Ensure `grain up` (optionally with `--mcp`) is running first.
+Grok Build (`~/.grok/config.toml`):
+
+```toml
+[mcp_servers.grain]
+command = "/path/to/grain"
+args = ["mcp"]
+enabled = true
+tool_timeout_sec = 600
+```
 
 ### Streamable HTTP
-
-Point MCP HTTP clients at:
 
 ```text
 http://127.0.0.1:7476/mcp
@@ -80,55 +86,106 @@ after `grain up --mcp` or `mcp.enabled: true`.
 
 ## Connection to the daemon
 
-When tools run, the MCP layer dials the daemon like the CLI:
-
 | Variable / config | Meaning |
 |-------------------|---------|
 | *(default)* | Unix socket `~/.grain/grain.sock` |
 | `GRAIN_SOCKET` | Override socket path |
 | `GRAIN_API` | HTTP base URL (`http://127.0.0.1:7474`) |
 | `GRAIN_TOKEN` | Bearer token when required |
-| `api` / `api_token` | Daemon listen + auth (config) |
 
 ## Tools
 
-| Tool | Daemon API | Purpose |
-|------|------------|---------|
-| `grain_health` | `GET /healthz`, `GET /info` | Daemon liveness and version |
-| `grain_list_vms` | `GET /vms` | List sandboxes |
-| `grain_get_vm` | `GET /vms/{name}` | Inspect one sandbox |
-| `grain_create_vm` | `POST /vms` | Create (name, image, cpus, memory_mb, disk_gb, persistent, arch, gpu, network, wait, timeout, userdata, publish[], mounts[]) |
-| `grain_start_vm` | `POST /vms/{name}/start` | Start stopped persistent VM |
-| `grain_stop_vm` | `POST /vms/{name}/shutdown` | Stop (ephemeral deleted) |
-| `grain_delete_vm` | `DELETE /vms/{name}` | Delete sandbox |
-| `grain_exec` | `POST /vms/{name}/exec` | Buffered guest command (`cmd` + `args`) |
+### Lifecycle
+
+| Tool | Purpose |
+|------|---------|
+| `grain_health` | Daemon liveness + version |
+| `grain_list_vms` | List sandboxes |
+| `grain_get_vm` | Inspect one sandbox |
+| `grain_create_vm` | Create VM (**defaults:** `image=grain-ubuntu`, `wait=agent`) |
+| `grain_start_vm` / `grain_stop_vm` | Start / stop |
+| `grain_delete_vm` | Delete (**idempotent** if missing) |
+| `grain_workspace_sandbox` | One-shot: create + mount host dir at `/work` + wait agent + optional first command |
+
+### Guest exec & files
+
+| Tool | Purpose |
+|------|---------|
+| `grain_exec` | Run command; **streams** stdout/stderr into result by default; `timeout` (default 15m); prefer `go build` over `go test ./...` |
+| `grain_write_file` / `grain_read_file` | Write/read guest files (text or base64) |
+| `grain_put_tar` / `grain_get_tar` | Upload/download tar (base64) |
+| `grain_fs_readdir` / `grain_fs_stat` / `grain_fs_mkdir` / `grain_fs_remove` | Structured guest FS |
+
+### Observability
+
+| Tool | Purpose |
+|------|---------|
+| `grain_agent_health` | Guest agent `/health` |
+| `grain_logs` | Host serial console log (or `qemu=true` for hypervisor log) |
+| `grain_stats` | Guest mem/load/disk stats |
+
+### Ports & images
+
+| Tool | Purpose |
+|------|---------|
+| `grain_forward_add` / `grain_forward_remove` | Live host→guest TCP forwards; add returns `localhost:PORT` |
+| `grain_image_list` / `grain_image_pull` | Catalog + local readiness; pull base images on the host |
+
+### Recipes
+
+| Tool | Purpose |
+|------|---------|
+| `grain_act` | GitHub Actions via **nektos/act** in an ephemeral act-preset sandbox (mounts project at `/work`) |
+| `grain_k3s` | **k3s** lab (k3s preset, port 6443, waits for `kubectl get nodes` unless `skip_wait`). Kind is not a separate preset—use k3s. |
 
 ### Create parameters (high level)
 
 | Field | Notes |
 |-------|--------|
 | `name` | Optional; daemon generates if empty |
-| `image` | e.g. `grain-ubuntu`, `ubuntu-cloud`, `auto` |
+| `image` | Default **`grain-ubuntu`** |
+| `wait` | Default **`agent`** |
 | `cpus` / `memory_mb` / `disk_gb` | Resources |
 | `persistent` | Keep disk after stop |
-| `wait` | `auto` \| `ssh` \| `agent` \| `userdata` |
-| `timeout` | Go duration string, e.g. `3m` |
+| `preset` | `docker` \| `k3s` \| `act` (merges userdata) |
 | `publish` | `["8080:80"]` or `["80"]` |
 | `mounts` | `["/host/path:/guest/path"]` |
-| `userdata` | Cloud-init string |
+| `timeout` | Go duration for create readiness |
 
-## Typical agent flow
+### Exec parameters
 
-1. `grain_health` — confirm daemon  
-2. `grain_create_vm` with `image: grain-ubuntu`, `wait: agent`  
-3. `grain_exec` — run builds/tests inside the sandbox  
-4. `grain_delete_vm` — clean up  
+| Field | Notes |
+|-------|--------|
+| `stream` | Default **true** — accumulate streamed stdout/stderr + progress chunks |
+| `timeout` | Cap runtime (default **15m**) |
+| `cwd` | Optional guest working directory |
+
+## Typical agent flows
+
+**Coding sandbox**
+
+1. `grain_image_list` / `grain_image_pull` if needed  
+2. `grain_workspace_sandbox` with `host_dir` = project root  
+3. `grain_write_file` / `grain_exec` (focused builds)  
+4. `grain_delete_vm` when done  
+
+**GitHub Actions**
+
+```text
+grain_act  host_dir=<repo>  act_args=["-j","test"]
+```
+
+**k3s lab**
+
+```text
+grain_k3s  name=lab  (optional host_dir)
+```
 
 ## Limits
 
-- No interactive PTY shell, act recipe, proxy UI, or image bake via MCP (use CLI).
-- Create waits for readiness in-process (can take minutes with cold images).
-- If the daemon is already up without MCP, use `grain mcp --http` or restart with `grain down && grain up --mcp`.
+- No interactive PTY shell, proxy UI, secrets MCP, or golden bake via MCP (use CLI).
+- Create/exec can take minutes (cold image, apt, act). Set host tool timeouts accordingly (e.g. 600s).
+- Prefer focused builds in-guest; avoid full `go test ./...` unless intentional.
 
 ## See also
 
@@ -136,3 +193,5 @@ When tools run, the MCP layer dials the daemon like the CLI:
 - [Go SDK]({{ '/reference/go-sdk/' | relative_url }})
 - [CLI]({{ '/reference/cli/' | relative_url }})
 - [Configuration]({{ '/reference/config/' | relative_url }})
+- [act recipe]({{ '/guides/recipes/act/' | relative_url }})
+- [k3s recipe]({{ '/guides/recipes/k3s/' | relative_url }})

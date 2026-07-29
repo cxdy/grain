@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cxdy/grain/client"
 	grainmcp "github.com/cxdy/grain/internal/mcp"
@@ -86,10 +85,4 @@ func TestRunHTTPStreamableListTools(t *testing.T) {
 		t.Fatalf("%s", text)
 	}
 
-	// Brief RunHTTP smoke: cancel immediately after bind.
-	runCtx, runCancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer runCancel()
-	// Use a high free-ish port in test range — Listen on 127.0.0.1:0 isn't supported by RunHTTP string.
-	// Covered by Streamable handler above; RunHTTP is thin wrapper.
-	_ = runCtx
 }

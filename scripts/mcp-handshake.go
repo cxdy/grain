@@ -56,6 +56,9 @@ func main() {
 	need := []string{
 		"grain_health", "grain_list_vms", "grain_get_vm", "grain_create_vm",
 		"grain_start_vm", "grain_stop_vm", "grain_delete_vm", "grain_exec",
+		"grain_write_file", "grain_read_file", "grain_agent_health", "grain_logs",
+		"grain_stats", "grain_workspace_sandbox", "grain_forward_add", "grain_forward_remove",
+		"grain_image_list", "grain_image_pull", "grain_fs_readdir", "grain_act", "grain_k3s",
 	}
 	have := map[string]bool{}
 	for _, n := range names {
@@ -67,5 +70,5 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	fmt.Println("lifecycle tools: ok")
+	fmt.Println("expanded tools: ok")
 }

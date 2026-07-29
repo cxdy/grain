@@ -67,9 +67,9 @@ Requires a running daemon (grain up). Prefer co-locating HTTP MCP with the daemo
 			if httpMode {
 				log := observability.NewLogger(cfg.LogLevel)
 				fmt.Fprintf(os.Stderr, "grain mcp  %s\n", grainmcp.HTTPEndpoint(cfg.MCP.Listen))
-				return grainmcp.RunHTTP(ctx, cfg.MCP.Listen, version, c, log)
+				return grainmcp.RunHTTP(ctx, cfg.MCP.Listen, version, c, cfg.DataDir, log)
 			}
-			return grainmcp.RunStdio(ctx, version, c)
+			return grainmcp.RunStdio(ctx, version, c, cfg.DataDir)
 		},
 	}
 	cmd.Flags().BoolVar(&httpMode, "http", false, "serve Streamable HTTP instead of stdio")

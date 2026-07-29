@@ -28,14 +28,15 @@ func HTTPEndpoint(listen string) string {
 
 // RunHTTP serves Streamable HTTP MCP until ctx is cancelled.
 // c is the grain daemon client (typically unix socket or loopback API).
-func RunHTTP(ctx context.Context, listen, version string, c *client.Client, log *slog.Logger) error {
+// dataDir is used for image list/pull and serial/qemu logs (may be empty).
+func RunHTTP(ctx context.Context, listen, version string, c *client.Client, dataDir string, log *slog.Logger) error {
 	if listen == "" {
 		listen = DefaultListen
 	}
 	if log == nil {
 		log = slog.Default()
 	}
-	srv := NewMCPServer(version, c)
+	srv := NewMCPServerOpts(ServerOptions{Version: version, Client: c, DataDir: dataDir})
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return srv
 	}, &mcp.StreamableHTTPOptions{
@@ -89,7 +90,7 @@ func RunHTTP(ctx context.Context, listen, version string, c *client.Client, log 
 }
 
 // RunStdio serves MCP over stdin/stdout (IDE hosts: Claude Code, Codex, …).
-func RunStdio(ctx context.Context, version string, c *client.Client) error {
-	srv := NewMCPServer(version, c)
+func RunStdio(ctx context.Context, version string, c *client.Client, dataDir string) error {
+	srv := NewMCPServerOpts(ServerOptions{Version: version, Client: c, DataDir: dataDir})
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
