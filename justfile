@@ -187,7 +187,14 @@ version:
     echo "current: $(svu current 2>/dev/null || echo '(none)')"
     echo "next:    $(svu next)"
 
+# Snapshot docs/main → docs/<version> and set site default / switcher latest.
+# Example: just docs-version 0.3.1
+docs-version ver:
+    ./scripts/docs-version-bump.sh {{ ver }}
+
 # Create and push the next semver tag from conventional commits (svu next).
+# Also bumps the Hugo docs version (content tree + switcher) and commits that
+# before tagging so grainvm.com shows the new release as latest after Pages deploy.
 # Triggers GoReleaser via .github/workflows/release.yml.
 # Preview only: just version   (or: svu next)
 release-tag:
@@ -211,12 +218,25 @@ release-tag:
       echo "  svu next    → $TAG"
       exit 1
     fi
+    VER="${TAG#v}"
+    echo "Bumping site docs version to ${VER}"
+    ./scripts/docs-version-bump.sh "$VER"
+    if [[ -n "$(git status --porcelain)" ]]; then
+      git add docs/hugo.toml "docs/content/docs/${VER}"
+      # Also stage removals/moves if the script rewrote shared paths
+      git add -u docs/hugo.toml docs/content/docs/ 2>/dev/null || true
+      git commit -m "docs: publish v${VER} site version"
+      echo "Committed docs version bump for ${TAG}"
+    else
+      echo "Docs version already at ${VER} (no commit)"
+    fi
     echo "Creating tag $TAG"
     git tag "$TAG"
     echo "Pushing tag $TAG to origin (and current HEAD)"
     git push origin HEAD
     git push origin "$TAG"
     echo "GoReleaser will publish GitHub Release assets for $TAG"
+    echo "Pages will rebuild from main (docs default → v${VER})"
 
 # Copy api/openapi.yaml into the Hugo static tree (and JSON if present).
 openapi-docs:

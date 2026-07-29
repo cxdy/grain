@@ -1299,6 +1299,87 @@ func TestWaitAgentModeNoSSHPort(t *testing.T) {
 	}
 }
 
+func TestWaitBootstrapReadyAndFailed(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAIN_READINESS_DIR", dir)
+	if err := os.WriteFile(filepath.Join(dir, "state"), []byte("ready\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := agent.NewServer("127.0.0.1:0", nil)
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		select {
+		case <-errCh:
+		case <-time.After(2 * time.Second):
+		}
+	})
+	var port int
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		addr := srv.AddrString()
+		if addr != "" && !endsWithPort0(addr) {
+			_, p, err := net.SplitHostPort(addr)
+			if err == nil {
+				port, _ = strconv.Atoi(p)
+				if port > 0 {
+					break
+				}
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if port == 0 {
+		t.Fatal("no port")
+	}
+
+	m, _, _, _ := unitMgr(t, "qemu")
+	inst := &vm.Instance{Name: "boot1", AgentPort: port, IP: "127.0.0.1"}
+	dl := time.Now().Add(2 * time.Second)
+	var msgs []string
+	emit := func(ev vm.CreateEvent) {
+		if ev.Phase == vm.PhaseBootstrap {
+			msgs = append(msgs, ev.Message)
+		}
+	}
+	if err := m.waitBootstrap(context.Background(), inst, dl, emit, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) == 0 {
+		t.Fatal("expected bootstrap events")
+	}
+
+	// Failed state
+	if err := os.WriteFile(filepath.Join(dir, "state"), []byte("failed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "error"), []byte("boom"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := m.waitBootstrap(context.Background(), inst, time.Now().Add(2*time.Second), nil, false)
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("want failed with boom, got %v", err)
+	}
+
+	// Mock short-circuit
+	if err := m.waitBootstrap(context.Background(), inst, time.Now().Add(time.Second), nil, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNormalizeWaitModeBootstrap(t *testing.T) {
+	got, err := NormalizeWaitMode("bootstrap")
+	if err != nil || got != vm.WaitBootstrap {
+		t.Fatalf("got %q %v", got, err)
+	}
+	if _, err := NormalizeWaitMode("nope"); err == nil {
+		t.Fatal("want error")
+	}
+}
+
 func TestWaitUserdataDialFailAndTimeout(t *testing.T) {
 	m, _, _, _ := unitMgr(t, "qemu")
 	// Dial always returns a TCP client for Port>0; Health then fails until deadline.

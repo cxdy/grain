@@ -81,6 +81,8 @@ func emitCreate(opts vm.CreateOpts, ev vm.CreateEvent) {
 //   - ssh: WaitSSH + soft agent deploy/wait (failure does not fail Create)
 //   - agent: require guest agent health (hard fail); try agent first, SSH deploy fallback
 //   - userdata: require agent, then poll until Health.UserdataRan
+//   - bootstrap: require agent, then poll readiness protocol until state=ready
+//     (or fail on state=failed / timeout). VM is left running on bootstrap failure.
 func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance, error) {
 	existing, err := m.st.Names()
 	if err != nil {
@@ -299,8 +301,10 @@ func NormalizeWaitMode(mode string) (string, error) {
 		return vm.WaitAgent, nil
 	case vm.WaitUserdata:
 		return vm.WaitUserdata, nil
+	case vm.WaitBootstrap:
+		return vm.WaitBootstrap, nil
 	default:
-		return "", fmt.Errorf("invalid wait mode %q (want auto, ssh, agent, or userdata)", mode)
+		return "", fmt.Errorf("invalid wait mode %q (want auto, ssh, agent, userdata, or bootstrap)", mode)
 	}
 }
 
@@ -351,6 +355,11 @@ func (m *Manager) waitReady(
 			return err
 		}
 		return m.waitUserdata(ctx, inst, readyDeadline, emit, isMock)
+	case vm.WaitBootstrap:
+		if err := m.waitAgentMode(ctx, inst, img, priv, readyDeadline, emit, isMock); err != nil {
+			return err
+		}
+		return m.waitBootstrap(ctx, inst, readyDeadline, emit, isMock)
 	default: // ssh
 		return m.waitSSHMode(ctx, inst, img, priv, readyDeadline, emit, isMock)
 	}
@@ -574,6 +583,127 @@ func (m *Manager) waitUserdata(
 			}
 			if h.UserdataRan {
 				m.log.Info("userdata complete", "name", inst.Name)
+				return nil
+			}
+		}
+	}
+}
+
+// waitBootstrap polls agent readiness protocol until state=ready.
+// Missing readiness/ files means pending (authors must stamp ready).
+// state=failed fails create immediately; VM is left running.
+func (m *Manager) waitBootstrap(
+	ctx context.Context,
+	inst *vm.Instance,
+	readyDeadline time.Time,
+	emit func(vm.CreateEvent),
+	isMock bool,
+) error {
+	if emit != nil {
+		emit(vm.CreateEvent{
+			Phase:   vm.PhaseBootstrap,
+			Name:    inst.Name,
+			Message: "waiting for bootstrap readiness",
+			SSHPort: inst.SSHPort,
+		})
+	}
+	if isMock {
+		return nil
+	}
+	if !agentTarget(inst).HasEndpoint() {
+		return fmt.Errorf("wait bootstrap: no agent endpoint allocated")
+	}
+
+	waitFor := time.Until(readyDeadline)
+	if waitFor <= 0 {
+		waitFor = agentWaitFallback
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, waitFor)
+	defer cancel()
+
+	client, err := agent.Dial(waitCtx, agentTarget(inst))
+	if err != nil {
+		return fmt.Errorf("wait bootstrap: dial agent: %w", err)
+	}
+
+	lastMsg := ""
+	check := func(h *agent.Health) (done bool, fail error) {
+		if h == nil {
+			return false, nil
+		}
+		r := h.Readiness
+		if r == nil || strings.TrimSpace(r.State) == "" {
+			// No protocol files yet → pending.
+			msg := "waiting for readiness (pending)"
+			if emit != nil && msg != lastMsg {
+				lastMsg = msg
+				emit(vm.CreateEvent{
+					Phase:   vm.PhaseBootstrap,
+					Name:    inst.Name,
+					Message: msg,
+					SSHPort: inst.SSHPort,
+				})
+			}
+			return false, nil
+		}
+		msg := r.StatusLine()
+		if msg == "" {
+			msg = "bootstrap " + r.State
+		}
+		if emit != nil && msg != lastMsg {
+			lastMsg = msg
+			emit(vm.CreateEvent{
+				Phase:   vm.PhaseBootstrap,
+				Name:    inst.Name,
+				Message: msg,
+				SSHPort: inst.SSHPort,
+			})
+		}
+		switch strings.ToLower(strings.TrimSpace(r.State)) {
+		case agent.ReadinessReady:
+			m.log.Info("bootstrap ready", "name", inst.Name, "ready_name", r.ReadyName)
+			return true, nil
+		case agent.ReadinessFailed:
+			errMsg := r.Error
+			if errMsg == "" {
+				errMsg = r.Message
+			}
+			if errMsg == "" {
+				errMsg = "bootstrap failed"
+			}
+			return false, fmt.Errorf("wait bootstrap: %s", errMsg)
+		default:
+			// pending, running, or unknown — keep polling
+			return false, nil
+		}
+	}
+
+	if h, err := client.Health(waitCtx); err == nil {
+		done, ferr := check(h)
+		if ferr != nil {
+			return ferr
+		}
+		if done {
+			return nil
+		}
+	}
+
+	ticker := time.NewTicker(agent.WaitPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("wait bootstrap: %w", waitCtx.Err())
+		case <-ticker.C:
+			h, err := client.Health(waitCtx)
+			if err != nil {
+				continue
+			}
+			done, ferr := check(h)
+			if ferr != nil {
+				return ferr
+			}
+			if done {
 				return nil
 			}
 		}

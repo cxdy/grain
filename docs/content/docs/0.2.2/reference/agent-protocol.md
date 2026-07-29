@@ -23,6 +23,15 @@ JSON body (GET):
 | `agent_version` | Agent version |
 | `agent_uptime_sec` | Seconds since agent start |
 | `userdata_ran` | True if `/var/lib/grain/userdata-ran` exists |
+| `readiness` | Optional object from the [Readiness protocol](/docs/0.2.2/explain/readiness/) (`state`, `phase`, `message`, …) |
+
+## Readiness
+
+```http
+GET /readiness
+```
+
+Returns the same object as `health.readiness` (empty object if no `/var/lib/grain/readiness/` files). See [Readiness protocol](/docs/0.2.2/explain/readiness/).
 
 ## Exec
 

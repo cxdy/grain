@@ -51,6 +51,8 @@ Embedded cloud-init fragments applied with `grain new --preset NAME` or `profile
 
 Presets merge into userdata with the structured cloud-init merge (safe with `--userdata-file`).
 
+For long custom first-boot work that should block create until *you* say ready, implement the [Readiness protocol](/docs/main/explain/readiness/) and use `grain new --wait bootstrap`.
+
 ```bash
 grain new --preset docker
 grain new --preset k3s -n lab -p
@@ -66,7 +68,7 @@ grain act -- -l
 grain act -- -j test
 ```
 
-See the [act recipe](/docs/0.2.2/guides/recipes/act/).
+See the [act recipe](/docs/main/guides/recipes/act/).
 
 ## Combining
 

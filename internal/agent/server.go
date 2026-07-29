@@ -53,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("HEAD /health", s.handleHealth)
+	mux.HandleFunc("GET /readiness", s.handleReadiness)
 	mux.HandleFunc("GET /stats", s.handleStats)
 	mux.HandleFunc("POST /exec", s.handleExec)
 	mux.HandleFunc("POST /cp", s.handleCPPut)
@@ -134,6 +135,16 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h)
 }
 
+func (s *Server) handleReadiness(w http.ResponseWriter, _ *http.Request) {
+	r := LoadReadiness()
+	if r == nil {
+		// Explicit empty object so clients can distinguish "no protocol files".
+		writeJSON(w, http.StatusOK, Readiness{})
+		return
+	}
+	writeJSON(w, http.StatusOK, r)
+}
+
 func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, CollectStats())
 }
@@ -197,6 +208,7 @@ func (s *Server) health() Health {
 		AgentVersion: Version,
 		AgentUptime:  int64(time.Since(s.started).Seconds()),
 		UserdataRan:  userdataRan(),
+		Readiness:    LoadReadiness(),
 	}
 }
 

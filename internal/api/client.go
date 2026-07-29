@@ -34,7 +34,7 @@ type CreateRequest struct {
 	Forwards       []vm.PortForward   `json:"forwards,omitempty"`
 	Mounts         []vm.Mount         `json:"mounts,omitempty"`
 	SocketForwards []vm.SocketForward `json:"socket_forwards,omitempty"`
-	// Wait is auto|ssh|agent|userdata (empty = daemon auto; true/1 → ssh).
+	// Wait is auto|ssh|agent|userdata|bootstrap (empty = daemon auto; true/1 → ssh).
 	Wait string `json:"-"`
 	// Timeout is an optional Go duration string for create readiness (e.g. "30s").
 	Timeout string `json:"-"`

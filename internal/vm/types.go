@@ -101,9 +101,10 @@ type Instance struct {
 
 // Wait mode constants for CreateOpts.WaitMode.
 const (
-	WaitSSH      = "ssh"
-	WaitAgent    = "agent"
-	WaitUserdata = "userdata"
+	WaitSSH       = "ssh"
+	WaitAgent     = "agent"
+	WaitUserdata  = "userdata"
+	WaitBootstrap = "bootstrap"
 )
 
 // CreateOpts for launching a VM.
@@ -130,7 +131,7 @@ type CreateOpts struct {
 	GPU string
 	// Network is ""|"slirp" or "overlay".
 	Network string
-	// WaitMode selects readiness: ssh (default), agent, or userdata.
+	// WaitMode selects readiness: ssh (default), agent, userdata, or bootstrap.
 	WaitMode string
 	// WaitTimeout overrides ReadyTimeout when > 0.
 	WaitTimeout time.Duration

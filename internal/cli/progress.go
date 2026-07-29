@@ -166,6 +166,12 @@ func phaseLabel(phase, message string) string {
 		return "waiting agent"
 	case vm.PhaseUserdata:
 		return "waiting userdata"
+	case vm.PhaseBootstrap:
+		// Prefer guest-authored message (phase + human text).
+		if message != "" {
+			return message
+		}
+		return "waiting bootstrap"
 	case vm.PhaseReady:
 		return "ready"
 	case vm.PhaseError:

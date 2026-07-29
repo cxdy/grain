@@ -152,7 +152,7 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query()
-	// wait=auto|ssh|agent|userdata (empty/auto → manager picks agent for golden images).
+	// wait=auto|ssh|agent|userdata|bootstrap (empty/auto → manager picks agent for golden images).
 	// Legacy wait=1/true → ssh. wait=false/0 is not supported.
 	waitRaw := q.Get("wait")
 	var waitMode string

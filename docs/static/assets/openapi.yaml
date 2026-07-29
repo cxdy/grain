@@ -145,7 +145,8 @@ paths:
         Query parameters:
         - `stream=1` — NDJSON progress (`application/x-ndjson`)
         - `wait` — readiness mode: `auto` (default when omitted; agent for golden
-          images, else ssh), `ssh`, `agent`, or `userdata`. Legacy `true`/`1` → `ssh`.
+          images, else ssh), `ssh`, `agent`, `userdata`, or `bootstrap`.
+          Legacy `true`/`1` → `ssh`.
         - `timeout` — optional Go duration override for the create deadline
           (e.g. `3m`, `90s`); defaults to daemon ReadyTimeout + buffer
       operationId: createVM
@@ -160,10 +161,11 @@ paths:
           in: query
           description: |
             Readiness mode. Empty/omitted uses daemon auto. Values: auto, ssh,
-            agent, userdata. Legacy true/1 maps to ssh. false/0 is rejected.
+            agent, userdata, bootstrap. Legacy true/1 maps to ssh. false/0 is rejected.
+            bootstrap waits for the guest readiness protocol (state=ready).
           schema:
             type: string
-            enum: [auto, ssh, agent, userdata, "true", "1"]
+            enum: [auto, ssh, agent, userdata, bootstrap, "true", "1"]
             example: agent
         - name: timeout
           in: query

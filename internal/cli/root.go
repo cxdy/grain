@@ -54,7 +54,7 @@ func Root(version string) *cobra.Command {
   grain new --arch amd64      x86_64 guest (QEMU TCG on Apple Silicon)
   grain new --gpu virtio      virtio-gpu for the guest
   grain new --network overlay share L2 between VMs
-  grain new --wait agent      wait for agent (ssh|agent|userdata)
+  grain new --wait agent      wait for agent (ssh|agent|userdata|bootstrap)
   grain act -- [act-args]     run GitHub Actions via act in a sandbox
   grain update [--check]      check for / install latest release
   grain mcp [--http]          MCP tool server (stdio or Streamable HTTP)
@@ -128,6 +128,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 		cmdProfile(&cfgPath),
 		cmdImage(&cfgPath),
 		cmdAgent(&cfgPath),
+		cmdStatus(&cfgPath),
 		cmdDoctor(&cfgPath),
 		cmdVersion(version),
 	)
@@ -524,7 +525,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
 	cmd.Flags().StringVar(&profileName, "profile", "", "named profile from config (flags override profile)")
 	cmd.Flags().StringVar(&presetName, "preset", "", "userdata preset: docker, k3s, act (merged into cloud-init)")
-	cmd.Flags().StringVar(&waitMode, "wait", "", "readiness: auto (agent if golden image), ssh, agent, or userdata")
+	cmd.Flags().StringVar(&waitMode, "wait", "", "readiness: auto (agent if golden image), ssh, agent, userdata, or bootstrap")
 	cmd.Flags().StringArrayVarP(&publish, "publish", "P", nil, "publish port HOST:GUEST or GUEST (repeatable; host 0 auto)")
 	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")
 	cmd.Flags().StringArrayVar(&publishSockets, "publish-socket", nil, "SSH streamlocal socket forward HOSTPATH:GUESTPATH (repeatable; docker-style)")
@@ -1086,7 +1087,7 @@ func cmdAgent(cfgPath *string) *cobra.Command {
 	}
 	root.AddCommand(&cobra.Command{
 		Use:   "health [name]",
-		Short: "Check guest grain-agent health",
+		Short: "Check guest grain-agent health (includes readiness when present)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
@@ -1116,6 +1117,72 @@ func cmdAgent(cfgPath *string) *cobra.Command {
 		},
 	})
 	return root
+}
+
+func cmdStatus(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "status [name]",
+		Short: "Show VM status and guest readiness (one-liner)",
+		Long: `Print a short status line for a sandbox: instance state plus guest
+readiness protocol fields when the agent is reachable.
+
+See https://grainvm.com/docs/0.3.0/explain/readiness/ for the readiness contract.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
+			name, err := resolveVMName(c, args, false)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			inst, err := c.Get(ctx, name)
+			if err != nil {
+				return err
+			}
+			line := fmt.Sprintf("%s  status=%s", inst.Name, inst.Status)
+			if inst.Image != "" {
+				line += "  image=" + inst.Image
+			}
+			h, err := c.AgentHealth(ctx, name)
+			if err != nil {
+				line += "  agent=unreachable"
+				fmt.Println(line)
+				return nil
+			}
+			line += "  agent=up"
+			if h.UserdataRan {
+				line += "  userdata=ran"
+			} else {
+				line += "  userdata=pending"
+			}
+			if h.Readiness != nil && h.Readiness.State != "" {
+				line += "  readiness=" + h.Readiness.State
+				if h.Readiness.Phase != "" {
+					line += "  phase=" + h.Readiness.Phase
+				}
+				if h.Readiness.Message != "" {
+					line += "  \"" + h.Readiness.Message + "\""
+				} else if h.Readiness.Error != "" {
+					line += "  \"" + h.Readiness.Error + "\""
+				}
+				if h.Readiness.ReadyName != "" {
+					line += "  ready_name=" + h.Readiness.ReadyName
+				}
+			} else {
+				line += "  readiness=none"
+			}
+			fmt.Println(line)
+			return nil
+		},
+	}
 }
 
 func cmdVersion(v string) *cobra.Command {

@@ -148,16 +148,29 @@ const (
 	PhaseQEMU      = "qemu"
 	PhaseWaitSSH   = "wait_ssh"
 	PhaseWaitAgent = "wait_agent"
+	PhaseUserdata  = "userdata"
+	PhaseBootstrap = "bootstrap"
 	PhaseReady     = "ready"
 	PhaseError     = "error"
 )
 
+// Readiness is the guest bootstrap/readiness contract (proxied via agent health).
+type Readiness struct {
+	State     string `json:"state,omitempty"`
+	Phase     string `json:"phase,omitempty"`
+	Message   string `json:"message,omitempty"`
+	ReadyName string `json:"ready_name,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 // Health is guest grain-agent GET /health (proxied via daemon).
 type Health struct {
-	Hostname     string `json:"hostname"`
-	AgentVersion string `json:"agent_version"`
-	AgentUptime  int64  `json:"agent_uptime_sec"`
-	UserdataRan  bool   `json:"userdata_ran"`
+	Hostname     string     `json:"hostname"`
+	AgentVersion string     `json:"agent_version"`
+	AgentUptime  int64      `json:"agent_uptime_sec"`
+	UserdataRan  bool       `json:"userdata_ran"`
+	Readiness    *Readiness `json:"readiness,omitempty"`
 }
 
 // ExecResult is a buffered POST /vms/{name}/exec response.
