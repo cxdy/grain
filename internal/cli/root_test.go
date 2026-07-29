@@ -103,7 +103,7 @@ func TestRootPersistentFlags(t *testing.T) {
 func TestCmdNewFlags(t *testing.T) {
 	cfg := ""
 	cmd := cmdNew(&cfg)
-	for _, name := range []string{"persist", "name", "cpus", "mem", "disk", "image", "arch", "gpu", "network", "userdata-file", "profile", "preset", "wait", "publish", "volume", "publish-socket", "proxy"} {
+	for _, name := range []string{"persist", "name", "cpus", "mem", "disk", "image", "arch", "gpu", "network", "userdata-file", "recipe", "profile", "preset", "wait", "publish", "volume", "publish-socket", "proxy"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("missing flag --%s", name)
 		}
