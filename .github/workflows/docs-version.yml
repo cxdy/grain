@@ -1,0 +1,99 @@
+# Safety net: after a GitHub Release is published, ensure the Hugo site
+# defaults to that version (content snapshot + version switcher).
+# Prefer `just release-tag`, which bumps docs before tagging; this catches
+# hand-cut tags and forgotten bumps.
+name: Docs version
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver without or with v (e.g. 0.3.1 or v0.3.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            RAW="${{ inputs.version }}"
+          else
+            RAW="${{ github.event.release.tag_name }}"
+          fi
+          VER="${RAW#v}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "Skipping non-semver tag: $RAW"
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "version=$VER" >>"$GITHUB_OUTPUT"
+          echo "tag=v$VER" >>"$GITHUB_OUTPUT"
+          echo "skip=false" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout main
+        if: steps.ver.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Bump docs version
+        if: steps.ver.outputs.skip != 'true'
+        run: ./scripts/docs-version-bump.sh "${{ steps.ver.outputs.version }}"
+
+      - name: Open PR if main still needs the bump
+        if: steps.ver.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VER="${{ steps.ver.outputs.version }}"
+          BRANCH="docs/version-v${VER}"
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "docs already at v${VER} on main — nothing to do"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add docs/hugo.toml "docs/content/docs/${VER}"
+          git add -u docs/hugo.toml docs/content/docs/ || true
+          git commit -m "docs: publish v${VER} site version"
+          git push -u origin "$BRANCH" --force
+          # Create PR if one does not already exist for this branch
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            echo "PR already open for $BRANCH"
+            gh pr view "$BRANCH" --web || true
+          else
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "docs: publish v${VER} site version" \
+              --body "$(cat <<EOF
+          ## Summary
+          Automated docs version bump for **v${VER}** (release safety net).
+
+          - Snapshot \`docs/content/docs/main\` → \`docs/content/docs/${VER}/\`
+          - Set site default + version switcher to **v${VER} (latest)**
+
+          Prefer cutting releases with \`just release-tag\`, which performs this
+          bump before tagging. This workflow covers tags created without that recipe.
+
+          ## Test plan
+          - [ ] Version switcher shows v${VER} (latest)
+          - [ ] Home Install / Docs links point at \`/docs/${VER}/\`
+          - [ ] Pages deploy succeeds after merge
+          EOF
+          )"
+          fi
