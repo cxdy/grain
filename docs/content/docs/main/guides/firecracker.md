@@ -25,7 +25,7 @@ firecracker_binary: firecracker   # PATH lookup (default)
 kernel_path: ""                   # optional; default ~/.grain/kernels/vmlinux
 ```
 
-**Status:** experimental. Default remains `hypervisor: qemu`. The mock backend is unchanged for unit tests. macOS and hosts without Firecracker fail with clear errors.
+**Status:** experimental. Default remains `hypervisor: qemu`. The mock backend is unchanged for unit tests. macOS, hosts without Firecracker, and hosts without **`/dev/kvm`** fail with clear errors (`grain doctor` and create both surface KVM issues).
 
 ## Requirements
 
@@ -36,13 +36,17 @@ kernel_path: ""                   # optional; default ~/.grain/kernels/vmlinux
 | **Guest kernel** (`vmlinux`) | Uncompressed Linux kernel built for Firecracker (virtio MMIO, no PCI). Default path: `~/.grain/kernels/vmlinux` or `kernel_path` |
 | **Raw rootfs** | Firecracker root drives are **raw** block files, not qcow2 |
 | **qemu-img** | Used to convert qcow2 → raw when the VM disk is a qcow2 overlay |
-| **KVM** | `/dev/kvm` accessible to the grain daemon user |
+| **KVM** | `/dev/kvm` accessible to the grain daemon user (**required** — no TCG fallback) |
+| **Nested virt** | If grain runs *inside* a VM, the outer hypervisor must expose `vmx` (Intel) or `svm` (AMD) so `/dev/kvm` exists in the guest |
 
 Check with:
 
 ```bash
 grain doctor   # with hypervisor: firecracker in config
+# doctor hard-fails when /dev/kvm is missing or not RDWR-accessible
 ```
+
+If `grain new` fails, prefer the create error (and `~/.grain/logs/<name>.log`) over later agent/vsock messages — Firecracker exits immediately when KVM is unavailable.
 
 ## Image / rootfs notes
 

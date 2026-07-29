@@ -232,53 +232,128 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 	inst.PID = cmd.Process.Pid
 	_ = os.WriteFile(pidFile, []byte(strconv.Itoa(inst.PID)+"\n"), 0o644)
 
-	// Wait briefly for the API socket so Stop/Pause can use it.
+	// Single Wait reaper — consumed on early exit, otherwise left running so we
+	// do not leave zombies after Start returns success.
+	exitCh := make(chan error, 1)
+	go func() { exitCh <- cmd.Wait() }()
+
+	// Firecracker opens the API socket *before* finishing MicroVM start.
+	// KVM failures (missing /dev/kvm) exit shortly after the socket appears —
+	// so we must not treat "socket exists" as success without a grace poll.
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if st, err := os.Stat(apiSock); err == nil && st.Mode()&os.ModeSocket != 0 {
-			break
-		}
-		// Also accept plain file existence (some FS report sockets differently).
-		if _, err := os.Stat(apiSock); err == nil {
-			// try dial
-			if c, err := net.DialTimeout("unix", apiSock, 50*time.Millisecond); err == nil {
-				_ = c.Close()
-				break
-			}
-		}
-		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-			break
-		}
-		// Check if process already exited
-		if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
-			break
-		}
 		select {
+		case waitErr := <-exitCh:
+			return fcImmediateExitErr(logPath, waitErr)
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
+			select {
+			case <-exitCh:
+			case <-time.After(time.Second):
+			}
+			return ctx.Err()
+		default:
+		}
+
+		if fcAPISocketReady(apiSock) {
+			break
+		}
+		if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+			select {
+			case waitErr := <-exitCh:
+				return fcImmediateExitErr(logPath, waitErr)
+			case <-time.After(300 * time.Millisecond):
+				return fcImmediateExitErr(logPath, err)
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Grace period after socket (or timeout): catch "open sock → die on KVM".
+	graceDeadline := time.Now().Add(fcPostStartGrace)
+	for time.Now().Before(graceDeadline) {
+		select {
+		case waitErr := <-exitCh:
+			return fcImmediateExitErr(logPath, waitErr)
+		case <-ctx.Done():
+			_ = cmd.Process.Kill()
+			select {
+			case <-exitCh:
+			case <-time.After(time.Second):
+			}
 			return ctx.Err()
 		case <-time.After(50 * time.Millisecond):
+			if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+				select {
+				case waitErr := <-exitCh:
+					return fcImmediateExitErr(logPath, waitErr)
+				case <-time.After(300 * time.Millisecond):
+					return fcImmediateExitErr(logPath, err)
+				}
+			}
 		}
 	}
 
-	// Reap in background so we do not leave zombies; ignore exit here.
-	go func() { _ = cmd.Wait() }()
-
-	// If process died immediately, surface the log.
 	if !f.Running(inst) {
-		tail, _ := os.ReadFile(logPath)
-		extra := strings.TrimSpace(string(tail))
-		if len(extra) > 500 {
-			extra = extra[len(extra)-500:]
+		select {
+		case waitErr := <-exitCh:
+			return fcImmediateExitErr(logPath, waitErr)
+		default:
+			return fcImmediateExitErr(logPath, nil)
 		}
-		if extra != "" {
-			return fmt.Errorf("firecracker exited immediately (see %s)\n%s", logPath, extra)
-		}
-		return fmt.Errorf("firecracker exited immediately (see %s)", logPath)
 	}
 
 	inst.Status = vm.StatusRunning
 	return nil
+}
+
+// fcPostStartGrace is how long Start waits after the API socket appears for an
+// immediate Firecracker death (e.g. missing /dev/kvm). Tests may shrink it.
+var fcPostStartGrace = 750 * time.Millisecond
+
+func fcAPISocketReady(apiSock string) bool {
+	if st, err := os.Stat(apiSock); err == nil && st.Mode()&os.ModeSocket != 0 {
+		return true
+	}
+	// Some FS report sockets differently — try dial.
+	if _, err := os.Stat(apiSock); err == nil {
+		c, err := net.DialTimeout("unix", apiSock, 50*time.Millisecond)
+		if err == nil {
+			_ = c.Close()
+			return true
+		}
+	}
+	return false
+}
+
+// fcImmediateExitErr builds the Start error when Firecracker dies during boot.
+// Includes a log tail and a KVM-specific hint when the log mentions KVM.
+func fcImmediateExitErr(logPath string, waitErr error) error {
+	tail := readLogTail(logPath, 800)
+	hint := ""
+	low := strings.ToLower(tail)
+	if strings.Contains(low, "kvm") || strings.Contains(low, "/dev/kvm") {
+		hint = " (KVM unavailable — Firecracker requires /dev/kvm; enable nested virtualization if this host is a VM)"
+	}
+	if tail != "" {
+		return fmt.Errorf("firecracker exited immediately%s (see %s)\n%s", hint, logPath, tail)
+	}
+	if waitErr != nil {
+		return fmt.Errorf("firecracker exited immediately%s: %v (see %s)", hint, waitErr, logPath)
+	}
+	return fmt.Errorf("firecracker exited immediately%s (see %s)", hint, logPath)
+}
+
+func readLogTail(path string, max int) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	s := strings.TrimSpace(string(b))
+	if max > 0 && len(s) > max {
+		s = s[len(s)-max:]
+	}
+	return s
 }
 
 func (f *FirecrackerRuntime) Stop(ctx context.Context, inst *vm.Instance) error {
