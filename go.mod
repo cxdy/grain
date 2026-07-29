@@ -7,6 +7,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/mdlayher/vsock v1.3.0
 	github.com/modelcontextprotocol/go-sdk v1.6.0
+	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/crypto v0.54.0
 	golang.org/x/term v0.45.0
