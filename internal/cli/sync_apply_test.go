@@ -218,7 +218,6 @@ func TestApplyPushFileAndCrashModelA(t *testing.T) {
 		t.Fatal(err)
 	}
 	fs := newMemGuestFS()
-	st := newSyncState("local", "vm", host, "/work")
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	// Existing on-disk state that should survive failed apply.
 	prior := newSyncState("local", "vm", host, "/work")
@@ -239,8 +238,8 @@ func TestApplyPushFileAndCrashModelA(t *testing.T) {
 		},
 		Created: 2,
 	}
-	// Use same st that starts empty (in-memory); disk has prior.
-	st = newSyncState("local", "vm", host, "/work")
+	// Fresh in-memory state (disk still has prior).
+	st := newSyncState("local", "vm", host, "/work")
 	res, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
 		Verb:      syncPush,
 		HostRoot:  host,
