@@ -51,6 +51,7 @@ func Root(version string) *cobra.Command {
   grain new -P 8080:80  publish host:guest ports
   grain new -v HOST:GUEST  share host dir via virtio-9p
   grain new --profile agent   named profile from config
+  grain new --profile remote-coding  durable remote lab (builtin: -p, 4c/8G)
   grain new --preset docker|k3s|act   userdata presets
   grain new --recipe file.yaml  portable create + bootstrap recipe
   grain new --arch amd64      x86_64 guest (QEMU TCG on Apple Silicon)
@@ -65,9 +66,11 @@ func Root(version string) *cobra.Command {
   grain stop / start    stop or restart a persistent VM
   grain pause / resume  QMP freeze/unfreeze guest vCPUs
   grain suspend / restore  stop process (free RAM); restore from disk/snapshot
-  grain ls / rm / sh / x / cp
+  grain ls / rm / sh / x / cp / sync
+  grain sync push|pull  host↔guest directory sync (agent required)
+  grain agent health|deploy  guest agent health; redeploy over SSH (local)
   grain fs              guest readdir/stat/mkdir/rm via agent
-  grain profile ls      list named profiles
+  grain profile ls      list named + builtin profiles
   grain fwd ls/add/rm   list or live-add/remove port forwards
   grain stats [name]    guest resource stats (agent)
   grain secret ls|set|rm|inject  host secrets store
@@ -83,6 +86,8 @@ Remote team host (CLI dials HTTP instead of local socket):
   export GRAIN_API=http://127.0.0.1:7474   # after ssh -L 7474:127.0.0.1:7474 host
   export GRAIN_TOKEN=…                     # required when API is not loopback
   grain --api http://sandbox:7474 ls       # or flag instead of env
+  grain new --profile remote-coding --wait agent
+  grain sync push ~/proj NAME:/work/proj
   # see https://grainvm.com/guides/remote-host/`,
 		SilenceUsage: true,
 	}

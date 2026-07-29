@@ -105,6 +105,8 @@ proxy_listen: 0.0.0.0:3128   # guests reach host as 10.0.2.2:3128 via SLIRP
 
 ## Profiles
 
+Builtin (no config required): **`remote-coding`** — `persistent: true`, 4 CPU / 8192 MiB / 32 GiB, image `grain-ubuntu`. Override by defining the same name under `profiles:`.
+
 ```yaml
 profiles:
   agent:
@@ -123,4 +125,4 @@ profiles:
     preset: k3s
 ```
 
-Resolve order for `grain new`: **explicit flags → profile → global defaults**.
+Resolve order for `grain new`: **explicit flags → profile (config, else builtin) → global defaults**.

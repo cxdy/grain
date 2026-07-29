@@ -96,7 +96,7 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `-P` / `--publish` | `HOST:GUEST` or `GUEST` (repeatable) |
 | `-v` / `--volume` | `HOST:GUEST` share (repeatable) |
 | `--publish-socket` | Host↔guest unix socket forward |
-| `--profile` | Named profile |
+| `--profile` | Named profile from config, or builtin `remote-coding` |
 | `--preset` | `docker`, `k3s`, or `act` |
 | `--recipe` | Sandbox recipe YAML (create + optional bootstrap steps) |
 | `--userdata-file` | Extra cloud-init / shell (not with `--recipe`) |

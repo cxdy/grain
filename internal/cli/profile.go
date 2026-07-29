@@ -36,7 +36,10 @@ func cmdProfileLs(cfgPath *string) *cobra.Command {
 			fmt.Printf("%-16s %-5s %-8s %-6s %-14s %-8s %s\n",
 				"NAME", "CPUS", "MEM", "DISK", "IMAGE", "PERSIST", "PRESET/MOUNTS/FWDS")
 			for _, name := range names {
-				p := cfg.Profiles[name]
+				p, err := cfg.LookupProfile(name)
+				if err != nil {
+					return err
+				}
 				cpus := "-"
 				if p.CPUs > 0 {
 					cpus = fmt.Sprintf("%d", p.CPUs)
@@ -57,7 +60,13 @@ func cmdProfileLs(cfgPath *string) *cobra.Command {
 				if preset == "" {
 					preset = "-"
 				}
-				extra := fmt.Sprintf("%s m=%d f=%d", preset, len(p.Mounts), len(p.Forwards))
+				src := "config"
+				if cfg.Profiles == nil {
+					src = "builtin"
+				} else if _, ok := cfg.Profiles[name]; !ok {
+					src = "builtin"
+				}
+				extra := fmt.Sprintf("%s m=%d f=%d (%s)", preset, len(p.Mounts), len(p.Forwards), src)
 				fmt.Printf("%-16s %-5s %-8s %-6s %-14s %-8v %s\n",
 					name, cpus, mem, disk, img, p.Persistent, extra)
 			}

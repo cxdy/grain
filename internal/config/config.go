@@ -185,28 +185,54 @@ type ResolvedCreate struct {
 	ProfileName string
 }
 
+// BuiltinProfiles are create profiles available without defining them in config.
+// User config entries with the same name override these values.
+//
+// remote-coding: durable remote lab (persistent disk, more CPU/RAM). Prefer
+// grain sync for laptop↔guest trees — mounts are host paths on the daemon machine.
+func BuiltinProfiles() map[string]Profile {
+	return map[string]Profile{
+		"remote-coding": {
+			CPUs:       4,
+			MemoryMB:   8192,
+			DiskGB:     32,
+			Image:      "grain-ubuntu",
+			Persistent: true,
+		},
+	}
+}
+
 // LookupProfile returns the named profile or an error if missing.
+// Resolution: user config profiles first, then BuiltinProfiles.
 func (c Config) LookupProfile(name string) (Profile, error) {
 	if name == "" {
 		return Profile{}, fmt.Errorf("profile name is empty")
 	}
-	if c.Profiles == nil {
-		return Profile{}, fmt.Errorf("unknown profile %q", name)
+	if c.Profiles != nil {
+		if p, ok := c.Profiles[name]; ok {
+			return p, nil
+		}
 	}
-	p, ok := c.Profiles[name]
-	if !ok {
-		return Profile{}, fmt.Errorf("unknown profile %q", name)
+	if p, ok := BuiltinProfiles()[name]; ok {
+		return p, nil
 	}
-	return p, nil
+	return Profile{}, fmt.Errorf("unknown profile %q", name)
 }
 
-// ProfileNames returns sorted profile names.
+// ProfileNames returns sorted profile names (user config ∪ builtins).
 func (c Config) ProfileNames() []string {
-	if len(c.Profiles) == 0 {
+	seen := make(map[string]struct{})
+	for n := range c.Profiles {
+		seen[n] = struct{}{}
+	}
+	for n := range BuiltinProfiles() {
+		seen[n] = struct{}{}
+	}
+	if len(seen) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(c.Profiles))
-	for n := range c.Profiles {
+	names := make([]string, 0, len(seen))
+	for n := range seen {
 		names = append(names, n)
 	}
 	sort.Strings(names)

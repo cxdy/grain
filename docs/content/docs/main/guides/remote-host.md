@@ -241,8 +241,9 @@ export GRAIN_API=http://127.0.0.1:7474
 export GRAIN_TOKEN=long-random-secret
 
 grain ls
-# Prefer -p for multi-day coding labs: ephemeral VMs are lost if the daemon restarts.
-grain new -p -n alice-1 --wait agent
+# Prefer durable labs: ephemeral VMs are lost if the daemon restarts.
+grain new --profile remote-coding --wait agent -n alice-1
+# equivalent: grain new -p -c 4 -m 8192 -d 32 -i grain-ubuntu --wait agent -n alice-1
 grain x alice-1 -- uname -a
 grain sh alice-1                 # WebSocket via daemon proxy
 grain cp ./script.sh alice-1:/tmp/script.sh
@@ -311,12 +312,12 @@ grain new --profile agent -n alice-1 -v /var/lib/grain/workspaces/alice:/work
 
 Laptop paths like `/Users/alice/src` do **not** exist on the server.
 
-### Persistent labs (`-p`) for remote coding
+### Persistent labs (`-p` / `--profile remote-coding`) for remote coding
 
-Ephemeral sandboxes (`grain new` without `-p`) are removed when the daemon restarts. For multi-session remote work:
+Ephemeral sandboxes (`grain new` without `-p`) are removed when the daemon restarts. For multi-session remote work, use the builtin **`remote-coding`** profile (persistent, 4 CPU / 8 GiB RAM / 32 GiB disk, `grain-ubuntu`) or pass `-p` yourself:
 
 ```bash
-grain new -p -n alice-dev --wait agent -c 4 -m 8192
+grain new --profile remote-coding --wait agent -n alice-dev
 grain sync push ~/dev/proj alice-dev:/work/proj
 # … edit over days …
 grain stop alice-dev    # free RAM; disk kept
