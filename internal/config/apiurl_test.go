@@ -141,7 +141,8 @@ func TestLookupProfileAndResolveCreate(t *testing.T) {
 		t.Fatal(err, p)
 	}
 	names := cfg.ProfileNames()
-	if len(names) != 1 || names[0] != "dev" {
+	// user "dev" + builtin "remote-coding"
+	if len(names) != 2 || names[0] != "dev" || names[1] != "remote-coding" {
 		t.Fatal(names)
 	}
 

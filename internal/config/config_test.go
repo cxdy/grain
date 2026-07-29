@@ -279,7 +279,8 @@ func TestApplyDefaultsValidEnums(t *testing.T) {
 func TestProfileNamesAndLookupEmpty(t *testing.T) {
 	t.Parallel()
 	c := config.Config{}
-	if names := c.ProfileNames(); names != nil {
+	// Empty config still exposes builtins (remote-coding).
+	if names := c.ProfileNames(); len(names) == 0 || names[0] != "remote-coding" {
 		t.Fatalf("%v", names)
 	}
 	_, err := c.LookupProfile("")
@@ -288,7 +289,7 @@ func TestProfileNamesAndLookupEmpty(t *testing.T) {
 	}
 	_, err = c.LookupProfile("x")
 	if err == nil {
-		t.Fatal("nil profiles")
+		t.Fatal("unknown profile x should error")
 	}
 
 	c.Profiles = map[string]config.Profile{
@@ -297,7 +298,8 @@ func TestProfileNamesAndLookupEmpty(t *testing.T) {
 		"m": {},
 	}
 	names := c.ProfileNames()
-	if len(names) != 3 || names[0] != "a" || names[2] != "z" {
+	// a, m, remote-coding, z
+	if len(names) != 4 || names[0] != "a" || names[3] != "z" {
 		t.Fatalf("%v", names)
 	}
 	p, err := c.LookupProfile("m")

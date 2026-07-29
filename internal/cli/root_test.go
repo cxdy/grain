@@ -38,7 +38,10 @@ func TestRootHelp(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{"grain", "up", "new", "ls", "proxy", "secret"} {
+	for _, want := range []string{
+		"grain", "up", "new", "ls", "proxy", "secret",
+		"sync", "remote-coding", "agent health|deploy",
+	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("help missing %q:\n%s", want, out)
 		}
@@ -49,7 +52,7 @@ func TestRootSubcommandsPresent(t *testing.T) {
 	cmd := Root("0.0.0-test")
 	want := []string{
 		"up", "down", "new", "act", "stop", "start", "pause", "resume",
-		"suspend", "restore", "ls", "rm", "sh", "x", "cp", "fs", "logs",
+		"suspend", "restore", "ls", "rm", "sh", "x", "cp", "sync", "fs", "logs",
 		"fwd", "stats", "secret", "proxy", "profile", "image", "agent",
 		"doctor", "update", "mcp", "version",
 	}

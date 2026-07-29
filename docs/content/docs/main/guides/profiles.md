@@ -24,7 +24,27 @@ Portable YAML file for create + bootstrap (`grain new --recipe`) — better for 
 
 ## Named profiles
 
-Define reusable create defaults in `~/.grain/config.yaml`:
+Define reusable create defaults in `~/.grain/config.yaml`. **Built-in** profiles are available without config; the same name in config **overrides** the builtin.
+
+### Builtin: `remote-coding`
+
+Durable remote lab defaults (no host mounts — laptop paths are not on the daemon host; use `grain sync`):
+
+| Field | Value |
+|-------|--------|
+| `persistent` | `true` |
+| `cpus` | `4` |
+| `memory_mb` | `8192` |
+| `disk_gb` | `32` |
+| `image` | `grain-ubuntu` |
+
+```bash
+grain profile ls
+grain new --profile remote-coding --wait agent -n alice-dev
+grain sync push ~/proj alice-dev:/work/proj
+```
+
+### Config examples
 
 ```yaml
 profiles:
@@ -44,15 +64,21 @@ profiles:
     disk_gb: 20
     persistent: true
     preset: k3s
+  # optional override of the builtin:
+  # remote-coding:
+  #   cpus: 8
+  #   memory_mb: 16384
+  #   persistent: true
 ```
 
 ```bash
 grain profile ls
 grain new --profile agent
 grain new --profile k3s-lab -n lab
+grain new --profile remote-coding -n lab --wait agent
 ```
 
-**Resolve order:** CLI flags (only if explicitly set) → profile fields → global config defaults.
+**Resolve order:** CLI flags (only if explicitly set) → profile fields (config, else builtin) → global config defaults.
 
 Created instances are tagged `profile=<name>` for inspect via the API / meta.
 

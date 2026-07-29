@@ -20,6 +20,55 @@ func TestLookupProfileUnknown(t *testing.T) {
 	}
 }
 
+func TestBuiltinRemoteCodingProfile(t *testing.T) {
+	t.Parallel()
+	c := config.Defaults()
+	p, err := c.LookupProfile("remote-coding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Persistent || p.CPUs != 4 || p.MemoryMB != 8192 || p.DiskGB != 32 {
+		t.Fatalf("remote-coding: %+v", p)
+	}
+	if p.Image != "grain-ubuntu" {
+		t.Fatalf("image %q", p.Image)
+	}
+	r, err := c.ResolveCreate("remote-coding", config.CreateOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.ProfileName != "remote-coding" || !r.Persistent || r.CPUs != 4 || r.MemoryMB != 8192 {
+		t.Fatalf("resolve: %+v", r)
+	}
+	// Empty config still lists builtins.
+	names := c.ProfileNames()
+	found := false
+	for _, n := range names {
+		if n == "remote-coding" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("ProfileNames missing remote-coding: %v", names)
+	}
+}
+
+func TestUserProfileOverridesBuiltin(t *testing.T) {
+	t.Parallel()
+	c := config.Defaults()
+	c.Profiles = map[string]config.Profile{
+		"remote-coding": {CPUs: 2, MemoryMB: 2048, Persistent: false, Image: "ubuntu-cloud"},
+	}
+	p, err := c.LookupProfile("remote-coding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.CPUs != 2 || p.Persistent || p.Image != "ubuntu-cloud" {
+		t.Fatalf("override: %+v", p)
+	}
+}
+
 func TestResolveCreateMergesFlagOverProfileOverZero(t *testing.T) {
 	t.Parallel()
 	c := config.Defaults()
@@ -141,8 +190,13 @@ profiles:
 		t.Fatal(err)
 	}
 	names := c.ProfileNames()
-	if len(names) != 2 || names[0] != "agent" || names[1] != "lab" {
-		t.Fatalf("names %v", names)
+	// user profiles + builtins (remote-coding)
+	want := map[string]bool{"agent": true, "lab": true, "remote-coding": true}
+	for _, n := range names {
+		delete(want, n)
+	}
+	if len(want) != 0 {
+		t.Fatalf("ProfileNames missing %v; got %v", want, names)
 	}
 	p, err := c.LookupProfile("agent")
 	if err != nil {
