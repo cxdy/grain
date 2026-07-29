@@ -1,4 +1,4 @@
-package cli
+package vmsync
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"github.com/cxdy/grain/internal/api"
 )
 
-// syncFS is the guest-side surface required by sync.
+// FS is the guest-side surface required by sync.
 // Paths are absolute guest paths (adapters bind the VM name).
-type syncFS interface {
+type FS interface {
 	Stat(ctx context.Context, path string) (*agent.FSInfo, error)
 	ReadDir(ctx context.Context, path string) ([]agent.FSInfo, error)
 	Mkdir(ctx context.Context, path string, recursive bool, mode string) error
@@ -19,9 +19,17 @@ type syncFS interface {
 	GetFile(ctx context.Context, path string, w io.Writer) error
 }
 
+// syncFS is an alias for FS (legacy name used in apply).
+type syncFS = FS
+
 // agentSyncFS wraps *agent.Client for local dial after dialGuestAgent.
 type agentSyncFS struct {
 	c *agent.Client
+}
+
+// NewAgentFS wraps *agent.Client for local dial after dialGuestAgent.
+func NewAgentFS(c *agent.Client) FS {
+	return &agentSyncFS{c: c}
 }
 
 func newAgentSyncFS(c *agent.Client) *agentSyncFS {
@@ -56,6 +64,11 @@ func (a *agentSyncFS) GetFile(ctx context.Context, path string, w io.Writer) err
 type apiSyncFS struct {
 	c      *api.Client
 	vmName string
+}
+
+// NewAPIFS binds vmName into every api.Client call (remoteMode / GRAIN_API).
+func NewAPIFS(c *api.Client, vmName string) FS {
+	return &apiSyncFS{c: c, vmName: vmName}
 }
 
 func newAPISyncFS(c *api.Client, vmName string) *apiSyncFS {

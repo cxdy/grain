@@ -101,6 +101,7 @@ Each agent has its **own** config file and schema. Pick a host, choose **stdio**
 | `grain_write_file` / `grain_read_file` | Write/read guest files (text or base64) |
 | `grain_put_tar` / `grain_get_tar` | Upload/download tar (base64) |
 | `grain_fs_readdir` / `grain_fs_stat` / `grain_fs_mkdir` / `grain_fs_remove` | Structured guest FS |
+| `grain_sync_push` / `grain_sync_pull` | Incremental host↔guest directory sync (agent required; same as CLI) |
 
 ### Observability
 

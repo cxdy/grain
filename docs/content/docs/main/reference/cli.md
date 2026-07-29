@@ -72,12 +72,14 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `grain suspend` / `restore` | Free RAM / bring back persistent VM |
 | `grain sh [name]` | Shell (agent PTY preferred) |
 | `grain x [name] -- cmd…` | Exec (streaming agent preferred) |
-| `grain cp src dst` | Copy (`NAME:path` or host path) |
+| `grain cp src dst` | Copy (`NAME:path` or host path); both directions |
+| `grain sync push\|pull` | Incremental host↔guest directory sync (agent required) |
 | `grain fs ls\|stat\|mkdir\|rm` | Guest filesystem helpers |
 | `grain logs [name] [-f] [--qemu]` | Serial or QEMU logs |
 | `grain stats [name]` | Guest resource stats |
 | `grain fwd ls\|add\|rm` | Port forwards |
 | `grain agent health [name]` | Agent health JSON (includes readiness when present) |
+| `grain agent deploy [name]` | Install/refresh guest agent over SSH (local daemon) |
 | `grain status [name]` | One-line VM + guest readiness |
 
 ### `grain new` flags
@@ -119,6 +121,46 @@ Name is optional for `sh` / `rm` / `x` / `fs` / etc. when exactly one VM exists.
 | (default) | Prefer guest agent when healthy |
 | `--agent` | Agent only; error if unavailable |
 | `--ssh` | Force SSH/scp |
+
+### `grain cp` (both directions)
+
+```bash
+# host → guest
+grain cp ./script.sh lab:/tmp/script.sh
+grain cp ~/proj lab:/work/proj/
+
+# guest → host (reverse copy — same command, swap args)
+grain cp lab:/work/proj/out.json ./out.json
+grain cp lab:/var/log/cloud-init.log ./cloud-init.log
+```
+
+Remote CLI (`GRAIN_API`) uses the daemon’s agent proxy for `cp` — no scp from the laptop. Guest↔guest in one step is not supported (pull then push).
+
+### `grain sync push | pull`
+
+Incremental **directory** sync with a host-side baseline under `~/.grain/sync/` (or `data_dir/sync/`). Requires the guest agent (no scp fallback). Directory roots only — use `cp` for single files.
+
+```bash
+grain sync push  ~/proj  lab:/work/proj
+grain sync pull  lab:/work/proj  ~/proj
+grain sync push  ~/proj  lab:/work/proj --dry-run
+grain sync pull  lab:/work/proj  ~/proj --delete --force
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--delete` | Remove dest paths missing on source (ignored paths never deleted) |
+| `--dry-run` | Plan only; no writes or state update |
+| `--force` | Source-wins for conflicts and dest-ahead paths |
+| `--exclude` | Extra gitignore-style patterns (repeatable) |
+| `--no-defaults` | Skip built-in ignores (`.git/`) |
+| `--no-gitignore` / `--no-grainignore` | Skip host ignore files |
+| `--verbose` / `-v` | List skipped / kept_dest paths |
+| `--max-file-size` | Skip source files larger than N bytes |
+
+Exit codes: `0` ok, `1` usage, `2` conflicts (zero applies), `3` apply error. Dest-ahead paths are **kept** unless `--force` — successful sync is not always a full mirror.
+
+MCP: `grain_sync_push` / `grain_sync_pull` with the same semantics.
 
 ## GitHub Actions (`grain act`)
 

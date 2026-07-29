@@ -1,4 +1,4 @@
-package cli
+package vmsync
 
 import (
 	"context"
@@ -14,16 +14,24 @@ import (
 	"github.com/cxdy/grain/internal/agent"
 )
 
-// Sync exit codes (design doc).
+// Exit codes (design doc).
 const (
-	syncExitOK       = 0
-	syncExitUsage    = 1
-	syncExitConflict = 2
-	syncExitApply    = 3
+	ExitOK       = 0
+	ExitUsage    = 1
+	ExitConflict = 2
+	ExitApply    = 3
+
+	syncExitOK       = ExitOK
+	syncExitUsage    = ExitUsage
+	syncExitConflict = ExitConflict
+	syncExitApply    = ExitApply
 )
 
-// errSyncConflicts is returned when the plan has conflicts and apply is blocked.
-var errSyncConflicts = fmt.Errorf("sync: conflicts present")
+// ErrConflicts is returned when the plan has conflicts and apply is blocked.
+var ErrConflicts = fmt.Errorf("sync: conflicts present")
+
+// errSyncConflicts is the legacy alias used inside apply.
+var errSyncConflicts = ErrConflicts
 
 // syncApplyOpts configures applySyncPlan.
 type syncApplyOpts struct {

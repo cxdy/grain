@@ -123,6 +123,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 		cmdSh(&cfgPath),
 		cmdX(&cfgPath),
 		cmdCp(&cfgPath),
+		cmdSync(&cfgPath),
 		cmdFs(&cfgPath),
 		cmdLogs(&cfgPath),
 		cmdFwd(&cfgPath),
@@ -1207,7 +1208,76 @@ func cmdAgent(cfgPath *string) *cobra.Command {
 			return nil
 		},
 	})
+	root.AddCommand(&cobra.Command{
+		Use:   "deploy [name]",
+		Short: "Install or refresh grain-agent in the guest over SSH",
+		Long: `SCP the host's grain-agent Linux binary into the guest and enable the
+systemd unit. Use after upgrading the host CLI so the guest agent picks up
+new features (clipboard env, readiness fields, etc.).
+
+Requires a local daemon (SSH hostfwd is on the grain host). Remote CLI users
+should SSH to the host and run deploy there, or recreate the VM with a golden
+image that already bakes the agent.
+
+  just agent-linux          # build bin/grain-agent-linux-$arch if missing
+  grain agent deploy NAME
+  grain agent health NAME`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentDeploy(cfgPath, args)
+		},
+	})
 	return root
+}
+
+func runAgentDeploy(cfgPath *string, args []string) error {
+	cfg, err := loadCfg(cfgPath)
+	if err != nil {
+		return err
+	}
+	if err := requireLocalDaemon(cfg, "agent deploy"); err != nil {
+		return err
+	}
+	c, err := clientFrom(cfg)
+	if err != nil {
+		return err
+	}
+	name, err := resolveVMName(c, args, false)
+	if err != nil {
+		return err
+	}
+	host, port, err := getVMSSH(c, name)
+	if err != nil {
+		return err
+	}
+	bin, err := agent.LinuxBinaryPath(cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("agent binary not found (run: just agent-linux): %w", err)
+	}
+	id := grainSSHIdentity(cfg)
+	if !fileExists(id) {
+		id = ""
+	}
+	user := cfg.SSHUser
+	if user == "" {
+		user = "grain"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	fmt.Fprintf(os.Stderr, "deploying grain-agent to %s (ssh %s@%s:%d) from %s\n", name, user, host, port, bin)
+	if err := guest.EnsureAgent(ctx, host, port, user, id, bin); err != nil {
+		return err
+	}
+	// Best-effort health after deploy.
+	hctx, hcancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer hcancel()
+	h, err := c.AgentHealth(hctx, name)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "deployed, but health check failed (agent may still be starting): %v\n", err)
+		return nil
+	}
+	fmt.Printf("deployed agent version %s on %s\n", h.AgentVersion, name)
+	return nil
 }
 
 func cmdStatus(cfgPath *string) *cobra.Command {
