@@ -1,7 +1,13 @@
 ---
-title: Go SDK
+title: "Go SDK (client package)"
 description: Public Go client for the grain daemon — DialUnix, create, exec, lifecycle, and more.
 section: reference
+keywords:
+  - Go
+  - SDK
+  - client
+  - DialUnix
+  - golang
 ---
 
 Package: [`github.com/cxdy/grain/client`](https://pkg.go.dev/github.com/cxdy/grain/client)
@@ -149,6 +155,6 @@ HTTP API errors decode to messages from the JSON `error` field. Always check `er
 
 ## See also
 
-- [HTTP API](/docs/0.4.0/reference/api/)  
-- [TypeScript SDK](/docs/0.4.0/reference/typescript-sdk/)  
+- [HTTP API](../api/)  
+- [TypeScript SDK](../typescript-sdk/)  
 - Repo package docs: [`client/README.md`](https://github.com/cxdy/grain/blob/main/client/README.md)  

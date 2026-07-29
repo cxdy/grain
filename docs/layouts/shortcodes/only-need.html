@@ -1,0 +1,17 @@
+{{/*
+  Callout: point readers at a shorter path.
+
+  {{< only-need href="get-started/bootstrap/" >}}
+  Run setup before the shell and watch progress with grain status.
+  {{< /only-need >}}
+
+  href is relative to the current docs version root (/docs/<ver>/).
+*/}}
+{{- $ver := partial "docs-version.html" .Page -}}
+{{- $href := .Get "href" | default (.Get 0) -}}
+{{- $label := .Get "label" | default "If you only need…" -}}
+{{- $url := printf "/docs/%s/%s" $ver (strings.TrimPrefix "/" $href) -}}
+<aside class="docs-only-need" role="note">
+  <p class="docs-only-need-label">{{ $label }}</p>
+  <p class="docs-only-need-body">{{ .Inner | markdownify }} <a class="docs-only-need-link" href="{{ $url | relURL }}">Go →</a></p>
+</aside>

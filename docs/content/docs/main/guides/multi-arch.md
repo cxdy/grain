@@ -1,8 +1,20 @@
 ---
-title: Guest architecture
+title: "Guest architecture (arm64 / amd64, TCG)"
 description: Run arm64 or amd64 Linux guests, including x86_64 on Apple Silicon via QEMU TCG.
 section: guides
+keywords:
+  - multi-arch
+  - arm64
+  - amd64
+  - x86_64
+  - TCG
+  - Apple Silicon
+  - guest arch
 ---
+
+{{< only-need href="get-started/quickstart/" >}}
+Native arch is the default — only read this for cross-arch guests.
+{{< /only-need >}}
 
 By default grain matches the **host** architecture (Apple Silicon → arm64 guests, Intel/AMD → amd64).
 
@@ -32,4 +44,4 @@ Apple’s **Rosetta for Linux** is a Virtualization.framework feature, not QEMU 
 
 ## See also
 
-- [Images](/docs/0.2.2/guides/images/)  
+- [Images](../images/)  

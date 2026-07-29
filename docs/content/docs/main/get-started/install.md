@@ -1,8 +1,20 @@
 ---
-title: Install grain
+title: "Install grain (CLI + QEMU)"
 description: Install the grain CLI on macOS or Linux, verify dependencies, and prepare for your first VM.
 section: get-started
+keywords:
+  - install
+  - brew
+  - qemu
+  - grain doctor
+  - upgrade
+  - go install
+  - release binary
 ---
+
+{{< only-need href="get-started/quickstart/" >}}
+Install + first sandbox in one page if you just want a working shell.
+{{< /only-need >}}
 
 This tutorial gets the **grain** binary onto your machine and checks that QEMU (or your chosen hypervisor) is ready. When you finish, you will be able to run `grain version` and `grain doctor`.
 
@@ -15,7 +27,7 @@ This tutorial gets the **grain** binary onto your machine and checks that QEMU (
 
 grain runs **Linux microVMs** with hardware virtualization (HVF on macOS, KVM on Linux when available). That is ordinary virtualization on a supported host — not nested virtualization. **Nested** virtualization only applies if the machine *running grain* is already a VM (for example grain inside another hypervisor) and the outer layer must expose hardware virt to that guest.
 
-**Windows (native):** not supported as a grain host. From Windows, drive a remote grain daemon on macOS or Linux via the [HTTP API](/docs/0.2.2/reference/api/) or [SDKs](/docs/0.2.2/reference/go-sdk/).
+**Windows (native):** not supported as a grain host. From Windows, drive a remote grain daemon on macOS or Linux via the [HTTP API](../../reference/api/) or [SDKs](../../reference/go-sdk/).
 
 **WSL / WSL2:** the environment reports as Linux, so the install script accepts it the same way as other Linux hosts. You still need **hardware virtualization available to that environment** (same requirement as bare-metal Linux). Running grain *inside* a VM without virt exposed is the nested case above — not a special WSL-only rule.
 
@@ -44,7 +56,7 @@ The script:
 
 Default install locations: `/usr/local/bin` if writable, otherwise `~/.local/bin`. Override with `GRAIN_INSTALL_DIR`.
 
-After install, the script asks whether to **enable MCP by default** (`mcp.enabled` in `~/.grain/config.yaml`). Non-interactive installs skip the prompt; use `GRAIN_ENABLE_MCP=1` or `0` to force yes/no. If you skip, you can enable later with `grain up --mcp` — see [MCP server](/docs/0.2.2/guides/mcp/).
+After install, the script asks whether to **enable MCP by default** (`mcp.enabled` in `~/.grain/config.yaml`). Non-interactive installs skip the prompt; use `GRAIN_ENABLE_MCP=1` or `0` to force yes/no. If you skip, you can enable later with `grain up --mcp` — see [MCP server](../../mcp/).
 
 ## Upgrade
 
@@ -111,5 +123,5 @@ You should see checks that look healthy for your platform. Soft warnings (for ex
 
 ## Next
 
-- [Quick start](/docs/0.2.2/get-started/quickstart/) — starter config + first sandbox in one page  
-- [Your first sandbox](/docs/0.2.2/get-started/first-sandbox/) — guided tutorial + interactive demo
+- [Quick start](../quickstart/) — starter config + first sandbox in one page  
+- [First sandbox](../first-sandbox/) — guided tutorial + interactive demo

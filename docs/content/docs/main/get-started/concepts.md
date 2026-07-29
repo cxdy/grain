@@ -1,8 +1,21 @@
 ---
-title: Core concepts
+title: "Core concepts (daemon, images, agent)"
 description: A short glossary of daemon, images, sandboxes, the guest agent, and how they fit together.
 section: get-started
+keywords:
+  - daemon
+  - images
+  - sandbox
+  - guest agent
+  - ephemeral
+  - persistent
+  - hypervisor
+  - API
 ---
+
+{{< only-need href="get-started/quickstart/" >}}
+Hands-on install → create → shell without the glossary first.
+{{< /only-need >}}
 
 ## Daemon
 
@@ -40,12 +53,11 @@ Automation can use:
 - Unix socket: `~/.grain/grain.sock`  
 - TCP: `http://127.0.0.1:7474` (default config)  
 - OpenAPI: `GET /openapi.yaml`  
-- SDKs: [Go](/docs/0.2.2/reference/go-sdk/) · [TypeScript](/docs/0.2.2/reference/typescript-sdk/) · [Python](/docs/0.2.2/reference/python-sdk/)  
-
+- SDKs: [Go](../../reference/go-sdk/) · [TypeScript](../../reference/typescript-sdk/) · [Python](../../reference/python-sdk/)  
 
 Optional Bearer auth: set `api_token` in config and `GRAIN_TOKEN` in the environment.
 
-For a **shared remote machine** (daemon as a service, teammates over SSH or SDKs), see [Remote sandbox host](/docs/0.2.2/guides/remote-host/). The CLI uses the **local unix socket** on the machine where it runs; remote automation uses the TCP API or an SSH session on the host.
+For a **shared remote machine** (daemon as a service, teammates over SSH or SDKs), see [Remote sandbox host](../../guides/remote-host/). The CLI uses the **local unix socket** on the machine where it runs; remote automation uses the TCP API or an SSH session on the host.
 
 ## Hypervisors
 

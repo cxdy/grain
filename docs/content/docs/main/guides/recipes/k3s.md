@@ -1,9 +1,18 @@
 ---
-title: k3s lab
+title: "k3s lab (single-node Kubernetes)"
 description: Spin up a disposable or persistent single-node k3s cluster with grain’s k3s preset.
 section: guides
+keywords:
+  - k3s
+  - Kubernetes
+  - kubeconfig
+  - preset
+  - cluster
 ---
 
+{{< only-need href="get-started/quickstart/" >}}
+Plain sandbox first — this page is for the k3s preset and kubeconfig pull.
+{{< /only-need >}}
 
 Spin up a disposable (or persistent) k3s node with grain’s embedded `k3s` preset, forward the API port, and pull `kubeconfig` onto the host.
 

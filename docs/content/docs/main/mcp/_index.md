@@ -1,8 +1,19 @@
 ---
-title: MCP
-description: Connect coding agents to grain sandboxes via Model Context Protocol.
+title: "MCP server (coding agents)"
+description: "Connect Claude Code, Cursor, Codex, Grok Build, and other MCP hosts to grain sandboxes."
 section: mcp
+keywords:
+  - MCP
+  - Claude
+  - Cursor
+  - Codex
+  - Grok
+  - agents
 ---
+
+{{< only-need href="mcp/hosts/" >}}
+Pick your agent and copy the exact config (stdio or HTTP).
+{{< /only-need >}}
 
 grain exposes sandbox tools over the [Model Context Protocol](https://modelcontextprotocol.io/) so coding agents can create, inspect, run commands in, and delete microVMs.
 
@@ -164,9 +175,9 @@ grain_k3s  name=lab  (optional host_dir)
 
 ## See also
 
-- [HTTP API](/docs/0.2.2/reference/api/)
-- [Go SDK](/docs/0.2.2/reference/go-sdk/)
-- [CLI](/docs/0.2.2/reference/cli/)
-- [Configuration](/docs/0.2.2/reference/config/)
-- [act recipe](/docs/0.2.2/guides/recipes/act/)
-- [k3s recipe](/docs/0.2.2/guides/recipes/k3s/)
+- [HTTP API](../reference/api/)
+- [Go SDK](../reference/go-sdk/)
+- [CLI](../reference/cli/)
+- [Configuration](../reference/config/)
+- [act recipe](../guides/recipes/act/)
+- [k3s recipe](../guides/recipes/k3s/)

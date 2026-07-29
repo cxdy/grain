@@ -1,8 +1,20 @@
 ---
-title: Security model
+title: "Security model (trust, proxy, secrets)"
 description: What grain isolates, what it trusts, and how proxy and secrets fit.
 section: explain
+keywords:
+  - security
+  - isolation
+  - trust
+  - API token
+  - secrets
+  - proxy
+  - multi-tenant
 ---
+
+{{< only-need href="guides/remote-host/" >}}
+Team/shared host setup (token, bind, firewall) is covered in Remote sandbox host.
+{{< /only-need >}}
 
 ## What grain gives you
 
@@ -49,7 +61,7 @@ Running grain on a team machine so developers create sandboxes remotely is a sup
 - Remote CLI: `GRAIN_API` / `--api` + `GRAIN_TOKEN`  
 - Resource caps; published ports stay on host loopback  
 
-Full guide: [Remote sandbox host](/docs/0.4.0/guides/remote-host/).
+Full guide: [Remote sandbox host](../guides/remote-host/).
 
 ## Images
 

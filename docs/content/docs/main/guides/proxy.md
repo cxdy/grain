@@ -1,9 +1,19 @@
 ---
-title: "Egress proxy"
+title: "Egress proxy (allowlist + secret inject)"
 description: "Default-deny HTTP(S) proxy with allow rules and secrets."
 section: guides
+keywords:
+  - proxy
+  - egress
+  - allowlist
+  - HTTPS_PROXY
+  - secrets
+  - default deny
 ---
 
+{{< only-need href="guides/secrets/" >}}
+Need a secret **file inside** the guest? Use secrets inject instead.
+{{< /only-need >}}
 
 grain can run a **host-side HTTP(S) forward proxy** that guest VMs use via
 `HTTPS_PROXY` / `HTTP_PROXY`. Outbound traffic is **default-deny**: only
@@ -155,7 +165,7 @@ write_files:
 
 ### Coding agents
 
-See [recipes/coding-agent.md](/docs/0.2.2/guides/recipes/coding-agent/) for a sandbox with a
+See [coding agent recipe](../recipes/coding-agent/) for a sandbox with a
 mounted repo; add `grain proxy up` + allow rules for model/API hosts and
 `grain new --proxy` so the agent cannot reach the open internet.
 
@@ -183,5 +193,5 @@ mounted repo; add `grain proxy up` + allow rules for model/API hosts and
 
 ## Related
 
-- [Networking](/docs/0.2.2/guides/networking/) — SLIRP, hostfwd, ports
-- [Recipes: coding agent](/docs/0.2.2/guides/recipes/coding-agent/)
+- [Networking](../networking/) — SLIRP, hostfwd, ports
+- [Recipes: coding agent](../recipes/coding-agent/)

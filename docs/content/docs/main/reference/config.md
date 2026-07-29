@@ -1,7 +1,13 @@
 ---
-title: Configuration reference
+title: "Configuration reference (config.yaml)"
 description: All knobs in ~/.grain/config.yaml for daemon and CLI defaults.
 section: reference
+keywords:
+  - config
+  - config.yaml
+  - api_token
+  - mcp
+  - defaults
 ---
 
 Default path: `~/.grain/config.yaml`. Override with `grain --config path …`.
@@ -32,7 +38,7 @@ mcp:
   listen: 127.0.0.1:7476     # MCP endpoint http://LISTEN/mcp
 ```
 
-Or one-shot: `grain up --mcp`. Stdio for IDE hosts: `grain mcp`. See [MCP server](/docs/0.2.2/guides/mcp/).
+Or one-shot: `grain up --mcp`. Stdio for IDE hosts: `grain mcp`. See [MCP server](../../mcp/).
 
 Upgrade notices (not `grain update` itself) can also be disabled with env:
 

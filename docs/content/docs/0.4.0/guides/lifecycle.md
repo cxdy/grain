@@ -1,8 +1,21 @@
 ---
-title: Pause, suspend, and restore
+title: "Pause, suspend, and restore (lifecycle)"
 description: Free guest CPUs or host RAM without losing a persistent lab.
 section: guides
+keywords:
+  - pause
+  - resume
+  - suspend
+  - restore
+  - stop
+  - start
+  - persistent
+  - lifecycle
 ---
+
+{{< only-need href="get-started/quickstart/" >}}
+Create, shell, and `grain rm` — no pause/suspend for disposable sandboxes.
+{{< /only-need >}}
 
 ## Pause vs suspend
 

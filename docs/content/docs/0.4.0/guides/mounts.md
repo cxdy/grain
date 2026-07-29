@@ -1,9 +1,19 @@
 ---
-title: "Mounts and host shares"
+title: "Mounts and host shares (9p, virtiofs)"
 description: "virtio-9p and virtiofs directory sharing."
 section: guides
+keywords:
+  - mounts
+  - volumes
+  - 9p
+  - virtiofs
+  - share
+  - host directory
 ---
 
+{{< only-need href="get-started/quickstart/" >}}
+Mount a repo with `-v $PWD:/work` on create; details here if mounts misbehave.
+{{< /only-need >}}
 
 Share a host directory into a guest with virtio-9p (default) or virtiofs (Linux) at create time:
 
@@ -107,9 +117,9 @@ mkdir -p /opt/cache
 grain new --userdata-file ./userdata.sh
 ```
 
-Or a `#cloud-config` document with `runcmd` / `mounts` keys—grain merges list keys (`runcmd`, `packages`, …) with its base config. See [Images](/docs/0.4.0/guides/images/) for the default cloud image and SSH user.
+Or a `#cloud-config` document with `runcmd` / `mounts` keys—grain merges list keys (`runcmd`, `packages`, …) with its base config. See [Images](../images/) for the default cloud image and SSH user.
 
 ## Related
 
-- [Networking](/docs/0.4.0/guides/networking/) — SLIRP and `--publish`
-- [Troubleshooting](/docs/0.4.0/guides/troubleshooting/) — cloud-init and serial logs
+- [Networking](../networking/) — SLIRP and `--publish`
+- [Troubleshooting](../troubleshooting/) — cloud-init and serial logs

@@ -1,9 +1,20 @@
 ---
-title: "Networking and ports"
+title: "Networking and ports (SLIRP, publish, hostfwd)"
 description: "SLIRP, publish, live forwards, and limits."
 section: guides
+keywords:
+  - networking
+  - ports
+  - publish
+  - hostfwd
+  - SLIRP
+  - SSH
+  - port forward
 ---
 
+{{< only-need href="get-started/quickstart/" >}}
+Publish a port on create with `-P` and open a shell — no deep networking yet.
+{{< /only-need >}}
 
 grain VMs use QEMU **user networking (SLIRP)**. Each VM gets a private guest network; the host reaches guest services only through **hostfwd** port mappings bound to `127.0.0.1`.
 
@@ -98,10 +109,10 @@ Shows the built-in SSH row plus any `--publish` entries.
 From the guest, the host is **`10.0.2.2`**. Run `grain proxy up` on the host
 (default listen `0.0.0.0:3128`) and point `HTTPS_PROXY` at
 `http://TOKEN@10.0.2.2:3128` for default-deny allowlisted HTTP(S) and optional
-secret injection. Details: [proxy.md](/docs/0.4.0/guides/proxy/).
+secret injection. Details: [Egress proxy](../proxy/).
 
 ## Related
 
-- [Mounts](/docs/0.4.0/guides/mounts/) — share host directories into the guest
-- [Egress proxy](/docs/0.4.0/guides/proxy/) — allowlist + secret injection
-- [Troubleshooting](/docs/0.4.0/guides/troubleshooting/) — SSH wait, serial logs, resource caps
+- [Mounts](../mounts/) — share host directories into the guest
+- [Egress proxy](../proxy/) — allowlist + secret injection
+- [Troubleshooting](../troubleshooting/) — SSH wait, serial logs, resource caps

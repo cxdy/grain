@@ -1,7 +1,14 @@
 ---
-title: HTTP API reference
+title: "HTTP API reference (REST daemon)"
 description: Daemon REST API over unix socket or TCP for automation and the Go/TypeScript SDKs.
 section: reference
+keywords:
+  - API
+  - REST
+  - OpenAPI
+  - unix socket
+  - TCP
+  - curl
 ---
 
 ## Connect
@@ -24,7 +31,7 @@ curl -s http://127.0.0.1:7474/openapi.yaml
 
 ## Machine-readable schema
 
-- **Interactive viewer:** [OpenAPI explorer](/docs/0.2.2/reference/openapi/) (Swagger UI on this site)
+- **Interactive viewer:** [OpenAPI explorer](../openapi/) (Swagger UI on this site)
 - Served live from a running daemon: `GET /openapi.yaml` and `GET /openapi.json`
 - Static copy on the site: [`/assets/openapi.yaml`](/assets/openapi.yaml)
 - Repo source: [`api/openapi.yaml`](https://github.com/cxdy/grain/blob/main/api/openapi.yaml)
@@ -74,7 +81,7 @@ curl -N --unix-socket ~/.grain/grain.sock \
 
 Prefer typed clients when embedding:
 
-- [Go SDK](/docs/0.2.2/reference/go-sdk/) — [`github.com/cxdy/grain/client`](https://pkg.go.dev/github.com/cxdy/grain/client)
-- [TypeScript SDK](/docs/0.2.2/reference/typescript-sdk/) — [`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain)
-- [Python SDK](/docs/0.2.2/reference/python-sdk/) — [`grainvm`](https://pypi.org/project/grainvm/)
+- [Go SDK](../go-sdk/) — [`github.com/cxdy/grain/client`](https://pkg.go.dev/github.com/cxdy/grain/client)
+- [TypeScript SDK](../typescript-sdk/) — [`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain)
+- [Python SDK](../python-sdk/) — [`grainvm`](https://pypi.org/project/grainvm/)
 

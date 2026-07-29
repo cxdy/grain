@@ -1,8 +1,18 @@
 ---
-title: Virtio GPU
+title: "Virtio GPU (display device, not passthrough)"
 description: Attach a virtio-gpu device to grain QEMU guests.
 section: guides
+keywords:
+  - GPU
+  - virtio-gpu
+  - display
+  - Wayland
+  - graphics
 ---
+
+{{< only-need href="get-started/quickstart/" >}}
+Headless is the default — skip this unless you need a virtio display device.
+{{< /only-need >}}
 
 grain runs headless by default (`-display none`). For guests that want a virtio display device (Wayland/X in the guest, GPU-aware tools, etc.), enable **virtio-gpu**.
 
@@ -28,4 +38,4 @@ gpu: virtio
 
 ## See also
 
-- [CLI reference](/docs/0.4.0/reference/cli/)  
+- [CLI reference](../../reference/cli/)  

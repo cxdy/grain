@@ -1,7 +1,12 @@
 ---
-title: Quick start
-description: Install grain, drop in a starter config, and open a shell in a Linux microVM.
+title: "Quick start (install → shell)"
+description: "Install grain and QEMU, optional starter config, create a microVM, open a shell, tear down."
 section: get-started
+keywords:
+  - install
+  - quickstart
+  - first sandbox
+  - shell
 ---
 
 From zero to a working sandbox in a few minutes. When you finish this page you will have:
@@ -12,7 +17,7 @@ From zero to a working sandbox in a few minutes. When you finish this page you w
 
 **Platforms:** macOS and Linux (amd64 / arm64) with hardware virtualization. Native Windows is not a host — use a remote grain daemon. WSL reports as Linux; same virt requirements as other Linux hosts.
 
-Deep dives live elsewhere: [Install](/docs/0.4.0/get-started/install/) · [First sandbox tutorial + demo](/docs/0.4.0/get-started/first-sandbox/) · [Config reference](/docs/0.4.0/reference/config/).
+Deep dives: [Install](../install/) · [First sandbox + demo](../first-sandbox/) · [Bootstrap until ready](../bootstrap/) · [Config](../../reference/config/).
 
 ---
 
@@ -45,7 +50,7 @@ grain doctor
 
 `grain doctor` checks QEMU, data dirs, and soft-warns if the guest agent binary is missing (OK for first pull of the golden image).
 
-Other install paths (release binary, `go install`, from source): [Install grain](/docs/0.4.0/get-started/install/).
+Other install paths (release binary, `go install`, from source): [Install grain](../install/).
 
 ---
 
@@ -96,7 +101,7 @@ EOF
 | `cpus` / `memory_mb` / `disk_gb` | Size defaults for `grain new` |
 | `profiles.work` | Reusable create knobs + mount + port forward |
 
-All fields: [Configuration reference](/docs/0.4.0/reference/config/). Remote / team hosts need a token and different bind rules — see [Remote sandbox host](/docs/0.4.0/guides/remote-host/).
+All fields: [Configuration reference](../../reference/config/). Remote / team hosts need a token and different bind rules — see [Remote sandbox host](../../guides/remote-host/).
 
 ---
 
@@ -159,7 +164,7 @@ grain act -- -l              # list workflows / jobs
 grain act -- -j test         # run a job in an ephemeral microVM
 ```
 
-Docker + [act](https://github.com/nektos/act) run **inside** the guest so host Docker stays clean. Full guide: [GitHub Actions with act](/docs/0.4.0/guides/recipes/act/).
+Docker + [act](https://github.com/nektos/act) run **inside** the guest so host Docker stays clean. Full guide: [GitHub Actions with act](../../guides/recipes/act/).
 
 ### Throwaway k3s lab
 
@@ -168,7 +173,7 @@ grain new --preset k3s -n lab -p --wait userdata
 grain fwd ls lab             # host port → guest 6443
 ```
 
-Pull kubeconfig and use host `kubectl` — see [k3s recipe](/docs/0.4.0/guides/recipes/k3s/).
+Pull kubeconfig and use host `kubectl` — see [k3s recipe](../../guides/recipes/k3s/).
 
 ---
 
@@ -202,7 +207,7 @@ grain x lab -- cat /tmp/hello.sh
 grain new --preset docker
 ```
 
-More: [Profiles & presets](/docs/0.4.0/guides/profiles/) · [Mounts](/docs/0.4.0/guides/mounts/) · [Networking](/docs/0.4.0/guides/networking/).
+More: [Profiles & presets](../../guides/profiles/) · [Mounts](../../guides/mounts/) · [Networking](../../guides/networking/).
 
 ---
 
@@ -221,7 +226,7 @@ Common fixes:
 | `grain: command not found` | Ensure install dir is on `PATH` (`/usr/local/bin` or `~/.local/bin`) |
 | Doctor fails on QEMU | Install QEMU (step 1); reopen the terminal |
 | Image pull fails | Check network; list images with `grain image ls` |
-| Create hangs / no shell | Prefer `grain-ubuntu`; see [Troubleshooting](/docs/0.4.0/guides/troubleshooting/) |
+| Create hangs / no shell | Prefer `grain-ubuntu`; see [Troubleshooting](../../guides/troubleshooting/) |
 
 ---
 
@@ -236,17 +241,17 @@ curl --unix-socket ~/.grain/grain.sock http://grain/vms
 
 | SDK | Install |
 |-----|---------|
-| [Go](/docs/0.4.0/reference/go-sdk/) | `go get github.com/cxdy/grain/client` |
-| [TypeScript](/docs/0.4.0/reference/typescript-sdk/) | `npm install @cxdy/grain` |
-| [Python](/docs/0.4.0/reference/python-sdk/) | `pip install grainvm` |
+| [Go](../../reference/go-sdk/) | `go get github.com/cxdy/grain/client` |
+| [TypeScript](../../reference/typescript-sdk/) | `npm install @cxdy/grain` |
+| [Python](../../reference/python-sdk/) | `pip install grainvm` |
 
 ---
 
 ## Next steps
 
-- [GitHub Actions (act)](/docs/0.4.0/guides/recipes/act/) · [k3s lab](/docs/0.4.0/guides/recipes/k3s/)  
-- [Your first sandbox](/docs/0.4.0/get-started/first-sandbox/) — interactive demo + deeper walkthrough  
-- [Core concepts](/docs/0.4.0/get-started/concepts/) — daemon, images, agent, ephemeral vs persistent  
-- [Guides](/docs/0.4.0/guides/) — images, agent, mounts, proxy, remote host  
-- [CLI reference](/docs/0.4.0/reference/cli/) · [HTTP API](/docs/0.4.0/reference/api/)  
+- [GitHub Actions (act)](../../guides/recipes/act/) · [k3s lab](../../guides/recipes/k3s/)  
+- [First sandbox](../first-sandbox/) — interactive demo + deeper walkthrough  
+- [Core concepts](../concepts/) — daemon, images, agent, ephemeral vs persistent  
+- [Guides](../../guides/) — images, agent, mounts, proxy, remote host  
+- [CLI reference](../../reference/cli/) · [HTTP API](../../reference/api/)  
 

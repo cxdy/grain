@@ -1,8 +1,19 @@
 ---
-title: Overlay network between VMs
+title: "Overlay network (guest↔guest L2)"
 description: Share an L2 segment across grain VMs with network overlay mode.
 section: guides
+keywords:
+  - overlay
+  - guest to guest
+  - multi-VM
+  - multicast
+  - L2
+  - network
 ---
+
+{{< only-need href="guides/networking/" >}}
+Host→guest ports and SLIRP only — no guest↔guest fabric needed.
+{{< /only-need >}}
 
 By default each grain VM uses **SLIRP** (`user` networking): isolated from other VMs, with host→guest port forwards.
 
@@ -40,4 +51,4 @@ Inside the guest, configure addresses on the second interface yourself (static I
 
 ## See also
 
-- [Networking & ports](/docs/0.4.0/guides/networking/) — SLIRP and hostfwd  
+- [Networking & ports](../networking/) — SLIRP and hostfwd  

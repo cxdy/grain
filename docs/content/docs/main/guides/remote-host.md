@@ -2,7 +2,17 @@
 title: "Remote sandbox host (team box)"
 description: "Run grain as a service on a shared machine; connect with the CLI over HTTP, SSH tunnels, or SDKs — with firewall and token rules."
 section: guides
+keywords:
+  - remote
+  - GRAIN_API
+  - token
+  - team
+  - ssh tunnel
 ---
+
+{{< only-need href="get-started/quickstart/" >}}
+Run everything on your laptop first — remote host is optional.
+{{< /only-need >}}
 
 grain is local-first, but a single **beefy host** can serve a team: one daemon, many sandboxes, developers connect over **SSH**, the **remote CLI** (`GRAIN_API` / `--api`), or **SDKs**. This guide covers a practical setup and the security controls you must not skip.
 
@@ -15,7 +25,7 @@ grain is local-first, but a single **beefy host** can serve a team: one daemon, 
 | Developers using **SSH + CLI**, **remote CLI**, or **SDKs** | A drop-in Kubernetes cluster |
 | Guest isolation via microVMs | A substitute for your VPN, firewall, and OS patching |
 
-If you need true multi-tenant SaaS isolation, put grain behind stronger controls (or separate hosts per trust domain). See [Security model](/docs/0.2.2/explain/security/).
+If you need true multi-tenant SaaS isolation, put grain behind stronger controls (or separate hosts per trust domain). See [Security model](../../explain/security/).
 
 ## Architecture
 
@@ -317,7 +327,7 @@ Laptop paths like `/Users/alice/src` do **not** exist on the server.
 
 ## See also
 
-- [Configuration](/docs/0.2.2/reference/config/) — `api`, `api_url`, `api_token`, caps  
-- [Security model](/docs/0.2.2/explain/security/)  
-- [CLI reference](/docs/0.2.2/reference/cli/)  
-- [Go](/docs/0.2.2/reference/go-sdk/) · [TypeScript](/docs/0.2.2/reference/typescript-sdk/) · [Python](/docs/0.2.2/reference/python-sdk/) SDKs  
+- [Configuration](../../reference/config/) — `api`, `api_url`, `api_token`, caps  
+- [Security model](../../explain/security/)  
+- [CLI reference](../../reference/cli/)  
+- [Go](../../reference/go-sdk/) · [TypeScript](../../reference/typescript-sdk/) · [Python](../../reference/python-sdk/) SDKs  

@@ -1,8 +1,20 @@
 ---
-title: Images and boot
+title: "Images and boot (golden vs cloud)"
 description: Why base images matter, how golden boots differ from cloud images, and how to think about speed.
 section: explain
+keywords:
+  - images
+  - boot
+  - golden
+  - grain-ubuntu
+  - cloud-init
+  - bench
+  - bake
 ---
+
+{{< only-need href="guides/images/" >}}
+Pull, import, bake, and day-to-day image commands live in the Images guide.
+{{< /only-need >}}
 
 ## Catalog at a glance
 
@@ -44,4 +56,4 @@ just build && just agent-linux
 # or CI: ./scripts/ci-bake-golden.sh
 ```
 
-See [Images guide](/docs/0.2.2/guides/images/).
+See [Images guide](../guides/images/).

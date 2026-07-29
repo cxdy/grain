@@ -1,7 +1,13 @@
 ---
-title: CLI reference
+title: "CLI reference (all grain commands)"
 description: Complete grain command reference for interactive use.
 section: reference
+keywords:
+  - CLI
+  - commands
+  - grain new
+  - grain sh
+  - grain up
 ---
 
 Global flags:
@@ -22,7 +28,7 @@ grain ls
 grain --api http://sandbox:7474 ls
 ```
 
-See [Remote sandbox host](/docs/0.4.0/guides/remote-host/) for firewall and systemd.
+See [Remote sandbox host](../../guides/remote-host/) for firewall and systemd.
 
 ## Daemon
 
@@ -123,7 +129,7 @@ grain act --keep -- -W .github/workflows/ci.yml
 | `--timeout` | 15m | Create + ready + act |
 | `--keep` | false | Keep VM after act exits |
 
-Full guide: [Recipe: GitHub Actions (act)](/docs/0.4.0/guides/recipes/act/).
+Full guide: [Recipe: GitHub Actions (act)](../../guides/recipes/act/).
 
 ## Secrets & proxy
 

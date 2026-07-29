@@ -1,8 +1,19 @@
 ---
-title: "Product surface"
+title: "Product surface (what’s done / experimental)"
 description: "What grain implements for local Linux microVM sandboxes."
 section: explain
+keywords:
+  - parity
+  - product surface
+  - status
+  - roadmap
+  - features
+  - experimental
 ---
+
+{{< only-need href="get-started/quickstart/" >}}
+Use the product first — this page is a capability checklist.
+{{< /only-need >}}
 
 grain’s local microVM product surface as of the v0.2 line.
 

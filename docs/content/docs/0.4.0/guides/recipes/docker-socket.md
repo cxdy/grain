@@ -1,9 +1,18 @@
 ---
-title: "Recipe: Docker in the VM + socket forward pattern"
-description: How-to recipe from the grain documentation set.
+title: "Docker in the VM (socket forward)"
+description: Install Docker via preset; use in-guest or forward the socket to the host.
 section: guides
+keywords:
+  - Docker
+  - docker socket
+  - preset
+  - socket forward
+  - recipe
 ---
 
+{{< only-need href="guides/recipes/act/" >}}
+Need GitHub Actions with act? That recipe boots Docker + act for you.
+{{< /only-need >}}
 
 Install Docker inside a grain VM (via the `docker` preset), then either use Docker only from the guest or expose the daemon socket to the host for local clients.
 

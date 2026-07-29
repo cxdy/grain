@@ -1,8 +1,19 @@
 ---
-title: MCP tools
+title: "MCP tools (lifecycle, exec, act, k3s)"
 description: Sandbox lifecycle, exec, files, workspace, act, and k3s tools exposed over MCP.
 section: mcp
+keywords:
+  - MCP tools
+  - grain_exec
+  - grain_create_vm
+  - grain_act
+  - grain_k3s
+  - tools list
 ---
+
+{{< only-need href="mcp/hosts/" >}}
+Wire your agent first — tool names only matter once the host is connected.
+{{< /only-need >}}
 
 The MCP server registers tools such as:
 

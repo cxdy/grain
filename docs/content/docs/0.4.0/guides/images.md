@@ -1,9 +1,18 @@
 ---
-title: "Images and golden boots"
-description: "Pull, import, bake, and choose base images."
+title: "Images and golden boots (pull, import, bake)"
+description: "Pull grain-ubuntu goldens, import disks, bake images, and choose ubuntu/alpine bases."
 section: guides
+keywords:
+  - image
+  - golden
+  - grain-ubuntu
+  - bake
+  - pull
 ---
 
+{{< only-need href="get-started/quickstart/" >}}
+`grain image pull grain-ubuntu` then `grain new` — no bake required.
+{{< /only-need >}}
 
 ## Default image selection (`auto`)
 
@@ -271,11 +280,11 @@ A smaller rootfs can be added later as another catalog id; the default stays a k
 
 When `hypervisor: firecracker`, guests need a **raw** root disk and a separate **vmlinux** kernel. Catalog qcow2 cloud images are converted with `qemu-img convert -O raw` at Start when possible; otherwise Start asks for a raw golden.
 
-Firecracker does not use UEFI the same way as QEMU aarch64 cloud boots. Prefer a FC-oriented kernel + rootfs pair. See [firecracker.md](/docs/0.4.0/guides/firecracker/) for layout, vsock agent, and limits.
+Firecracker does not use UEFI the same way as QEMU aarch64 cloud boots. Prefer a FC-oriented kernel + rootfs pair. See [Firecracker](../firecracker/) for layout, vsock agent, and limits.
 
 ## Related
 
-- [Troubleshooting](/docs/0.4.0/guides/troubleshooting/) — pull failures, doctor image check
-- [Firecracker](/docs/0.4.0/guides/firecracker/) — experimental FC backend, kernel/rootfs, vsock
-- [Agent](/docs/0.4.0/guides/agent/) — wait modes, deploy, golden HasAgent path
-- [Mounts](/docs/0.4.0/guides/mounts/) — 9p shares into the guest
+- [Troubleshooting](../troubleshooting/) — pull failures, doctor image check
+- [Firecracker](../firecracker/) — experimental FC backend, kernel/rootfs, vsock
+- [Agent](../agent/) — wait modes, deploy, golden HasAgent path
+- [Mounts](../mounts/) — 9p shares into the guest

@@ -1,13 +1,25 @@
 ---
-title: Your first sandbox
+title: "First sandbox (demo + real shell)"
 description: Start the grain daemon, pull a base image, create a VM, and open a shell — with an interactive demo.
 sandbox_demo: true
 section: get-started
+keywords:
+  - first sandbox
+  - demo
+  - grain new
+  - grain sh
+  - grain-ubuntu
+  - create
+  - shell
 ---
+
+{{< only-need href="get-started/quickstart/" >}}
+Install → starter config → create → shell in one short page.
+{{< /only-need >}}
 
 By the end of this lesson you will understand the real commands to run a Linux microVM and open a shell. Prefer the **interactive demo** first, then run the same steps on your machine.
 
-For the shortest path (install + starter config + cleanup), use [Quick start](/docs/0.4.0/get-started/quickstart/).
+For the shortest path (install + starter config + cleanup), use [Quick start](../quickstart/). Custom first-boot setup (packages, scripts) before ready: [Bootstrap until ready](../bootstrap/).
 
 ## Interactive demo
 
@@ -107,4 +119,4 @@ grain down        # stop the daemon when you are done for the day
 - `sh` / `x` talk to the guest agent when possible  
 - Ephemeral VMs are disposable by design  
 
-**Next:** [Quick start](/docs/0.4.0/get-started/quickstart/) (config + common flags), [Core concepts](/docs/0.4.0/get-started/concepts/), then a [guide](/docs/0.4.0/guides/) for mounts, proxy, or k3s.
+**Next:** [Quick start](../quickstart/) (config + common flags), [Core concepts](../concepts/), [Bootstrap until ready](../bootstrap/) for custom setup, then a [guide](../../guides/) for mounts, proxy, or k3s.

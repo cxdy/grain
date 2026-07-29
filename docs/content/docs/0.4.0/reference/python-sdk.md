@@ -1,7 +1,12 @@
 ---
-title: Python SDK
+title: "Python SDK (grainvm)"
 description: Stdlib Python client for the grain daemon — TCP or Unix socket, create, exec, lifecycle, and more.
 section: reference
+keywords:
+  - Python
+  - SDK
+  - grainvm
+  - pip
 ---
 
 PyPI: **[`grainvm`](https://pypi.org/project/grainvm/)** (import as `grain`).  
@@ -126,7 +131,7 @@ Non-2xx responses raise `GrainAPIError` with `.status` and optional `.body`. Buf
 
 ## See also
 
-- [Go SDK](/docs/0.4.0/reference/go-sdk/)
-- [TypeScript SDK](/docs/0.4.0/reference/typescript-sdk/)
-- [HTTP API](/docs/0.4.0/reference/api/)
+- [Go SDK](../go-sdk/)
+- [TypeScript SDK](../typescript-sdk/)
+- [HTTP API](../api/)
 - OpenAPI: [`api/openapi.yaml`](https://github.com/cxdy/grain/blob/main/api/openapi.yaml)

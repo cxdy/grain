@@ -1,13 +1,22 @@
 ---
-title: "Troubleshooting"
-description: "Diagnose boot, agent, and QEMU issues."
+title: "Troubleshooting (boot, agent, QEMU)"
+description: "Diagnose create hangs, agent health, QEMU failures, and platform issues."
 section: guides
+keywords:
+  - troubleshoot
+  - doctor
+  - hang
+  - qemu
+  - agent
 ---
 
+{{< only-need href="get-started/install/" >}}
+`grain doctor` first — many issues are missing QEMU or PATH.
+{{< /only-need >}}
 
 ## Supported platforms
 
-grain supports **macOS** and **Linux** hosts (amd64 / arm64) with hardware virtualization. Native **Windows** is not a host OS — use the remote API/SDK against a macOS or Linux machine. **WSL** reports as Linux and follows the same virt requirements as other Linux hosts (see [Install → Supported platforms](/docs/0.2.2/get-started/install/)). Nested virtualization only matters when grain itself runs *inside* another VM without hardware virt exposed to that guest.
+grain supports **macOS** and **Linux** hosts (amd64 / arm64) with hardware virtualization. Native **Windows** is not a host OS — use the remote API/SDK against a macOS or Linux machine. **WSL** reports as Linux and follows the same virt requirements as other Linux hosts (see [Install → Supported platforms](../../get-started/install/)). Nested virtualization only matters when grain itself runs *inside* another VM without hardware virt exposed to that guest.
 
 ## `grain doctor`
 
@@ -149,10 +158,10 @@ grain doctor   # should show socket OK
 host port 80 is privileged (< 1024)
 ```
 
-Use `-P 8080:80` or `-P 80` (auto high host port). See [Networking](/docs/0.2.2/guides/networking/).
+Use `-P 8080:80` or `-P 80` (auto high host port). See [Networking](../networking/).
 
 ## Related
 
-- [Networking](/docs/0.2.2/guides/networking/)
-- [Mounts](/docs/0.2.2/guides/mounts/)
-- [Images](/docs/0.2.2/guides/images/)
+- [Networking](../networking/)
+- [Mounts](../mounts/)
+- [Images](../images/)

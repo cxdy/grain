@@ -85,6 +85,9 @@ paginate = 20
       title = "First sandbox"
       path = "get-started/first-sandbox/"
     [[params.docsNav.groups.links]]
+      title = "Bootstrap until ready"
+      path = "get-started/bootstrap/"
+    [[params.docsNav.groups.links]]
       title = "Core concepts"
       path = "get-started/concepts/"
     [[params.docsNav.groups.links]]

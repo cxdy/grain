@@ -1,9 +1,23 @@
 ---
-title: "Guest agent"
-description: "Use grain-agent for exec, shell, files, and health."
+title: "Guest agent (exec, shell, files, health)"
+description: "Use grain-agent inside the VM for exec, shell, copy, fs, health, and readiness — without living in SSH."
 section: guides
+keywords:
+  - agent
+  - grain-agent
+  - exec
+  - shell
+  - health
+  - readiness
 ---
 
+{{< only-need href="get-started/first-sandbox/" >}}
+Open a shell and run commands — agent is used automatically when healthy.
+{{< /only-need >}}
+
+{{< only-need href="get-started/bootstrap/" >}}
+Block create until custom setup finishes (readiness / `--wait bootstrap`).
+{{< /only-need >}}
 
 The guest agent is a small HTTP server that runs **inside** each Linux VM. The host CLI and daemon talk to it over either **virtio-vsock** (when the host supports it) or a QEMU SLIRP hostfwd to guest port **7475**, so common operations work without opening an interactive SSH session.
 
@@ -12,7 +26,7 @@ The guest agent is a small HTTP server that runs **inside** each Linux VM. The h
 | Capability | Guest HTTP | Host CLI / API |
 |------------|------------|----------------|
 | **Health** | `GET /health` | `grain agent health [name]` · `GET /vms/{name}/agent/health` |
-| **Readiness** | `GET /readiness` · fields on `/health` | `grain status [name]` · bootstrap wait — see [Readiness protocol](/docs/main/explain/readiness/) |
+| **Readiness** | `GET /readiness` · fields on `/health` | `grain status [name]` · bootstrap wait — see [Readiness protocol](../../explain/readiness/) |
 | **Exec** | `POST /exec` | `grain x [name] -- cmd…` · `POST /vms/{name}/exec` |
 | **Shell** | `GET /shell` (WebSocket PTY) | `grain sh [name]` · prefers agent; `--ssh` / `--agent` |
 | **Copy** | `PUT/GET /cp` | `grain cp` · `PUT/GET /vms/{name}/cp` |
@@ -37,9 +51,9 @@ grain new / start
 | `--wait ssh` | SSH up; agent deploy is best-effort |
 | `--wait agent` | create fails if agent never becomes healthy |
 | `--wait userdata` | agent healthy **and** userdata marker present |
-| `--wait bootstrap` | agent healthy, then readiness protocol `state=ready` (see [Readiness protocol](/docs/main/explain/readiness/)) |
+| `--wait bootstrap` | agent healthy, then readiness protocol `state=ready` (see [Readiness protocol](../../explain/readiness/)) |
 
-Golden images (`grain-ubuntu` via `grain image import` / bake) set `has_agent` so create prefers probing the agent before SSH deploy. See [images.md](/docs/main/guides/images/).
+Golden images (`grain-ubuntu` via `grain image import` / bake) set `has_agent` so create prefers probing the agent before SSH deploy. See [Images](../images/).
 
 ## Deploy (host → guest)
 
@@ -187,7 +201,7 @@ c, err := client.DialUnix(filepath.Join(home, ".grain", "grain.sock"))
 
 ## Related
 
-- [images.md](/docs/main/guides/images/) — golden agent-baked images  
-- [recipes/coding-agent.md](/docs/main/guides/recipes/coding-agent/) — mount repo, run agent, cp results  
-- [recipes/ci-ephemeral.md](/docs/main/guides/recipes/ci-ephemeral/) — create → x → rm  
-- [troubleshooting.md](/docs/main/guides/troubleshooting/) — doctor, logs, timeouts  
+- [Images](../images/) — golden agent-baked images  
+- [Coding agent recipe](../recipes/coding-agent/) — mount repo, run agent, cp results  
+- [CI ephemeral recipe](../recipes/ci-ephemeral/) — create → x → rm  
+- [Troubleshooting](../troubleshooting/) — doctor, logs, timeouts  
