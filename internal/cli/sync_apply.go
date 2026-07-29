@@ -154,10 +154,7 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 		case syncActSkip:
 			if it.BaselineDirty {
 				// Cold-start size match: record baseline without transfer.
-				if err := markColdStartBaseline(opts, it); err != nil {
-					res.ExitCode = syncExitApply
-					return res, err
-				}
+				markColdStartBaseline(opts, it)
 				res.Dirty = true
 			}
 		case syncActKeptDest, syncActConflict:
@@ -239,7 +236,7 @@ func depthKey(rel string) int {
 	return strings.Count(rel, "/") + 1
 }
 
-func markColdStartBaseline(opts syncApplyOpts, it syncPlanItem) error {
+func markColdStartBaseline(opts syncApplyOpts, it syncPlanItem) {
 	var hostE, guestE *syncInvEntry
 	switch opts.Verb {
 	case syncPull:
@@ -249,7 +246,6 @@ func markColdStartBaseline(opts syncApplyOpts, it syncPlanItem) error {
 		hostE, guestE = it.Source, it.Dest
 	}
 	opts.State.setEntry(it.RelPath, invToFingerprint(hostE), invToFingerprint(guestE))
-	return nil
 }
 
 func applyDelete(ctx context.Context, opts syncApplyOpts, it syncPlanItem) error {

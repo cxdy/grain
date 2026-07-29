@@ -115,9 +115,7 @@ func (m *memGuestFS) PutFile(_ context.Context, path string, r io.Reader, size i
 	if err != nil {
 		return err
 	}
-	if size >= 0 && int64(len(b)) != size && size != 0 {
-		// allow
-	}
+	_ = size
 	_ = opts
 	m.files[path] = b
 	// ensure parent dir
