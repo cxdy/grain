@@ -12,4 +12,5 @@ Short paths into grain:
 | [Install](install/) | Platforms, install options, QEMU |
 | [First sandbox](first-sandbox/) | Interactive demo + guided real create |
 | [Bootstrap until ready](bootstrap/) | Custom apt/scripts before create reports ready |
+| [Sandbox recipes](recipe/) | Portable YAML: create + bootstrap steps |
 | [Core concepts](concepts/) | Daemon, images, agent, ephemeral vs persistent |

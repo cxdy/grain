@@ -114,6 +114,7 @@ grain health lab   # full JSON including readiness
 
 ## Next
 
+- Prefer a checked-in YAML file? [Sandbox recipes](../recipe/) (`grain new --recipe`)  
 - Full contract (states, wait modes, agent API): [Readiness protocol](../explain/readiness/)  
 - Named create defaults: [Profiles & presets](../guides/profiles/)  
 - Baking faster images later: [Images](../guides/images/)  

@@ -18,7 +18,7 @@ Custom images and long first-boot setup need a **shared contract** with grain: h
 
 **Ready means:** the VM is up, the guest agent is healthy, and bootstrap completed with **zero failures** (`state=ready`). Failure or timeout does **not** report ready.
 
-This page is the full contract. Stock goldens already satisfy a compatible subset without custom files. **Sandbox recipe files** (declarative create + bootstrap steps) are a later layer that *implements* this protocol.
+This page is the full contract. Stock goldens already satisfy a compatible subset without custom files. **[Sandbox recipe files](../get-started/recipe/)** (`grain new --recipe`) implement this protocol for you: they generate cloud-init that stamps readiness as each step runs.
 
 ## Goals
 
@@ -187,7 +187,7 @@ Use **`--wait bootstrap`** only when your image or userdata implements this prot
 | **Preset** | Embedded cloud-init fragments (`docker`, `k3s`, `act`) |
 | **Docs “recipes”** | Human guides / one-shot CLIs (`grain act`) |
 | **Readiness protocol** | Guest contract for progress + done (this page) |
-| **Sandbox recipe file** (future) | Portable YAML that drives create + bootstrap *using* this protocol |
+| **Sandbox recipe file** | Portable YAML: `grain new --recipe` → create + bootstrap *using* this protocol |
 
 ## See also
 

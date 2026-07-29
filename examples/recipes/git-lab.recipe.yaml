@@ -1,0 +1,28 @@
+# Minimal sandbox recipe: install git, wait until bootstrap ready.
+#
+#   grain up
+#   grain image pull grain-ubuntu
+#   grain new --recipe examples/recipes/git-lab.recipe.yaml
+#   grain status git-lab
+#   grain sh git-lab
+#
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: git-lab
+  description: Ubuntu sandbox with git installed before ready
+spec:
+  image: grain-ubuntu
+  cpus: 2
+  memory_mb: 2048
+  ready_timeout: 10m
+  # wait defaults to bootstrap when steps are present
+  bootstrap:
+    ready_name: git-lab
+    steps:
+      - name: packages
+        message: installing git
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq git

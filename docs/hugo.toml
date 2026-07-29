@@ -88,6 +88,9 @@ paginate = 20
       title = "Bootstrap until ready"
       path = "get-started/bootstrap/"
     [[params.docsNav.groups.links]]
+      title = "Sandbox recipes"
+      path = "get-started/recipe/"
+    [[params.docsNav.groups.links]]
       title = "Core concepts"
       path = "get-started/concepts/"
     [[params.docsNav.groups.links]]

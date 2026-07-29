@@ -18,6 +18,10 @@ Create one sandbox and open a shell without profiles yet.
 Custom install steps that must finish before ready (`--wait bootstrap`).
 {{< /only-need >}}
 
+{{< only-need href="get-started/recipe/" >}}
+Portable YAML file for create + bootstrap (`grain new --recipe`) — better for git than host profiles.
+{{< /only-need >}}
+
 ## Named profiles
 
 Define reusable create defaults in `~/.grain/config.yaml`:
