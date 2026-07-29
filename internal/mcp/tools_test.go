@@ -349,6 +349,7 @@ func TestToolNamesExpanded(t *testing.T) {
 		grainmcp.ToolAgentHealth, grainmcp.ToolLogs, grainmcp.ToolStats,
 		grainmcp.ToolWorkspace, grainmcp.ToolForwardAdd, grainmcp.ToolImageList,
 		grainmcp.ToolAct, grainmcp.ToolK3s, grainmcp.ToolFSReadDir,
+		grainmcp.ToolSyncPush, grainmcp.ToolSyncPull,
 	}
 	got := map[string]bool{}
 	for _, n := range names {

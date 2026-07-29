@@ -16,6 +16,7 @@ import (
 	"github.com/cxdy/grain/client"
 	"github.com/cxdy/grain/internal/cloudinit"
 	"github.com/cxdy/grain/internal/presets"
+	"github.com/cxdy/grain/internal/vmsync"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -47,6 +48,8 @@ const (
 	ToolFSRemove       = "grain_fs_remove"
 	ToolAct            = "grain_act"
 	ToolK3s            = "grain_k3s"
+	ToolSyncPush       = "grain_sync_push"
+	ToolSyncPull       = "grain_sync_pull"
 	DefaultCreateImage = "grain-ubuntu"
 	DefaultCreateWait  = client.WaitAgent
 	DefaultExecTimeout = 15 * time.Minute
@@ -81,6 +84,8 @@ func ToolNames() []string {
 		ToolFSRemove,
 		ToolAct,
 		ToolK3s,
+		ToolSyncPush,
+		ToolSyncPull,
 	}
 }
 
@@ -261,6 +266,18 @@ func (s *Server) register(srv *mcp.Server) {
 		Description: "Create a k3s lab sandbox (k3s userdata preset, API port 6443, higher memory). " +
 			"Waits for agent then optionally waits for kubectl/k3s readiness. kind is not a separate preset—use k3s.",
 	}, s.toolK3s)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: ToolSyncPush,
+		Description: "Unidirectional sync host directory → guest directory (same as grain sync push). " +
+			"Requires guest agent. Directory roots only. Conflicts exit without applying unless force=true.",
+	}, s.toolSyncPush)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: ToolSyncPull,
+		Description: "Unidirectional sync guest directory → host directory (same as grain sync pull). " +
+			"Requires guest agent. Directory roots only. Conflicts exit without applying unless force=true.",
+	}, s.toolSyncPull)
 }
 
 // --- input types ---
@@ -381,6 +398,20 @@ type k3sIn struct {
 	Image     string `json:"image,omitempty"`
 	Timeout   string `json:"timeout,omitempty"`
 	SkipWait  bool   `json:"skip_wait,omitempty" jsonschema:"if true, do not wait for kubectl nodes Ready"`
+}
+
+type syncIn struct {
+	Name          string   `json:"name" jsonschema:"sandbox/VM name"`
+	HostDir       string   `json:"host_dir" jsonschema:"absolute host directory root"`
+	GuestDir      string   `json:"guest_dir" jsonschema:"absolute guest directory root e.g. /work/proj"`
+	Delete        bool     `json:"delete,omitempty" jsonschema:"remove dest paths missing on source"`
+	DryRun        bool     `json:"dry_run,omitempty" jsonschema:"plan only; no writes"`
+	Force         bool     `json:"force,omitempty" jsonschema:"source-wins for conflicts and dest-ahead"`
+	Exclude       []string `json:"exclude,omitempty" jsonschema:"extra gitignore-style patterns"`
+	NoDefaults    bool     `json:"no_defaults,omitempty"`
+	NoGitignore   bool     `json:"no_gitignore,omitempty"`
+	NoGrainignore bool     `json:"no_grainignore,omitempty"`
+	MaxFileSize   int64    `json:"max_file_size,omitempty" jsonschema:"skip source files larger than N bytes"`
 }
 
 // --- core handlers ---
@@ -1141,6 +1172,83 @@ func (s *Server) toolK3s(ctx context.Context, _ *mcp.CallToolRequest, in k3sIn) 
 		}
 	}
 	return toolJSON(out)
+}
+
+func (s *Server) toolSyncPush(ctx context.Context, _ *mcp.CallToolRequest, in syncIn) (*mcp.CallToolResult, any, error) {
+	return s.runSyncTool(ctx, vmsync.Push, in)
+}
+
+func (s *Server) toolSyncPull(ctx context.Context, _ *mcp.CallToolRequest, in syncIn) (*mcp.CallToolResult, any, error) {
+	return s.runSyncTool(ctx, vmsync.Pull, in)
+}
+
+func (s *Server) runSyncTool(ctx context.Context, verb vmsync.Verb, in syncIn) (*mcp.CallToolResult, any, error) {
+	name := strings.TrimSpace(in.Name)
+	hostDir := strings.TrimSpace(in.HostDir)
+	guestDir := strings.TrimSpace(in.GuestDir)
+	if name == "" || hostDir == "" || guestDir == "" {
+		return toolErr(fmt.Errorf("name, host_dir, and guest_dir are required"))
+	}
+	if !strings.HasPrefix(guestDir, "/") {
+		return toolErr(fmt.Errorf("guest_dir must be absolute (start with /)"))
+	}
+	if s.Client == nil {
+		return toolErr(fmt.Errorf("grain client not configured"))
+	}
+	dataDir := ""
+	if s.Host != nil {
+		dataDir = s.Host.DataDir()
+	}
+	var outBuf, errBuf bytes.Buffer
+	res, err := vmsync.Run(ctx, vmsync.Options{
+		Verb:          verb,
+		VM:            name,
+		HostRoot:      hostDir,
+		GuestRoot:     guestDir,
+		APIIdentity:   "mcp",
+		DataDir:       dataDir,
+		FS:            newClientSyncFS(s.Client, name),
+		Out:           &outBuf,
+		ErrOut:        &errBuf,
+		Delete:        in.Delete,
+		DryRun:        in.DryRun,
+		Force:         in.Force,
+		Exclude:       in.Exclude,
+		NoDefaults:    in.NoDefaults,
+		NoGitignore:   in.NoGitignore,
+		NoGrainignore: in.NoGrainignore,
+		MaxFileSize:   in.MaxFileSize,
+	})
+	payload := map[string]any{
+		"verb":      string(verb),
+		"name":      name,
+		"host_dir":  hostDir,
+		"guest_dir": guestDir,
+		"dry_run":   in.DryRun,
+		"stdout":    outBuf.String(),
+		"stderr":    errBuf.String(),
+	}
+	if res != nil {
+		payload["exit_code"] = res.ExitCode
+		payload["applied"] = res.Applied
+		payload["state_path"] = res.StatePath
+		if res.Plan != nil {
+			payload["created"] = res.Plan.Created
+			payload["updated"] = res.Plan.Updated
+			payload["deleted"] = res.Plan.Deleted
+			payload["skipped"] = res.Plan.Skipped
+			payload["kept_dest"] = res.Plan.KeptDest
+			payload["conflicts"] = res.Plan.Conflicts
+		}
+	}
+	if err != nil {
+		payload["ok"] = false
+		payload["error"] = err.Error()
+		// Still return structured result so hosts can read conflict counts.
+		return toolJSON(payload)
+	}
+	payload["ok"] = true
+	return toolJSON(payload)
 }
 
 // --- helpers ---

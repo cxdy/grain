@@ -142,11 +142,39 @@ Protocol: WebSocket binary frames carry PTY bytes both ways; optional text JSON 
 ### Copy
 
 ```bash
+# host → guest
 grain cp ./local.txt sbox-1:/tmp/local.txt
+# guest → host (reverse)
 grain cp sbox-1:/var/log/cloud-init.log ./cloud-init.log
 grain cp --agent ./a sbox-1:/tmp/a
 grain cp --ssh   ./a sbox-1:/tmp/a
 ```
+
+### Incremental sync
+
+For iterative edit loops (seed → work in guest → bring results home), prefer `grain sync` over full-tree `cp`:
+
+```bash
+grain sync push ~/proj sbox-1:/work/proj
+grain sh sbox-1
+grain sync pull sbox-1:/work/proj ~/proj
+```
+
+Requires a healthy agent. See [CLI reference](../../reference/cli/#grain-sync-push--pull).
+
+### Refresh / redeploy the guest agent
+
+After upgrading the **host** CLI, an older in-guest agent may lack new features (terminal env, readiness fields, …). Redeploy from the machine that runs the daemon:
+
+```bash
+just agent-linux                 # if bin/grain-agent-linux-$arch is missing
+grain agent deploy sbox-1        # SCP + systemd enable (local daemon only)
+grain agent health sbox-1        # confirm agent_version
+```
+
+Remote CLI (`GRAIN_API`) cannot deploy over SSH hostfwd (ports live on the sandbox host). SSH to the host and run `grain agent deploy`, or recreate the VM from a golden image with a baked agent.
+
+`grain doctor` reports whether the host-side agent binary is present (soft warning if missing).
 
 ### Filesystem (agent only)
 
@@ -200,7 +228,7 @@ Instance metadata:
 
 - Missing agent binary → no deploy; SSH still works.  
 - Unhealthy agent → `grain sh` / `grain x` / `grain cp` fall back to SSH/scp unless `--agent`.  
-- `grain fs` requires a healthy agent (no SSH fallback).
+- `grain fs` and `grain sync` require a healthy agent (no SSH fallback).
 
 ## Go SDK and OpenAPI
 

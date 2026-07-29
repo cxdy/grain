@@ -1,4 +1,4 @@
-package cli
+package vmsync
 
 import (
 	"crypto/sha256"

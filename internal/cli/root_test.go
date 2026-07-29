@@ -224,11 +224,14 @@ func TestCmdFwdSubcommands(t *testing.T) {
 func TestCmdAgentSubcommands(t *testing.T) {
 	cfg := ""
 	root := cmdAgent(&cfg)
-	if len(root.Commands()) == 0 {
-		t.Fatal("agent has no subcommands")
+	names := map[string]bool{}
+	for _, c := range root.Commands() {
+		names[c.Name()] = true
 	}
-	if root.Commands()[0].Name() != "health" {
-		t.Fatalf("want health, got %s", root.Commands()[0].Name())
+	for _, want := range []string{"health", "deploy"} {
+		if !names[want] {
+			t.Errorf("agent missing %s", want)
+		}
 	}
 }
 

@@ -241,10 +241,16 @@ export GRAIN_API=http://127.0.0.1:7474
 export GRAIN_TOKEN=long-random-secret
 
 grain ls
-grain new -n alice-1 --wait agent
+# Prefer -p for multi-day coding labs: ephemeral VMs are lost if the daemon restarts.
+grain new -p -n alice-1 --wait agent
 grain x alice-1 -- uname -a
 grain sh alice-1                 # WebSocket via daemon proxy
 grain cp ./script.sh alice-1:/tmp/script.sh
+# reverse cp (guest → laptop) also uses the agent proxy:
+grain cp alice-1:/tmp/out.json ./out.json
+# incremental sync (agent required; same local/remote path):
+grain sync push ~/proj alice-1:/work/proj
+grain sync pull alice-1:/work/proj ~/proj
 grain fs ls alice-1 /tmp
 grain rm alice-1
 ```
@@ -265,9 +271,9 @@ grain --api http://127.0.0.1:7474 ls
 | Works remotely | Local-only (run on host / SSH) |
 |----------------|--------------------------------|
 | `ls`, `new`, `rm`, `stop`, `start`, … | `up`, `down` |
-| `x`, `sh` (agent), `cp`, `fs`, `stats` | `image ls/pull/import` |
+| `x`, `sh` (agent), `cp`, `sync`, `fs`, `stats` | `image ls/pull/import` |
 | `fwd add/rm` (metadata + host-side) | `proxy *`, `logs` (serial files) |
-| secrets inject / list (host store on server) | doctor (host tools) |
+| secrets inject / list (host store on server) | doctor (host tools); `agent deploy` (SSH hostfwd) |
 
 ### Pattern C — SDKs / curl
 
@@ -305,6 +311,21 @@ grain new --profile agent -n alice-1 -v /var/lib/grain/workspaces/alice:/work
 
 Laptop paths like `/Users/alice/src` do **not** exist on the server.
 
+### Persistent labs (`-p`) for remote coding
+
+Ephemeral sandboxes (`grain new` without `-p`) are removed when the daemon restarts. For multi-session remote work:
+
+```bash
+grain new -p -n alice-dev --wait agent -c 4 -m 8192
+grain sync push ~/dev/proj alice-dev:/work/proj
+# … edit over days …
+grain stop alice-dev    # free RAM; disk kept
+grain start alice-dev
+grain sync pull alice-dev:/work/proj ~/dev/proj
+```
+
+Use `grain sync` (or reverse `grain cp`) to move trees between **laptop** and guest — mounts only expose **host** paths on the sandbox machine.
+
 ## 7. Ops checklist
 
 | Item | Recommendation |
@@ -323,7 +344,8 @@ Laptop paths like `/Users/alice/src` do **not** exist on the server.
 - Single shared Bearer token (not per-user OAuth)
 - No full bridge/VLAN networking (SLIRP hostfwd)
 - Density bound by host RAM/CPU
-- Ephemeral VMs and daemon restart policy — know your ops runbook
+- Ephemeral VMs vanish on daemon restart — use `-p` for durable labs
+- `grain agent deploy` and `image *` must run on the host (SSH hostfwd / data dir)
 
 ## See also
 
