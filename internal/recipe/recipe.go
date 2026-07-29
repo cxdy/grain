@@ -395,8 +395,8 @@ func buildBootstrapScript(readyName string, steps []Step) string {
 		if msg == "" {
 			msg = name
 		}
-		b.WriteString(fmt.Sprintf("grain_ready_report running %s %s\n",
-			shellSingleQuote(name), shellSingleQuote(msg)))
+		fmt.Fprintf(&b, "grain_ready_report running %s %s\n",
+			shellSingleQuote(name), shellSingleQuote(msg))
 		b.WriteString("(\n")
 		b.WriteString("set -euo pipefail\n")
 		b.WriteString(strings.TrimRight(s.Run, "\n"))
@@ -404,7 +404,7 @@ func buildBootstrapScript(readyName string, steps []Step) string {
 	}
 
 	if rn := strings.TrimSpace(readyName); rn != "" {
-		b.WriteString(fmt.Sprintf("printf '%%s\\n' %s >\"$dir/ready_name\"\n", shellSingleQuote(rn)))
+		fmt.Fprintf(&b, "printf '%%s\\n' %s >\"$dir/ready_name\"\n", shellSingleQuote(rn))
 	}
 	b.WriteString("grain_ready_report ready\n")
 	b.WriteString("touch /var/lib/grain/userdata-ran\n")
