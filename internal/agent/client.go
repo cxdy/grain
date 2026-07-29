@@ -71,6 +71,29 @@ func (c *Client) Health(ctx context.Context) (*Health, error) {
 	return &h, nil
 }
 
+// Readiness performs GET /readiness and decodes the Readiness body.
+// When no readiness files exist, the guest returns an empty object (State "").
+func (c *Client) Readiness(ctx context.Context) (*Readiness, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base()+"/readiness", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+		return nil, fmt.Errorf("readiness: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var r Readiness
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		return nil, fmt.Errorf("readiness decode: %w", err)
+	}
+	return &r, nil
+}
+
 // HeadHealth performs HEAD /health. Returns nil if the agent is up (2xx).
 func (c *Client) HeadHealth(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, c.base()+"/health", nil)

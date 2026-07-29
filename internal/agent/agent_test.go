@@ -425,8 +425,8 @@ func TestNotFoundPaths(t *testing.T) {
 }
 
 func TestVersionConstant(t *testing.T) {
-	if Version != "0.2.0" {
-		t.Errorf("Version = %q, want 0.2.0", Version)
+	if Version != "0.3.0" {
+		t.Errorf("Version = %q, want 0.3.0", Version)
 	}
 	if DefaultListen != ":7475" {
 		t.Errorf("DefaultListen = %q, want :7475", DefaultListen)

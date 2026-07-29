@@ -1,7 +1,7 @@
 package vm
 
 // CreateEvent is a progress update during Manager.Create.
-// Phases: image | disk | seed | qemu | wait_ssh | wait_agent | userdata | ready | error
+// Phases: image | disk | seed | qemu | wait_ssh | wait_agent | userdata | bootstrap | ready | error
 type CreateEvent struct {
 	Phase   string `json:"phase"`
 	Message string `json:"message,omitempty"`
@@ -22,6 +22,7 @@ const (
 	PhaseWaitSSH   = "wait_ssh"
 	PhaseWaitAgent = "wait_agent"
 	PhaseUserdata  = "userdata"
+	PhaseBootstrap = "bootstrap"
 	PhaseReady     = "ready"
 	PhaseError     = "error"
 )

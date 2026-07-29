@@ -30,8 +30,9 @@ func TestStatusConstants(t *testing.T) {
 
 func TestWaitModeConstants(t *testing.T) {
 	t.Parallel()
-	if vm.WaitSSH != "ssh" || vm.WaitAgent != "agent" || vm.WaitUserdata != "userdata" {
-		t.Fatalf("wait modes ssh=%q agent=%q userdata=%q", vm.WaitSSH, vm.WaitAgent, vm.WaitUserdata)
+	if vm.WaitSSH != "ssh" || vm.WaitAgent != "agent" || vm.WaitUserdata != "userdata" || vm.WaitBootstrap != "bootstrap" {
+		t.Fatalf("wait modes ssh=%q agent=%q userdata=%q bootstrap=%q",
+			vm.WaitSSH, vm.WaitAgent, vm.WaitUserdata, vm.WaitBootstrap)
 	}
 }
 
@@ -39,7 +40,7 @@ func TestPhaseConstants(t *testing.T) {
 	t.Parallel()
 	phases := []string{
 		vm.PhaseImage, vm.PhaseDisk, vm.PhaseSeed, vm.PhaseQEMU,
-		vm.PhaseWaitSSH, vm.PhaseWaitAgent, vm.PhaseUserdata,
+		vm.PhaseWaitSSH, vm.PhaseWaitAgent, vm.PhaseUserdata, vm.PhaseBootstrap,
 		vm.PhaseReady, vm.PhaseError,
 	}
 	seen := map[string]bool{}

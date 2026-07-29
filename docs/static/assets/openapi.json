@@ -222,7 +222,7 @@
           {
             "name": "wait",
             "in": "query",
-            "description": "Readiness mode. Empty/omitted uses daemon auto. Values: auto, ssh,\nagent, userdata. Legacy true/1 maps to ssh. false/0 is rejected.\n",
+            "description": "Readiness mode. Empty/omitted uses daemon auto. Values: auto, ssh,\nagent, userdata, bootstrap. Legacy true/1 maps to ssh. false/0 is rejected.\n",
             "schema": {
               "type": "string",
               "enum": [
@@ -230,6 +230,7 @@
                 "ssh",
                 "agent",
                 "userdata",
+                "bootstrap",
                 "true",
                 "1"
               ],

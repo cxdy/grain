@@ -51,6 +51,8 @@ Embedded cloud-init fragments applied with `grain new --preset NAME` or `profile
 
 Presets merge into userdata with the structured cloud-init merge (safe with `--userdata-file`).
 
+For long custom first-boot work that should block create until *you* say ready, implement the [Readiness protocol](/docs/0.2.2/explain/readiness/) and use `grain new --wait bootstrap`.
+
 ```bash
 grain new --preset docker
 grain new --preset k3s -n lab -p

@@ -6,7 +6,7 @@ import (
 )
 
 // Version is the grain-agent version string reported by /health.
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 // DefaultListen is the default guest-side listen address.
 // Bind all interfaces so hostfwd / reverse tunnels can reach the agent.
@@ -14,6 +14,18 @@ const DefaultListen = ":7475"
 
 // UserdataRanPath is the marker file written after guest userdata completes.
 const UserdataRanPath = "/var/lib/grain/userdata-ran"
+
+// ReadinessDir is the guest directory for the readiness protocol files.
+// Override in tests with GRAIN_READINESS_DIR.
+const ReadinessDir = "/var/lib/grain/readiness"
+
+// Readiness state values (normative for custom images / bootstrap authors).
+const (
+	ReadinessPending = "pending"
+	ReadinessRunning = "running"
+	ReadinessReady   = "ready"
+	ReadinessFailed  = "failed"
+)
 
 // DefaultExecTimeout is the default maximum duration for a buffered or streaming exec.
 const DefaultExecTimeout = 5 * time.Minute
@@ -24,12 +36,24 @@ const DefaultFileMode = 0o644
 // DefaultDirMode is the default permission for created directories.
 const DefaultDirMode = 0o755
 
+// Readiness is the guest bootstrap/readiness contract (see docs readiness protocol).
+type Readiness struct {
+	// State is pending|running|ready|failed. Empty means no readiness/ files present.
+	State     string `json:"state,omitempty"`
+	Phase     string `json:"phase,omitempty"`
+	Message   string `json:"message,omitempty"`
+	ReadyName string `json:"ready_name,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"` // RFC3339 when set
+	Error     string `json:"error,omitempty"`
+}
+
 // Health is the response body for GET /health.
 type Health struct {
-	Hostname     string `json:"hostname"`
-	AgentVersion string `json:"agent_version"`
-	AgentUptime  int64  `json:"agent_uptime_sec"` // seconds
-	UserdataRan  bool   `json:"userdata_ran"`
+	Hostname     string     `json:"hostname"`
+	AgentVersion string     `json:"agent_version"`
+	AgentUptime  int64      `json:"agent_uptime_sec"` // seconds
+	UserdataRan  bool       `json:"userdata_ran"`
+	Readiness    *Readiness `json:"readiness,omitempty"`
 }
 
 // ExecResult is the response body for a buffered POST /exec.

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Guest readiness protocol** — custom images/bootstrap write `/var/lib/grain/readiness/*`; agent `GET /health` includes `readiness` and `GET /readiness`; create wait mode `bootstrap` polls until `state=ready` (fails on `failed`/timeout, VM left running). CLI: `grain status`, create progress surfaces guest messages. Docs: [Readiness protocol](https://grainvm.com/docs/0.2.2/explain/readiness/). Helper: `scripts/grain-ready-report.sh`.
 - **MCP in the main binary** — `grain up --mcp` / config `mcp.enabled` + `mcp.listen` (default `127.0.0.1:7476/mcp` Streamable HTTP); `grain mcp` for stdio IDE hosts. Guide: [MCP server](https://grainvm.com/guides/mcp/).
 - **Install script MCP prompt** — asks whether to enable MCP by default in `~/.grain/config.yaml` (`GRAIN_ENABLE_MCP=1|0` for non-interactive); declining prints `grain up --mcp` and config snippets.
 - **Expanded MCP tools** — streaming `grain_exec` (timeout, progress); write/read file + tar; fs readdir/stat/mkdir/rm; agent_health, logs, stats; workspace_sandbox helper; live port forwards; image list/pull; `grain_act` (GitHub Actions via act); `grain_k3s` lab; create defaults `grain-ubuntu` + `wait=agent`; idempotent delete.

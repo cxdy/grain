@@ -203,5 +203,8 @@ paginate = 20
       title = "Images and boot"
       path = "explain/images-and-boot/"
     [[params.docsNav.groups.links]]
+      title = "Readiness protocol"
+      path = "explain/readiness/"
+    [[params.docsNav.groups.links]]
       title = "Product surface"
       path = "explain/parity/"

@@ -22,7 +22,7 @@ grain ls
 grain --api http://sandbox:7474 ls
 ```
 
-See [Remote sandbox host](/docs/0.2.2/guides/remote-host/) for firewall and systemd.
+See [Remote sandbox host](/docs/main/guides/remote-host/) for firewall and systemd.
 
 ## Daemon
 
@@ -71,7 +71,8 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `grain logs [name] [-f] [--qemu]` | Serial or QEMU logs |
 | `grain stats [name]` | Guest resource stats |
 | `grain fwd ls\|add\|rm` | Port forwards |
-| `grain agent health [name]` | Agent readiness |
+| `grain agent health [name]` | Agent health JSON (includes readiness when present) |
+| `grain status [name]` | One-line VM + guest readiness |
 
 ### `grain new` flags
 
@@ -83,7 +84,7 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `-m` / `--mem` | Memory MiB |
 | `-d` / `--disk` | Disk GiB |
 | `-i` / `--image` | Image id |
-| `--wait` | `auto` (default), `ssh`, `agent`, `userdata` |
+| `--wait` | `auto` (default), `ssh`, `agent`, `userdata`, `bootstrap` |
 | `-P` / `--publish` | `HOST:GUEST` or `GUEST` (repeatable) |
 | `-v` / `--volume` | `HOST:GUEST` share (repeatable) |
 | `--publish-socket` | Host↔guest unix socket forward |
@@ -122,7 +123,7 @@ grain act --keep -- -W .github/workflows/ci.yml
 | `--timeout` | 15m | Create + ready + act |
 | `--keep` | false | Keep VM after act exits |
 
-Full guide: [Recipe: GitHub Actions (act)](/docs/0.2.2/guides/recipes/act/).
+Full guide: [Recipe: GitHub Actions (act)](/docs/main/guides/recipes/act/).
 
 ## Secrets & proxy
 

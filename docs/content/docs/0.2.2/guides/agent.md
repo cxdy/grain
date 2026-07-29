@@ -12,6 +12,7 @@ The guest agent is a small HTTP server that runs **inside** each Linux VM. The h
 | Capability | Guest HTTP | Host CLI / API |
 |------------|------------|----------------|
 | **Health** | `GET /health` | `grain agent health [name]` · `GET /vms/{name}/agent/health` |
+| **Readiness** | `GET /readiness` · fields on `/health` | `grain status [name]` · bootstrap wait — see [Readiness protocol](/docs/0.2.2/explain/readiness/) |
 | **Exec** | `POST /exec` | `grain x [name] -- cmd…` · `POST /vms/{name}/exec` |
 | **Shell** | `GET /shell` (WebSocket PTY) | `grain sh [name]` · prefers agent; `--ssh` / `--agent` |
 | **Copy** | `PUT/GET /cp` | `grain cp` · `PUT/GET /vms/{name}/cp` |
@@ -36,6 +37,7 @@ grain new / start
 | `--wait ssh` | SSH up; agent deploy is best-effort |
 | `--wait agent` | create fails if agent never becomes healthy |
 | `--wait userdata` | agent healthy **and** userdata marker present |
+| `--wait bootstrap` | agent healthy, then readiness protocol `state=ready` (see [Readiness protocol](/docs/0.2.2/explain/readiness/)) |
 
 Golden images (`grain-ubuntu` via `grain image import` / bake) set `has_agent` so create prefers probing the agent before SSH deploy. See [images.md](/docs/0.2.2/guides/images/).
 
