@@ -14,7 +14,7 @@ For the shortest path (install + starter config + cleanup), use [Quick start](/d
 Simulated terminal — nothing runs on your computer. Type the suggested commands or click **Run step**. After `grain sh`, try guest commands like `uname -a`, then `exit`.
 
 <div class="sandbox-demo-embed">
-{% include sandbox-demo.html %}
+{{< sandbox-demo >}}
 </div>
 
 ---

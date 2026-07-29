@@ -22,3 +22,8 @@
 </div>
 {{ end }}
 {{ end }}
+{{ define "scripts" }}
+{{ if .Params.sandbox_demo }}
+<script src="{{ "assets/js/sandbox-demo.js" | relURL }}" defer></script>
+{{ end }}
+{{ end }}
