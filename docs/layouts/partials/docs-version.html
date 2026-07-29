@@ -1,0 +1,18 @@
+{{/*
+  Current docs version slug from the URL (/docs/<ver>/...), else site default (latest release).
+  MCP and every other docs section share this — nothing is version-orphaned.
+*/}}
+{{- $ver := .Site.Params.docsVersion -}}
+{{- $path := .RelPermalink -}}
+{{- if hasPrefix $path "/docs/" -}}
+  {{- $rest := strings.TrimPrefix "/docs/" $path -}}
+  {{- $parts := split $rest "/" -}}
+  {{- if and (gt (len $parts) 0) (ne (index $parts 0) "") -}}
+    {{- $cand := index $parts 0 -}}
+    {{- /* only accept known versions from config */ -}}
+    {{- range .Site.Params.docsVersions -}}
+      {{- if eq .version $cand -}}{{- $ver = $cand -}}{{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- return $ver -}}

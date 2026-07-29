@@ -1,0 +1,34 @@
+{{ define "body-class" }}layout-openapi{{ end }}
+{{ define "main" }}
+{{/* Standalone API surface: no docs sidebar — operations list is the page nav. */}}
+<div class="wrap openapi-page">
+  <header class="openapi-intro">
+    <h1>{{ .Title }}</h1>
+    {{ with .Description }}<p class="docs-lead">{{ . }}</p>{{ end }}
+    <div class="openapi-meta">
+      <span>Spec: <a href="{{ "/assets/openapi.yaml" | relURL }}">openapi.yaml</a> · <a href="{{ "/assets/openapi.json" | relURL }}">openapi.json</a></span>
+      <span><a href="{{ printf "/docs/%s/reference/api/" (partial "docs-version.html" .) | relURL }}">HTTP API notes</a></span>
+    </div>
+  </header>
+
+  <div
+    id="api-explorer"
+    class="api-explorer"
+    data-spec="{{ "/assets/openapi.json" | relURL }}"
+    aria-live="polite"
+  >
+    <p class="api-explorer-loading">Loading API specification…</p>
+  </div>
+</div>
+{{ end }}
+{{ define "scripts" }}
+{{/* Prism for client-rendered sample/response blocks (Chroma only covers static Markdown). */}}
+<link rel="stylesheet" href="{{ "assets/css/prism-grain.css" | relURL }}">
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-go.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-typescript.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js" defer></script>
+<script src="{{ "assets/js/api-explorer.js" | relURL }}" defer></script>
+{{ end }}

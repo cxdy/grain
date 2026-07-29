@@ -1,0 +1,26 @@
+{{ $ver := partial "docs-version.html" . }}
+{{ $prefix := printf "/docs/%s/" $ver }}
+<aside class="docs-sidebar" aria-label="Documentation">
+  <button type="button" class="docs-nav-toggle" id="docs-nav-toggle" aria-expanded="false" aria-controls="docs-sidebar-inner">
+    <span>Browse docs</span>
+    <span class="docs-nav-toggle-meta" data-docs-nav-label>Menu</span>
+  </button>
+  <div class="docs-sidebar-inner" id="docs-sidebar-inner">
+    {{ range .Site.Params.docsNav.groups }}
+      <div class="sidebar-group">
+        <h3>{{ .title }}</h3>
+        <ul>
+          {{ range .links }}
+            {{ $href := printf "%s%s" $prefix .path }}
+            <li>
+              <a href="{{ $href | relURL }}"
+                 {{ if or (eq $.RelPermalink $href) (hasPrefix $.RelPermalink $href) }}class="active" aria-current="page"{{ end }}>
+                {{ .title }}
+              </a>
+            </li>
+          {{ end }}
+        </ul>
+      </div>
+    {{ end }}
+  </div>
+</aside>

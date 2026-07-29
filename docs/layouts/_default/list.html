@@ -1,0 +1,30 @@
+{{ define "body-class" }}layout-docs{{ end }}
+{{ define "main" }}
+{{ if hasPrefix .RelPermalink "/docs/" }}
+<div class="docs-layout wrap">
+  {{ partial "docs-sidebar.html" . }}
+  <article class="docs-article" id="docs-article">
+    <header class="docs-header">
+      <h1>{{ .Title }}</h1>
+      {{ with .Description }}<p class="docs-lead">{{ . }}</p>{{ end }}
+    </header>
+    <div class="docs-content prose">
+      {{ .Content }}
+      {{ if .Pages }}
+      <ul class="docs-child-list">
+        {{ range .Pages }}
+        <li><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ with .Description }} — {{ . }}{{ end }}</li>
+        {{ end }}
+      </ul>
+      {{ end }}
+    </div>
+  </article>
+  <aside class="docs-toc" id="docs-toc" aria-label="On this page"></aside>
+</div>
+{{ else }}
+<div class="wrap prose">
+  <h1>{{ .Title }}</h1>
+  {{ .Content }}
+</div>
+{{ end }}
+{{ end }}
