@@ -131,6 +131,12 @@ TUIs inside the guest (for example **Grok Build**) often copy via **OSC 52** esc
 
 Sequences are still passed through by default so terminals with native OSC 52 (iTerm2, Ghostty, Kitty, …) keep working.
 
+### Terminal identity (Shift+Enter / keyboard protocol)
+
+`grain sh` forwards the host’s `TERM`, `TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `COLORTERM`, and locale variables into the guest shell so tools like Grok Build can negotiate the same keyboard protocol as a local session (for example **Shift+Enter** for a newline). Without this, the guest only sees a generic `TERM=xterm-256color` and modified Enter keys often collapse to plain Enter.
+
+If Shift+Enter still fails, try **Alt+Enter**, or enable Kitty keyboard support in your host terminal (WezTerm: `enable_kitty_keyboard = true`).
+
 Protocol: WebSocket binary frames carry PTY bytes both ways; optional text JSON control frames resize the PTY (`{"type":"resize","cols":N,"rows":M}`). The agent spawns a login shell as uid 1000 when present, otherwise root. Local stdin is put in raw mode when attached to a TTY; `SIGWINCH` is forwarded as resize frames.
 
 ### Copy
