@@ -1,0 +1,9 @@
+{{ $current := partial "docs-version.html" . }}
+<div class="version-switcher" data-version-switcher>
+  <label class="visually-hidden" for="docs-version">Docs version</label>
+  <select id="docs-version" class="version-select" data-version-select aria-label="Documentation version">
+    {{ range .Site.Params.docsVersions }}
+      <option value="{{ .path }}" {{ if eq .version $current }}selected{{ end }}>{{ .label }}</option>
+    {{ end }}
+  </select>
+</div>

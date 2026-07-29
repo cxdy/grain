@@ -1,0 +1,207 @@
+# grain documentation site (Hugo)
+baseURL = "https://grainvm.com/"
+title = "grain"
+defaultContentLanguage = "en"
+
+[languages]
+  [languages.en]
+    languageCode = "en-US"
+    languageName = "English"
+    weight = 1
+enableRobotsTXT = true
+enableGitInfo = false
+summaryLength = 30
+paginate = 20
+
+# UglyURLs false → pretty directories
+[outputs]
+  home = ["HTML", "RSS", "SearchIndex"]
+  section = ["HTML"]
+  page = ["HTML"]
+
+[outputFormats.SearchIndex]
+  mediaType = "application/json"
+  baseName = "search-index"
+  isPlainText = true
+  notAlternative = true
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true  # allow raw HTML in content (homepage/demo embeds)
+  [markup.highlight]
+    style = "github"
+    lineNos = false
+    noClasses = false   # class-based tokens; theme via chroma.css light/dark
+    codeFences = true
+    guessSyntax = false
+    tabWidth = 2
+  [markup.tableOfContents]
+    startLevel = 2
+    endLevel = 3
+    ordered = false
+
+[params]
+  description = "Linux microVM sandboxes on your own hardware — shells, GitHub Actions, and k3s labs."
+  github = "https://github.com/cxdy/grain"
+  # Current *released* docs version (patch path).
+  docsVersion = "0.2.2"
+  docsVersionLabel = "v0.2.2"
+  # Shown in version dropdown; CI will extend with more releases later.
+  [[params.docsVersions]]
+    version = "0.2.2"
+    label = "v0.2.2 (latest)"
+    path = "/docs/0.2.2/"
+  [[params.docsVersions]]
+    version = "main"
+    label = "main (bleeding edge)"
+    path = "/docs/main/"
+
+  brand = "grain"
+
+# Primary nav is built in layouts/partials/header.html from the *current*
+# docs version (URL /docs/<ver>/… or params.docsVersion on marketing pages).
+# MCP is a normal versioned section: /docs/<ver>/mcp/ — not a global unversioned area.
+
+# Sidebar groups for docs layout (paths relative to /docs/<ver>/).
+[params.docsNav]
+  [[params.docsNav.groups]]
+    title = "Learn"
+    [[params.docsNav.groups.links]]
+      title = "Quick start"
+      path = "get-started/quickstart/"
+    [[params.docsNav.groups.links]]
+      title = "Install"
+      path = "get-started/install/"
+    [[params.docsNav.groups.links]]
+      title = "First sandbox"
+      path = "get-started/first-sandbox/"
+    [[params.docsNav.groups.links]]
+      title = "Core concepts"
+      path = "get-started/concepts/"
+    [[params.docsNav.groups.links]]
+      title = "Contributing"
+      path = "get-started/contributing/"
+
+  [[params.docsNav.groups]]
+    title = "MCP"
+    [[params.docsNav.groups.links]]
+      title = "Overview"
+      path = "mcp/"
+    [[params.docsNav.groups.links]]
+      title = "Configure hosts"
+      path = "mcp/hosts/"
+    [[params.docsNav.groups.links]]
+      title = "Tools"
+      path = "mcp/tools/"
+
+  [[params.docsNav.groups]]
+    title = "Do"
+    [[params.docsNav.groups.links]]
+      title = "Guides overview"
+      path = "guides/"
+    [[params.docsNav.groups.links]]
+      title = "GitHub Actions (act)"
+      path = "guides/recipes/act/"
+    [[params.docsNav.groups.links]]
+      title = "k3s lab"
+      path = "guides/recipes/k3s/"
+    [[params.docsNav.groups.links]]
+      title = "Images & golden boots"
+      path = "guides/images/"
+    [[params.docsNav.groups.links]]
+      title = "Guest agent"
+      path = "guides/agent/"
+    [[params.docsNav.groups.links]]
+      title = "Networking & ports"
+      path = "guides/networking/"
+    [[params.docsNav.groups.links]]
+      title = "Overlay network"
+      path = "guides/networking-overlay/"
+    [[params.docsNav.groups.links]]
+      title = "Guest architecture"
+      path = "guides/multi-arch/"
+    [[params.docsNav.groups.links]]
+      title = "Virtio GPU"
+      path = "guides/gpu/"
+    [[params.docsNav.groups.links]]
+      title = "Mounts & shares"
+      path = "guides/mounts/"
+    [[params.docsNav.groups.links]]
+      title = "Profiles & presets"
+      path = "guides/profiles/"
+    [[params.docsNav.groups.links]]
+      title = "Egress proxy"
+      path = "guides/proxy/"
+    [[params.docsNav.groups.links]]
+      title = "Remote sandbox host"
+      path = "guides/remote-host/"
+    [[params.docsNav.groups.links]]
+      title = "Secrets"
+      path = "guides/secrets/"
+    [[params.docsNav.groups.links]]
+      title = "Pause, suspend, restore"
+      path = "guides/lifecycle/"
+    [[params.docsNav.groups.links]]
+      title = "Firecracker (Linux)"
+      path = "guides/firecracker/"
+    [[params.docsNav.groups.links]]
+      title = "Troubleshooting"
+      path = "guides/troubleshooting/"
+    [[params.docsNav.groups.links]]
+      title = "Coding agent"
+      path = "guides/recipes/coding-agent/"
+    [[params.docsNav.groups.links]]
+      title = "Docker socket"
+      path = "guides/recipes/docker-socket/"
+    [[params.docsNav.groups.links]]
+      title = "CI ephemeral"
+      path = "guides/recipes/ci-ephemeral/"
+
+  [[params.docsNav.groups]]
+    title = "Look up"
+    [[params.docsNav.groups.links]]
+      title = "CLI"
+      path = "reference/cli/"
+    [[params.docsNav.groups.links]]
+      title = "Configuration"
+      path = "reference/config/"
+    [[params.docsNav.groups.links]]
+      title = "HTTP API"
+      path = "reference/api/"
+    [[params.docsNav.groups.links]]
+      title = "OpenAPI explorer"
+      path = "reference/openapi/"
+    [[params.docsNav.groups.links]]
+      title = "Agent protocol"
+      path = "reference/agent-protocol/"
+    [[params.docsNav.groups.links]]
+      title = "Go SDK"
+      path = "reference/go-sdk/"
+    [[params.docsNav.groups.links]]
+      title = "TypeScript SDK"
+      path = "reference/typescript-sdk/"
+    [[params.docsNav.groups.links]]
+      title = "Python SDK"
+      path = "reference/python-sdk/"
+    [[params.docsNav.groups.links]]
+      title = "Metrics"
+      path = "reference/metrics/"
+
+  [[params.docsNav.groups]]
+    title = "Understand"
+    [[params.docsNav.groups.links]]
+      title = "Architecture"
+      path = "explain/architecture/"
+    [[params.docsNav.groups.links]]
+      title = "Agent vs SSH"
+      path = "explain/agent-vs-ssh/"
+    [[params.docsNav.groups.links]]
+      title = "Security model"
+      path = "explain/security/"
+    [[params.docsNav.groups.links]]
+      title = "Images and boot"
+      path = "explain/images-and-boot/"
+    [[params.docsNav.groups.links]]
+      title = "Product surface"
+      path = "explain/parity/"

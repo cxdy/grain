@@ -1,14 +1,14 @@
 # Contributing to grain
 
-Thanks for helping. grain is free and open source ([Apache-2.0](LICENSE)). Docs live at **[grainvm.com](https://grainvm.com)**; this repo’s `docs/` is the Jekyll source.
+Thanks for helping. grain is free and open source ([Apache-2.0](LICENSE)). Docs live at **[grainvm.com](https://grainvm.com)**; this repo’s `docs/` is the Hugo source (`hugo server` from `docs/`).
 
 Also read [SECURITY.md](SECURITY.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Platforms
 
-**Supported:** macOS and Linux (amd64 / arm64).
+**Supported:** macOS and Linux (amd64 / arm64) with hardware virtualization (HVF / KVM). grain runs ordinary microVMs on those hosts — not nested virtualization. Nested virt only applies when grain itself runs *inside* another VM that lacks hardware virt.
 
-**Not supported:** Windows and WSL / WSL2. The installer rejects them; nested QEMU inside WSL is not a supported configuration. From a Windows machine, use the remote CLI/SDK against a Linux or macOS host if needed ([remote host guide](https://grainvm.com/guides/remote-host/)).
+**Native Windows** is not a grain host; use the remote CLI/SDK against a Linux or macOS machine if needed ([remote host guide](https://grainvm.com/guides/remote-host/)). **WSL** reports as Linux and uses the same virt requirements as other Linux hosts.
 
 ## Prerequisites
 

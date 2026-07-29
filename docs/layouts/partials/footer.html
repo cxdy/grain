@@ -1,0 +1,21 @@
+{{ $ver := partial "docs-version.html" . }}
+{{ $docsRoot := printf "/docs/%s/" $ver }}
+{{ $label := .Site.Params.docsVersionLabel }}
+{{ range .Site.Params.docsVersions }}
+  {{ if eq .version $ver }}{{ $label = .label }}{{ end }}
+{{ end }}
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <img class="footer-logo" src="{{ "assets/img/logo-64.png" | relURL }}" width="22" height="22" alt="" decoding="async" />
+      <span>grain · {{ $label }}</span>
+    </div>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="{{ printf "%sget-started/quickstart/" $docsRoot | relURL }}">Docs</a>
+      <a href="{{ printf "%sreference/openapi/" $docsRoot | relURL }}">API</a>
+      <a href="{{ printf "%smcp/" $docsRoot | relURL }}">MCP</a>
+      <a href="{{ .Site.Params.github }}" rel="noopener" target="_blank">GitHub</a>
+    </nav>
+    <p class="footer-meta">Linux microVMs on your hardware. Open source.</p>
+  </div>
+</footer>

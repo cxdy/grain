@@ -1,0 +1,158 @@
+{{ define "body-class" }}layout-home{{ end }}
+{{ define "main" }}
+{{ $ver := .Site.Params.docsVersion }}
+{{ $docs := printf "/docs/%s/" $ver }}
+
+<section class="hero">
+  <div class="wrap hero-stack">
+    <div class="hero-intro">
+      <p class="hero-kicker">Linux microVMs · local first</p>
+      <h1>Real Linux sandboxes.<br><span class="hero-line2">On your machine.</span></h1>
+      <p class="hero-lead">
+        grain runs small, disposable Linux VMs locally — for a shell, for GitHub Actions,
+        or for a throwaway k3s lab. Ephemeral by default; persistent when you need it.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#install">Install</a>
+        <a class="btn btn-ghost" href="#demo-section">Try the demo</a>
+        <a class="btn btn-ghost" href="{{ printf "%sget-started/quickstart/" $docs | relURL }}">Quick start</a>
+      </div>
+      <p class="hero-meta">macOS · Linux · QEMU · optional Firecracker · MCP · Go · TypeScript · Python</p>
+    </div>
+
+    <div class="install-card" id="install" data-tabs>
+      <div class="install-card-head">
+        <h2>Install</h2>
+        <button type="button" class="copy-btn" data-copy="#install-cmd-macos">Copy</button>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Operating system">
+        <button type="button" class="tab active" role="tab" data-tab="macos" aria-selected="true">macOS</button>
+        <button type="button" class="tab" role="tab" data-tab="linux" aria-selected="false">Linux</button>
+        <button type="button" class="tab" role="tab" data-tab="source" aria-selected="false">From source</button>
+      </div>
+
+      <div class="panel" data-panel="macos" id="panel-macos">
+        <pre class="code-block install-code" id="install-cmd-macos" data-copy-text="curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash&#10;brew install qemu&#10;grain doctor"><code><span class="line"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash</span>
+<span class="line"><span class="prompt">$</span> brew install qemu</span>
+<span class="line"><span class="prompt">$</span> grain doctor</span></code></pre>
+        <p class="panel-note">Places the CLI on your PATH and the guest agent under <code>~/.grain/agent/</code>. QEMU is required for real VMs.</p>
+      </div>
+
+      <div class="panel" data-panel="linux" id="panel-linux" hidden>
+        <pre class="code-block install-code" id="install-cmd-linux" data-copy-text="curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash&#10;sudo apt-get install -y qemu-system qemu-utils&#10;grain doctor"><code><span class="line"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash</span>
+<span class="line"><span class="prompt">$</span> sudo apt-get install -y qemu-system qemu-utils   <span class="faint"># Debian/Ubuntu</span></span>
+<span class="line"><span class="prompt">$</span> grain doctor</span></code></pre>
+        <p class="panel-note">On Fedora use <code>dnf install qemu-system-x86 qemu-img</code>. KVM helps when available.</p>
+      </div>
+
+      <div class="panel" data-panel="source" id="panel-source" hidden>
+        <pre class="code-block install-code" id="install-cmd-source" data-copy-text="go install github.com/cxdy/grain/cmd/grain@latest&#10;# or from a checkout:&#10;just build &amp;&amp; just agent-linux &amp;&amp; ./bin/grain doctor"><code><span class="line"><span class="prompt">$</span> go install github.com/cxdy/grain/cmd/grain@latest</span>
+<span class="line"><span class="prompt">$</span> <span class="faint"># or from a checkout:</span></span>
+<span class="line"><span class="prompt">$</span> just build &amp;&amp; just agent-linux &amp;&amp; ./bin/grain doctor</span></code></pre>
+        <p class="panel-note">Requires Go 1.23+. Release binaries also ship on <a href="https://github.com/cxdy/grain/releases">GitHub Releases</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-rule" id="paths">
+  <div class="wrap">
+    <h2 class="section-title">Pick a path</h2>
+    <p class="section-lead">Same install, four first destinations.</p>
+    <div class="paths">
+      <a class="path" href="{{ printf "%sget-started/first-sandbox/" $docs | relURL }}">
+        <span class="path-num">01 · Shell</span>
+        <h3>Open a Linux shell</h3>
+        <p>Pull an image, create a sandbox, drop into a PTY.</p>
+        <p class="path-cmd">grain new && grain sh</p>
+        <span class="path-go">First sandbox →</span>
+      </a>
+      <a class="path" href="{{ printf "%sguides/recipes/act/" $docs | relURL }}">
+        <span class="path-num">02 · CI</span>
+        <h3>Run GitHub Actions</h3>
+        <p>nektos/act inside an isolated microVM.</p>
+        <p class="path-cmd">grain act -- -j test</p>
+        <span class="path-go">act recipe →</span>
+      </a>
+      <a class="path" href="{{ printf "%sguides/recipes/k3s/" $docs | relURL }}">
+        <span class="path-num">03 · k3s</span>
+        <h3>Spin up a k3s lab</h3>
+        <p>Single-node Kubernetes on a host port.</p>
+        <p class="path-cmd">grain new --preset k3s -p</p>
+        <span class="path-go">k3s recipe →</span>
+      </a>
+      <a class="path" href="{{ printf "%smcp/" $docs | relURL }}">
+        <span class="path-num">04 · MCP</span>
+        <h3>Agent sandboxes</h3>
+        <p>Give coding agents create/exec/delete over MCP.</p>
+        <p class="path-cmd">grain up --mcp</p>
+        <span class="path-go">MCP docs →</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="section home-demo" id="demo-section">
+  <div class="wrap">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="section-title">Try it here</h2>
+        <p class="section-lead" style="margin-bottom:0">
+          Simulated terminal — switch scenarios, type commands, or click <strong>Run step</strong>.
+        </p>
+      </div>
+      <a class="btn btn-sm btn-ghost" href="{{ printf "%sget-started/first-sandbox/" $docs | relURL }}">Full tutorial →</a>
+    </div>
+    {{ partial "sandbox-demo.html" . }}
+  </div>
+</section>
+
+<section class="section section-rule">
+  <div class="wrap">
+    <h2 class="section-title">How the docs are organized</h2>
+    <div class="doc-map">
+      <div class="map-card">
+        <p class="map-kind">Tutorials</p>
+        <h3>Learn</h3>
+        <p>Guided paths from zero to a working sandbox.</p>
+        <a href="{{ printf "%sget-started/quickstart/" $docs | relURL }}">Get started →</a>
+      </div>
+      <div class="map-card">
+        <p class="map-kind">Agents</p>
+        <h3>MCP</h3>
+        <p>Host config and tools for coding agents.</p>
+        <a href="{{ printf "%smcp/" $docs | relURL }}">MCP →</a>
+      </div>
+      <div class="map-card">
+        <p class="map-kind">How-to</p>
+        <h3>Do</h3>
+        <p>Recipes for act, k3s, mounts, networking, and more.</p>
+        <a href="{{ printf "%sguides/" $docs | relURL }}">Guides →</a>
+      </div>
+      <div class="map-card">
+        <p class="map-kind">Reference</p>
+        <h3>Look up</h3>
+        <p>CLI, config, HTTP API, OpenAPI explorer, SDKs.</p>
+        <a href="{{ printf "%sreference/cli/" $docs | relURL }}">Reference →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="cta-band">
+    <div>
+      <h2>Ready when you are</h2>
+      <p>Free and open source. No metering. Laptop or bare metal.</p>
+    </div>
+    <div class="hero-cta" style="margin:0">
+      <a class="btn btn-primary" href="#install">Install</a>
+      <a class="btn btn-ghost" href="{{ .Site.Params.github }}" rel="noopener" target="_blank">GitHub</a>
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ define "scripts" }}
+<script src="{{ "assets/js/sandbox-demo.js" | relURL }}" defer></script>
+{{ end }}

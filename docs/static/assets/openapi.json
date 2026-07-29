@@ -1,0 +1,1620 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Grain Daemon API",
+    "description": "Control-plane HTTP API for the grain microVM daemon.\nAvailable over a Unix socket (local CLI) and optional TCP bind (`api` config).\n\nWhen `api_token` (or `auth_token`) is set in daemon config, all routes except\n`GET /healthz` require `Authorization: Bearer <token>`.\n",
+    "version": "0.2.2",
+    "license": {
+      "name": "Apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:7474",
+      "description": "Default TCP API bind"
+    },
+    {
+      "url": "http://grain",
+      "description": "Unix socket (curl --unix-socket ~/.grain/grain.sock)"
+    }
+  ],
+  "tags": [
+    {
+      "name": "system",
+      "description": "Health, info, metrics, OpenAPI"
+    },
+    {
+      "name": "vms",
+      "description": "VM lifecycle"
+    },
+    {
+      "name": "agent",
+      "description": "Guest grain-agent proxy (exec, cp, fs)"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness probe",
+        "security": [],
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "Daemon is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/info": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Daemon identity",
+        "operationId": "info",
+        "responses": {
+          "200": {
+            "description": "Version and name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "example": "grain"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "0.2.2"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Prometheus metrics",
+        "operationId": "metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition format",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/openapi.yaml": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "OpenAPI 3.0 specification (YAML)",
+        "operationId": "openapiYAML",
+        "responses": {
+          "200": {
+            "description": "OpenAPI document",
+            "content": {
+              "application/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "OpenAPI 3.0 specification (YAML body, JSON path alias)",
+        "description": "Serves the same OpenAPI document as `/openapi.yaml` with\n`Content-Type: application/yaml`. Use `/openapi.yaml` when possible.\n",
+        "operationId": "openapiJSON",
+        "responses": {
+          "200": {
+            "description": "OpenAPI document",
+            "content": {
+              "application/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms": {
+      "get": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "List VMs",
+        "operationId": "listVMs",
+        "responses": {
+          "200": {
+            "description": "All known instances",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Instance"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Create a VM",
+        "description": "Blocking JSON create (default) waits until the VM is ready (SSH up).\nWith `stream=1` (or `Accept: application/x-ndjson`), the response is an\nNDJSON stream of create progress events ending in `ready` or `error`.\n\nQuery parameters:\n- `stream=1` \u2014 NDJSON progress (`application/x-ndjson`)\n- `wait` \u2014 readiness mode: `auto` (default when omitted; agent for golden\n  images, else ssh), `ssh`, `agent`, or `userdata`. Legacy `true`/`1` \u2192 `ssh`.\n- `timeout` \u2014 optional Go duration override for the create deadline\n  (e.g. `3m`, `90s`); defaults to daemon ReadyTimeout + buffer\n",
+        "operationId": "createVM",
+        "parameters": [
+          {
+            "name": "stream",
+            "in": "query",
+            "description": "Set to `1` for NDJSON create progress stream",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "description": "Readiness mode. Empty/omitted uses daemon auto. Values: auto, ssh,\nagent, userdata. Legacy true/1 maps to ssh. false/0 is rejected.\n",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "ssh",
+                "agent",
+                "userdata",
+                "true",
+                "1"
+              ],
+              "example": "agent"
+            }
+          },
+          {
+            "name": "timeout",
+            "in": "query",
+            "description": "Create deadline as Go duration (e.g. 3m, 120s)",
+            "schema": {
+              "type": "string",
+              "example": "3m"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "VM created (non-stream)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Instance"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "NDJSON create stream (`stream=1`)",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateEvent"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/{name}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Get VM by name",
+        "operationId": "getVM",
+        "responses": {
+          "200": {
+            "description": "Instance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Instance"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Delete VM",
+        "operationId": "deleteVM",
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/start": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Start a stopped persistent VM",
+        "operationId": "startVM",
+        "responses": {
+          "200": {
+            "description": "Running instance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Instance"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/{name}/shutdown": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Shutdown VM",
+        "description": "Ephemeral VMs are removed; persistent VMs are left stopped.",
+        "operationId": "shutdownVM",
+        "responses": {
+          "200": {
+            "description": "Shutdown acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/{name}/pause": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Pause VM (QMP stop)",
+        "operationId": "pauseVM",
+        "responses": {
+          "200": {
+            "description": "Paused"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/resume": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Resume paused VM (QMP cont)",
+        "operationId": "resumeVM",
+        "responses": {
+          "200": {
+            "description": "Running"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/suspend": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Suspend persistent VM (stop process, free host RAM)",
+        "description": "Unlike pause (QMP stop, process stays alive), suspend stops QEMU and frees host RAM.\nPersistent VMs only. When the root disk is qcow2, best-effort HMP savevm stores a\nsnapshot tag grain-suspend for restore via -loadvm; otherwise restore cold-boots from disk.\n",
+        "operationId": "suspendVM",
+        "responses": {
+          "200": {
+            "description": "Suspended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/{name}/restore": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Restore a suspended VM",
+        "description": "Only allowed from status=suspended. Loads qcow2 internal snapshot when a suspend\nmarker exists; otherwise starts from preserved disk like a cold boot.\n",
+        "operationId": "restoreVM",
+        "responses": {
+          "200": {
+            "description": "Running instance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Instance"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/{name}/forwards": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Add live host\u2192guest TCP forward",
+        "description": "Starts an SSH local tunnel (ssh -N -L) on a running VM. host_port 0\nallocates a free high port. Returns the resolved LiveForward.\n",
+        "operationId": "addForward",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "guest_port"
+                ],
+                "properties": {
+                  "host_port": {
+                    "type": "integer",
+                    "description": "0 = allocate free host port"
+                  },
+                  "guest_port": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Forward added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveForward"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/forwards/{hostPort}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        },
+        {
+          "name": "hostPort",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "delete": {
+        "tags": [
+          "vms"
+        ],
+        "summary": "Remove live host forward",
+        "operationId": "removeForward",
+        "responses": {
+          "200": {
+            "description": "Removed"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/stats": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Guest resource stats via grain-agent",
+        "operationId": "vmStats",
+        "responses": {
+          "200": {
+            "description": "Stats snapshot"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/secrets": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "List host secrets metadata",
+        "operationId": "listSecrets",
+        "responses": {
+          "200": {
+            "description": "Secret list"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Create or replace a secret",
+        "operationId": "putSecret",
+        "responses": {
+          "200": {
+            "description": "Stored"
+          }
+        }
+      }
+    },
+    "/secrets/{name}": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "delete": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Delete a secret",
+        "operationId": "deleteSecret",
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/vms/{name}/secrets/{secretName}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        },
+        {
+          "name": "secretName",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Inject host secret into guest",
+        "operationId": "injectSecret",
+        "responses": {
+          "200": {
+            "description": "Materialized in guest"
+          }
+        }
+      }
+    },
+    "/vms/{name}/exec": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Execute a command in the guest",
+        "description": "Proxies to guest grain-agent. Non-zero remote exit codes still return HTTP 200\nwith `exit_code` in the body (buffered mode).\n\n`buffered=false` streams NDJSON `ExecFrame` lines (`started` \u2192 stdout/stderr \u2192 `exit`).\n",
+        "operationId": "execVM",
+        "parameters": [
+          {
+            "name": "cmd",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "args",
+            "in": "query",
+            "description": "Repeatable command arguments",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "buffered",
+            "in": "query",
+            "description": "`true` (default) returns JSON ExecResult; `false` streams NDJSON frames",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "true"
+            }
+          },
+          {
+            "name": "uid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "gid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cwd",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Buffered result or NDJSON stream",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecResult"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecFrame"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/agent/health": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Guest agent health",
+        "operationId": "agentHealth",
+        "responses": {
+          "200": {
+            "description": "Agent health",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentHealth"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/cp": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "put": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Upload file or tar to guest",
+        "operationId": "putCP",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "description": "binary (default) or tar",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "binary",
+                "tar"
+              ],
+              "default": "binary"
+            }
+          },
+          {
+            "name": "permissions",
+            "in": "query",
+            "description": "File mode for binary uploads (e.g. 0644)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "uid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "gid",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/x-tar": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Written"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Download file or tar from guest",
+        "operationId": "getCP",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "binary",
+                "tar"
+              ],
+              "default": "binary"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File or tar stream",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/x-tar": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/fs/readdir": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "List directory entries in guest",
+        "operationId": "fsReadDir",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Directory listing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FSInfo"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/fs/stat": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Stat a path in guest",
+        "operationId": "fsStat",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Path metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FSInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/fs/mkdir": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Create directory in guest",
+        "operationId": "fsMkdir",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MkdirRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Created"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/vms/{name}/fs/remove": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/VMName"
+        }
+      ],
+      "delete": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Remove file or directory in guest",
+        "operationId": "fsRemove",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "token",
+        "description": "Optional. Required when daemon `api_token` / `auth_token` is non-empty.\nCLI uses env `GRAIN_TOKEN` or the same config field.\n"
+      }
+    },
+    "parameters": {
+      "VMName": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid bearer token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error": {
+        "description": "Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "persistent": {
+            "type": "boolean",
+            "default": false
+          },
+          "cpus": {
+            "type": "integer"
+          },
+          "memory_mb": {
+            "type": "integer"
+          },
+          "disk_gb": {
+            "type": "integer"
+          },
+          "image": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "userdata": {
+            "type": "string"
+          },
+          "forwards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortForward"
+            }
+          },
+          "mounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Mount"
+            }
+          }
+        }
+      },
+      "PortForward": {
+        "type": "object",
+        "required": [
+          "guest_port"
+        ],
+        "properties": {
+          "host_port": {
+            "type": "integer",
+            "description": "0 = allocate free host port"
+          },
+          "guest_port": {
+            "type": "integer"
+          },
+          "proto": {
+            "type": "string",
+            "default": "tcp"
+          }
+        }
+      },
+      "LiveForward": {
+        "type": "object",
+        "required": [
+          "host_port",
+          "guest_port"
+        ],
+        "properties": {
+          "host_port": {
+            "type": "integer"
+          },
+          "guest_port": {
+            "type": "integer"
+          },
+          "pid": {
+            "type": "integer",
+            "description": "ssh -N process id while the forward is active"
+          }
+        }
+      },
+      "Mount": {
+        "type": "object",
+        "required": [
+          "host",
+          "guest"
+        ],
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "guest": {
+            "type": "string"
+          },
+          "tag": {
+            "type": "string"
+          }
+        }
+      },
+      "Instance": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "creating",
+              "running",
+              "paused",
+              "suspended",
+              "stopped",
+              "error"
+            ]
+          },
+          "suspended_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Set when status is suspended"
+          },
+          "persistent": {
+            "type": "boolean"
+          },
+          "cpus": {
+            "type": "integer"
+          },
+          "memory_mb": {
+            "type": "integer"
+          },
+          "disk_gb": {
+            "type": "integer"
+          },
+          "image": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "ssh_port": {
+            "type": "integer"
+          },
+          "agent_port": {
+            "type": "integer"
+          },
+          "agent_cid": {
+            "type": "integer",
+            "description": "Guest virtio-vsock context ID (0 or omitted = TCP hostfwd only)"
+          },
+          "forwards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortForward"
+            }
+          },
+          "live_forwards": {
+            "type": "array",
+            "description": "Runtime SSH -L forwards (cleared on stop/delete)",
+            "items": {
+              "$ref": "#/components/schemas/LiveForward"
+            }
+          },
+          "mounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Mount"
+            }
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": "string"
+          },
+          "disk_path": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer"
+          }
+        }
+      },
+      "CreateEvent": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "image",
+              "disk",
+              "seed",
+              "qemu",
+              "wait_ssh",
+              "wait_agent",
+              "ready",
+              "error"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "ssh_port": {
+            "type": "integer"
+          },
+          "instance": {
+            "$ref": "#/components/schemas/Instance"
+          }
+        }
+      },
+      "AgentHealth": {
+        "type": "object",
+        "properties": {
+          "hostname": {
+            "type": "string"
+          },
+          "agent_version": {
+            "type": "string"
+          },
+          "agent_uptime_sec": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "userdata_ran": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ExecResult": {
+        "type": "object",
+        "properties": {
+          "stdout": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ExecFrame": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "started",
+              "stdout",
+              "stderr",
+              "exit",
+              "error"
+            ]
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string"
+          },
+          "ended_at": {
+            "type": "string"
+          }
+        }
+      },
+      "FSInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "file",
+              "directory",
+              "symlink"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "mtime": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix seconds"
+          },
+          "mode": {
+            "type": "string",
+            "example": "0644"
+          }
+        }
+      },
+      "MkdirRequest": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "recursive": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string",
+            "example": "0755"
+          }
+        }
+      }
+    }
+  }
+}

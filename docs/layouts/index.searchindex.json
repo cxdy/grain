@@ -1,0 +1,14 @@
+{{- $pages := slice -}}
+{{- range site.Pages -}}
+  {{- if and .RelPermalink (hasPrefix .RelPermalink "/docs/") (not .IsHome) -}}
+    {{- $plain := .Plain | truncate 2000 -}}
+    {{- $pages = $pages | append (dict
+      "title" .Title
+      "url" .RelPermalink
+      "description" (.Description | default "")
+      "section" (.Params.section | default "")
+      "content" $plain
+    ) -}}
+  {{- end -}}
+{{- end -}}
+{{- $pages | jsonify -}}

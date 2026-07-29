@@ -1,0 +1,21 @@
+{{/*
+  Fenced code blocks with language tag → Chroma highlight + language chip.
+  Usage in markdown: ```bash / ```yaml / ```json / ```toml / ```go / etc.
+*/}}
+{{- $lang := .Type | default "text" -}}
+{{- $label := $lang -}}
+{{- if eq $lang "sh" }}{{ $label = "bash" }}{{ end -}}
+{{- if eq $lang "shell" }}{{ $label = "bash" }}{{ end -}}
+{{- if eq $lang "yml" }}{{ $label = "yaml" }}{{ end -}}
+{{- if eq $lang "js" }}{{ $label = "javascript" }}{{ end -}}
+{{- if eq $lang "ts" }}{{ $label = "typescript" }}{{ end -}}
+{{- if eq $lang "console" }}{{ $label = "console" }}{{ end -}}
+{{- $opts := dict "lineNos" false "guessSyntax" false -}}
+<div class="code-window" data-lang="{{ $label }}">
+  <div class="code-window-bar">
+    <span class="code-lang">{{ $label }}</span>
+    <button type="button" class="code-copy" data-code-copy aria-label="Copy code">Copy</button>
+  </div>
+  {{- /* highlight() already wraps in .highlight > pre.chroma */ -}}
+  {{- highlight .Inner $lang $opts -}}
+</div>

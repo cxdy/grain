@@ -218,7 +218,8 @@ release-tag:
     git push origin "$TAG"
     echo "GoReleaser will publish GitHub Release assets for $TAG"
 
-# Copy api/openapi.yaml into the GitHub Pages tree (docs/assets).
+# Copy api/openapi.yaml into the Hugo static tree (and JSON if present).
 openapi-docs:
-    cp api/openapi.yaml docs/assets/openapi.yaml
-    @echo "updated docs/assets/openapi.yaml from api/openapi.yaml"
+    cp api/openapi.yaml docs/static/assets/openapi.yaml
+    @if [ -f api/openapi.json ]; then cp api/openapi.json docs/static/assets/openapi.json; fi
+    @echo "updated docs/static/assets/openapi.yaml from api/openapi.yaml"

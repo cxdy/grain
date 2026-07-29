@@ -1,0 +1,35 @@
+{{/* Compact MCP host config explorer — agent list + stdio/HTTP + OS path variants. */}}
+<div class="mcp-hosts" data-mcp-hosts>
+  <div class="mcp-hosts-rail" role="tablist" aria-label="MCP hosts">
+    {{/* Filled by mcp-hosts.js */}}
+  </div>
+  <div class="mcp-hosts-panel">
+    <div class="mcp-hosts-meta">
+      <div class="mcp-hosts-meta-row mcp-hosts-meta-transport">
+        <span class="mcp-hosts-label">Transport</span>
+        <div class="mcp-hosts-transport-toggle" data-mcp-transport-toggle role="group" aria-label="MCP transport">
+          <button type="button" class="mcp-hosts-transport-btn is-active" data-transport="stdio" aria-pressed="true">stdio</button>
+          <button type="button" class="mcp-hosts-transport-btn" data-transport="http" aria-pressed="false">HTTP</button>
+        </div>
+      </div>
+      <div class="mcp-hosts-path-stack" data-mcp-path-stack>
+        {{/* Path / multi-OS blocks filled by JS */}}
+      </div>
+    </div>
+    <p class="mcp-hosts-note" data-mcp-note></p>
+    <div class="mcp-hosts-code-wrap">
+      <div class="mcp-hosts-code-head">
+        <span class="mcp-hosts-lang" data-mcp-lang>JSON</span>
+        <button type="button" class="copy-btn" data-mcp-copy>Copy</button>
+      </div>
+      <pre class="mcp-hosts-code language-json" tabindex="0"><code class="language-json" data-mcp-snippet></code></pre>
+    </div>
+    <p class="mcp-hosts-cli" data-mcp-cli hidden></p>
+  </div>
+</div>
+{{/* Prism for dynamic snippets (same stack as OpenAPI explorer). */}}
+<link rel="stylesheet" href="{{ "assets/css/prism-grain.css" | relURL }}">
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-toml.min.js" defer></script>
+<script src="{{ "assets/js/mcp-hosts.js" | relURL }}" defer></script>

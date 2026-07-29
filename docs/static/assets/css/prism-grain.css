@@ -1,0 +1,170 @@
+/* Prism tokens tuned for grain light/dark (API explorer + MCP host picker). */
+
+.api-code,
+pre.api-code,
+.mcp-hosts-code,
+pre.mcp-hosts-code {
+  color: var(--text);
+  text-shadow: none;
+  background: var(--code-bg);
+}
+
+.api-code code,
+pre.api-code code,
+.mcp-hosts-code code,
+pre.mcp-hosts-code code {
+  color: inherit;
+  background: transparent;
+  text-shadow: none;
+  font-family: var(--mono);
+}
+
+/* Light */
+[data-theme="light"] .api-code .token.comment,
+[data-theme="light"] .api-code .token.prolog,
+[data-theme="light"] .api-code .token.doctype,
+[data-theme="light"] .api-code .token.cdata,
+[data-theme="light"] .mcp-hosts-code .token.comment,
+[data-theme="light"] .mcp-hosts-code .token.prolog,
+[data-theme="light"] .mcp-hosts-code .token.doctype,
+[data-theme="light"] .mcp-hosts-code .token.cdata {
+  color: #6b7280;
+}
+[data-theme="light"] .api-code .token.punctuation,
+[data-theme="light"] .mcp-hosts-code .token.punctuation {
+  color: #4b5563;
+}
+[data-theme="light"] .api-code .token.property,
+[data-theme="light"] .api-code .token.tag,
+[data-theme="light"] .api-code .token.boolean,
+[data-theme="light"] .api-code .token.number,
+[data-theme="light"] .api-code .token.constant,
+[data-theme="light"] .api-code .token.symbol,
+[data-theme="light"] .mcp-hosts-code .token.property,
+[data-theme="light"] .mcp-hosts-code .token.tag,
+[data-theme="light"] .mcp-hosts-code .token.boolean,
+[data-theme="light"] .mcp-hosts-code .token.number,
+[data-theme="light"] .mcp-hosts-code .token.constant,
+[data-theme="light"] .mcp-hosts-code .token.symbol {
+  color: #0a7351;
+}
+[data-theme="light"] .api-code .token.selector,
+[data-theme="light"] .api-code .token.attr-name,
+[data-theme="light"] .api-code .token.string,
+[data-theme="light"] .api-code .token.char,
+[data-theme="light"] .api-code .token.builtin,
+[data-theme="light"] .api-code .token.inserted,
+[data-theme="light"] .mcp-hosts-code .token.selector,
+[data-theme="light"] .mcp-hosts-code .token.attr-name,
+[data-theme="light"] .mcp-hosts-code .token.string,
+[data-theme="light"] .mcp-hosts-code .token.char,
+[data-theme="light"] .mcp-hosts-code .token.builtin,
+[data-theme="light"] .mcp-hosts-code .token.inserted {
+  color: #9a3412;
+}
+[data-theme="light"] .api-code .token.operator,
+[data-theme="light"] .api-code .token.entity,
+[data-theme="light"] .api-code .token.url,
+[data-theme="light"] .mcp-hosts-code .token.operator,
+[data-theme="light"] .mcp-hosts-code .token.entity,
+[data-theme="light"] .mcp-hosts-code .token.url {
+  color: #1e3a5f;
+  background: transparent;
+}
+[data-theme="light"] .api-code .token.atrule,
+[data-theme="light"] .api-code .token.attr-value,
+[data-theme="light"] .api-code .token.keyword,
+[data-theme="light"] .mcp-hosts-code .token.atrule,
+[data-theme="light"] .mcp-hosts-code .token.attr-value,
+[data-theme="light"] .mcp-hosts-code .token.keyword {
+  color: #1d4ed8;
+}
+[data-theme="light"] .api-code .token.function,
+[data-theme="light"] .api-code .token.class-name,
+[data-theme="light"] .mcp-hosts-code .token.function,
+[data-theme="light"] .mcp-hosts-code .token.class-name {
+  color: #7c3aed;
+}
+[data-theme="light"] .api-code .token.regex,
+[data-theme="light"] .api-code .token.important,
+[data-theme="light"] .api-code .token.variable,
+[data-theme="light"] .mcp-hosts-code .token.regex,
+[data-theme="light"] .mcp-hosts-code .token.important,
+[data-theme="light"] .mcp-hosts-code .token.variable {
+  color: #b45309;
+}
+
+/* Dark */
+[data-theme="dark"] .api-code .token.comment,
+[data-theme="dark"] .api-code .token.prolog,
+[data-theme="dark"] .api-code .token.doctype,
+[data-theme="dark"] .api-code .token.cdata,
+[data-theme="dark"] .mcp-hosts-code .token.comment,
+[data-theme="dark"] .mcp-hosts-code .token.prolog,
+[data-theme="dark"] .mcp-hosts-code .token.doctype,
+[data-theme="dark"] .mcp-hosts-code .token.cdata {
+  color: #8b939e;
+}
+[data-theme="dark"] .api-code .token.punctuation,
+[data-theme="dark"] .mcp-hosts-code .token.punctuation {
+  color: #a8b0ba;
+}
+[data-theme="dark"] .api-code .token.property,
+[data-theme="dark"] .api-code .token.tag,
+[data-theme="dark"] .api-code .token.boolean,
+[data-theme="dark"] .api-code .token.number,
+[data-theme="dark"] .api-code .token.constant,
+[data-theme="dark"] .api-code .token.symbol,
+[data-theme="dark"] .mcp-hosts-code .token.property,
+[data-theme="dark"] .mcp-hosts-code .token.tag,
+[data-theme="dark"] .mcp-hosts-code .token.boolean,
+[data-theme="dark"] .mcp-hosts-code .token.number,
+[data-theme="dark"] .mcp-hosts-code .token.constant,
+[data-theme="dark"] .mcp-hosts-code .token.symbol {
+  color: #5eead4;
+}
+[data-theme="dark"] .api-code .token.selector,
+[data-theme="dark"] .api-code .token.attr-name,
+[data-theme="dark"] .api-code .token.string,
+[data-theme="dark"] .api-code .token.char,
+[data-theme="dark"] .api-code .token.builtin,
+[data-theme="dark"] .api-code .token.inserted,
+[data-theme="dark"] .mcp-hosts-code .token.selector,
+[data-theme="dark"] .mcp-hosts-code .token.attr-name,
+[data-theme="dark"] .mcp-hosts-code .token.string,
+[data-theme="dark"] .mcp-hosts-code .token.char,
+[data-theme="dark"] .mcp-hosts-code .token.builtin,
+[data-theme="dark"] .mcp-hosts-code .token.inserted {
+  color: #f0abfc;
+}
+[data-theme="dark"] .api-code .token.operator,
+[data-theme="dark"] .api-code .token.entity,
+[data-theme="dark"] .api-code .token.url,
+[data-theme="dark"] .mcp-hosts-code .token.operator,
+[data-theme="dark"] .mcp-hosts-code .token.entity,
+[data-theme="dark"] .mcp-hosts-code .token.url {
+  color: #e2e8f0;
+  background: transparent;
+}
+[data-theme="dark"] .api-code .token.atrule,
+[data-theme="dark"] .api-code .token.attr-value,
+[data-theme="dark"] .api-code .token.keyword,
+[data-theme="dark"] .mcp-hosts-code .token.atrule,
+[data-theme="dark"] .mcp-hosts-code .token.attr-value,
+[data-theme="dark"] .mcp-hosts-code .token.keyword {
+  color: #93c5fd;
+}
+[data-theme="dark"] .api-code .token.function,
+[data-theme="dark"] .api-code .token.class-name,
+[data-theme="dark"] .mcp-hosts-code .token.function,
+[data-theme="dark"] .mcp-hosts-code .token.class-name {
+  color: #c4b5fd;
+}
+[data-theme="dark"] .api-code .token.regex,
+[data-theme="dark"] .api-code .token.important,
+[data-theme="dark"] .api-code .token.variable,
+[data-theme="dark"] .mcp-hosts-code .token.regex,
+[data-theme="dark"] .mcp-hosts-code .token.important,
+[data-theme="dark"] .mcp-hosts-code .token.variable {
+  color: #fbbf24;
+}

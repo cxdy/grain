@@ -24,7 +24,10 @@ sdk/python/.pytest_cache/
 sdk/python/dist/
 sdk/python/build/
 
-# Jekyll local preview
+# Docs site (Hugo) — source under docs/, build output not committed
 docs/vendor/
 docs/.bundle/
 docs/_site/
+docs/public/
+docs/resources/
+docs/.hugo_build.lock

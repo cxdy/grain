@@ -1,0 +1,11 @@
+{{ define "body-class" }}layout-docs-root{{ end }}
+{{ define "main" }}
+{{/* /docs/ → latest release */}}
+<meta http-equiv="refresh" content="0;url={{ printf "/docs/%s/" .Site.Params.docsVersion | relURL }}">
+<div class="wrap prose" style="padding:4rem 1.25rem">
+  <p>Redirecting to <a href="{{ printf "/docs/%s/" .Site.Params.docsVersion | relURL }}">docs {{ .Site.Params.docsVersionLabel }}</a>…</p>
+</div>
+<script>
+  location.replace({{ printf "/docs/%s/" .Site.Params.docsVersion | relURL | jsonify }});
+</script>
+{{ end }}
