@@ -78,7 +78,7 @@ func TestHandleShellBadUpgrade(t *testing.T) {
 func TestStartLoginShellDefaults(t *testing.T) {
 	// Prefer /bin/sh — some CI images restrict /bin/bash under PTY.
 	for _, shell := range []string{"/bin/sh", "/bin/bash", ""} {
-		cmd, ptmx, err := startLoginShell(shell, 80, 24)
+		cmd, ptmx, err := startLoginShell(shell, 80, 24, nil)
 		if err != nil {
 			t.Logf("startLoginShell(%q): %v", shell, err)
 			continue

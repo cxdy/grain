@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Sandbox recipes** — portable YAML (`apiVersion: grain/v1`, `kind: Sandbox`) for create options + ordered bootstrap steps that implement the readiness protocol. CLI: `grain new --recipe file.yaml`, `grain recipe validate|show`. Examples: `examples/recipes/`. Docs: [Sandbox recipes](https://grainvm.com/docs/main/get-started/recipe/).
 - **Host clipboard via OSC 52 on `grain sh`** — intercept OSC 52 (and tmux DCS-wrapped) sequences from the guest PTY and copy to the local clipboard (`pbcopy` / `wl-copy` / `xclip` / `xsel`) so tools like Grok Build can copy on highlight inside a sandbox. Disable with `GRAIN_OSC52_CLIPBOARD=0`.
+- **`grain sh` forwards host terminal env** — `TERM` / `TERM_PROGRAM` / `COLORTERM` (and locale) into the guest PTY so TUIs can negotiate keyboard protocols the same as local sessions (Shift+Enter newlines in Grok Build, etc.).
 - **Guest readiness protocol** — custom images/bootstrap write `/var/lib/grain/readiness/*`; agent `GET /health` includes `readiness` and `GET /readiness`; create wait mode `bootstrap` polls until `state=ready` (fails on `failed`/timeout, VM left running). CLI: `grain status`, create progress surfaces guest messages. Docs: [Readiness protocol](https://grainvm.com/docs/0.3.0/explain/readiness/). Helper: `scripts/grain-ready-report.sh`.
 
 ### Fixed

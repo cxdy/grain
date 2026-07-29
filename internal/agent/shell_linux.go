@@ -38,7 +38,17 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = conn.CloseNow() }()
 
 	ctx := r.Context()
-	cmd, ptmx, err := startLoginShell(shellPath, cols, rows)
+	// Host terminal identity (TERM_PROGRAM, etc.) for guest TUI keyboard negotiation.
+	extra := shellEnvFromQuery(map[string]string{
+		"term":                 q.Get("term"),
+		"term_program":         q.Get("term_program"),
+		"term_program_version": q.Get("term_program_version"),
+		"colorterm":            q.Get("colorterm"),
+		"lang":                 q.Get("lang"),
+		"lc_all":               q.Get("lc_all"),
+		"lc_ctype":             q.Get("lc_ctype"),
+	})
+	cmd, ptmx, err := startLoginShell(shellPath, cols, rows, extra)
 	if err != nil {
 		s.Log.Error("shell pty start", "err", err)
 		_ = conn.Close(websocket.StatusInternalError, err.Error())
@@ -144,7 +154,8 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 }
 
 // startLoginShell spawns a login shell in a PTY as uid 1000 when possible, else root.
-func startLoginShell(shellPath string, cols, rows int) (*exec.Cmd, *os.File, error) {
+// extraEnv is KEY=value pairs (e.g. host TERM_PROGRAM) merged over defaults.
+func startLoginShell(shellPath string, cols, rows int, extraEnv []string) (*exec.Cmd, *os.File, error) {
 	uid, gid, home, shell := resolveShellUser()
 	if shellPath != "" {
 		shell = shellPath
@@ -156,7 +167,7 @@ func startLoginShell(shellPath string, cols, rows int) (*exec.Cmd, *os.File, err
 	// Login shell: argv0 with leading "-" is the traditional convention.
 	cmd := exec.Command(shell, "-l")
 	cmd.Dir = home
-	cmd.Env = shellEnv(home, shell, uid)
+	cmd.Env = mergeShellEnv(shellEnv(home, shell, uid), extraEnv)
 	if os.Geteuid() == 0 && (uid != 0 || gid != 0) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{
@@ -269,6 +280,8 @@ func splitPasswd(line string) []string {
 
 func shellEnv(home, shell string, uid int) []string {
 	// Minimal sane environment for an interactive login-like session.
+	// TERM_PROGRAM / COLORTERM may be overlaid from the host CLI (see shellEnvFromQuery)
+	// so guest TUIs negotiate the same keyboard protocol as a local session.
 	path := "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 	userName := "root"
 	if uid == 1000 {

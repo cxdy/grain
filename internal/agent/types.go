@@ -155,6 +155,24 @@ type ShellOpts struct {
 	// Raw puts the local terminal into raw mode when Stdin is a TTY (default true).
 	// Set to false to disable. When Stdin is not a terminal, raw mode is skipped.
 	Raw *bool
+	// ExtraEnv is KEY=value pairs merged into the guest shell environment
+	// (host TERM_PROGRAM / COLORTERM / etc. for TUI keyboard negotiation).
+	// Unknown or empty values are ignored by the agent.
+	ExtraEnv []string
+}
+
+// ShellEnvQueryKeys are query parameters on GET /shell that override guest env.
+// Host CLI copies the corresponding process environment into these params so
+// guest TUIs (e.g. Grok Build) can detect the outer terminal and enable
+// Kitty keyboard protocol / Shift+Enter newlines.
+var ShellEnvQueryKeys = []string{
+	"term",
+	"term_program",
+	"term_program_version",
+	"colorterm",
+	"lang",
+	"lc_all",
+	"lc_ctype",
 }
 
 // ShellControl is a JSON text WebSocket frame for PTY control messages.

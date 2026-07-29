@@ -459,6 +459,33 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 	if opts.Shell != "" {
 		q.Set("shell", opts.Shell)
 	}
+	// Forward host terminal identity so guest TUIs negotiate keyboard correctly.
+	env := opts.ExtraEnv
+	if len(env) == 0 {
+		env = HostShellExtraEnv()
+	}
+	for _, kv := range env {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || v == "" {
+			continue
+		}
+		switch strings.ToUpper(k) {
+		case "TERM":
+			q.Set("term", v)
+		case "TERM_PROGRAM":
+			q.Set("term_program", v)
+		case "TERM_PROGRAM_VERSION":
+			q.Set("term_program_version", v)
+		case "COLORTERM":
+			q.Set("colorterm", v)
+		case "LANG":
+			q.Set("lang", v)
+		case "LC_ALL":
+			q.Set("lc_all", v)
+		case "LC_CTYPE":
+			q.Set("lc_ctype", v)
+		}
+	}
 	u.RawQuery = q.Encode()
 
 	// Pass HTTP client so vsock (custom Transport) and timeouts apply to WS upgrade.
