@@ -23,6 +23,7 @@ import (
 	grainmcp "github.com/cxdy/grain/internal/mcp"
 	"github.com/cxdy/grain/internal/observability"
 	"github.com/cxdy/grain/internal/proxy"
+	"github.com/cxdy/grain/internal/recipe"
 	"github.com/cxdy/grain/internal/vm"
 	"github.com/spf13/cobra"
 )
@@ -51,10 +52,12 @@ func Root(version string) *cobra.Command {
   grain new -v HOST:GUEST  share host dir via virtio-9p
   grain new --profile agent   named profile from config
   grain new --preset docker|k3s|act   userdata presets
+  grain new --recipe file.yaml  portable create + bootstrap recipe
   grain new --arch amd64      x86_64 guest (QEMU TCG on Apple Silicon)
   grain new --gpu virtio      virtio-gpu for the guest
   grain new --network overlay share L2 between VMs
   grain new --wait agent      wait for agent (ssh|agent|userdata|bootstrap)
+  grain recipe validate|show  check a sandbox recipe file
   grain act -- [act-args]     run GitHub Actions via act in a sandbox
   grain update [--check]      check for / install latest release
   grain mcp [--http]          MCP tool server (stdio or Streamable HTTP)
@@ -108,6 +111,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 		cmdMCP(&cfgPath, version),
 		cmdNew(&cfgPath),
 		cmdAct(&cfgPath),
+		cmdRecipe(),
 		cmdStop(&cfgPath),
 		cmdStart(&cfgPath),
 		cmdPause(&cfgPath),
@@ -359,6 +363,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var gpu string
 	var network string
 	var userdataFile string
+	var recipePath string
 	var profileName string
 	var presetName string
 	var publish []string
@@ -379,13 +384,39 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				return err
 			}
 			// Allow boot + cloud-init (ReadyTimeout defaults to 2m; give API room).
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			// Recipes with bootstrap may need longer; override when recipe sets ready_timeout.
+			createTimeout := 5 * time.Minute
+
+			var compiled *recipe.Compiled
+			if recipePath != "" {
+				if userdataFile != "" {
+					return fmt.Errorf("use either --recipe or --userdata-file, not both")
+				}
+				rf, err := recipe.Load(recipePath)
+				if err != nil {
+					return err
+				}
+				compiled, err = rf.Compile()
+				if err != nil {
+					return err
+				}
+				if compiled.Timeout != "" {
+					if d, err := time.ParseDuration(compiled.Timeout); err == nil && d > createTimeout {
+						createTimeout = d + time.Minute
+					}
+				}
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), createTimeout)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
 				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
 			}
+
 			var userdata string
-			if userdataFile != "" {
+			if compiled != nil {
+				userdata = compiled.Userdata
+			} else if userdataFile != "" {
 				b, err := os.ReadFile(userdataFile)
 				if err != nil {
 					return fmt.Errorf("userdata-file: %w", err)
@@ -423,22 +454,68 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				sockFwds = append(sockFwds, vm.SocketForward{HostPath: p.Host, GuestPath: p.Guest})
 			}
 
+			// Recipe fields act like a profile layer: flags > recipe > profile > defaults.
+			if compiled != nil {
+				if !cmd.Flags().Changed("name") && name == "" && compiled.Name != "" {
+					name = compiled.Name
+				}
+				if !cmd.Flags().Changed("cpus") && cpus == 0 && compiled.CPUs > 0 {
+					cpus = compiled.CPUs
+				}
+				if !cmd.Flags().Changed("mem") && mem == 0 && compiled.MemoryMB > 0 {
+					mem = compiled.MemoryMB
+				}
+				if !cmd.Flags().Changed("disk") && disk == 0 && compiled.DiskGB > 0 {
+					disk = compiled.DiskGB
+				}
+				if !cmd.Flags().Changed("image") && image == "" && compiled.Image != "" {
+					image = compiled.Image
+				}
+				if !cmd.Flags().Changed("persist") && compiled.Persistent {
+					persistent = true
+				}
+				if !cmd.Flags().Changed("arch") && arch == "" && compiled.Arch != "" {
+					arch = compiled.Arch
+				}
+				if !cmd.Flags().Changed("gpu") && gpu == "" && compiled.GPU != "" {
+					gpu = compiled.GPU
+				}
+				if !cmd.Flags().Changed("network") && network == "" && compiled.Network != "" {
+					network = compiled.Network
+				}
+				if !cmd.Flags().Changed("preset") && presetName == "" && compiled.Preset != "" {
+					presetName = compiled.Preset
+				}
+				if !cmd.Flags().Changed("wait") && waitMode == "" && compiled.Wait != "" {
+					waitMode = compiled.Wait
+				}
+				if !cmd.Flags().Changed("publish") && len(fwds) == 0 && len(compiled.Forwards) > 0 {
+					fwds = append([]vm.PortForward(nil), compiled.Forwards...)
+				}
+				if !cmd.Flags().Changed("volume") && len(mounts) == 0 && len(compiled.Mounts) > 0 {
+					mounts = append([]vm.Mount(nil), compiled.Mounts...)
+				}
+				if !cmd.Flags().Changed("publish-socket") && len(sockFwds) == 0 && len(compiled.SocketForwards) > 0 {
+					sockFwds = append([]vm.SocketForward(nil), compiled.SocketForwards...)
+				}
+			}
+
 			// flags (explicit) > profile fields > global config defaults (daemon)
 			o := config.CreateOverrides{
 				CPUs:          cpus,
-				CPUsSet:       cmd.Flags().Changed("cpus"),
+				CPUsSet:       cmd.Flags().Changed("cpus") || (compiled != nil && compiled.CPUs > 0),
 				MemoryMB:      mem,
-				MemoryMBSet:   cmd.Flags().Changed("mem"),
+				MemoryMBSet:   cmd.Flags().Changed("mem") || (compiled != nil && compiled.MemoryMB > 0),
 				DiskGB:        disk,
-				DiskGBSet:     cmd.Flags().Changed("disk"),
+				DiskGBSet:     cmd.Flags().Changed("disk") || (compiled != nil && compiled.DiskGB > 0),
 				Image:         image,
-				ImageSet:      cmd.Flags().Changed("image"),
+				ImageSet:      cmd.Flags().Changed("image") || (compiled != nil && compiled.Image != ""),
 				Persistent:    persistent,
-				PersistentSet: cmd.Flags().Changed("persist"),
+				PersistentSet: cmd.Flags().Changed("persist") || (compiled != nil && compiled.Persistent),
 				Preset:        presetName,
-				PresetSet:     cmd.Flags().Changed("preset"),
-				ForwardsSet:   cmd.Flags().Changed("publish"),
-				MountsSet:     cmd.Flags().Changed("volume"),
+				PresetSet:     cmd.Flags().Changed("preset") || (compiled != nil && compiled.Preset != ""),
+				ForwardsSet:   cmd.Flags().Changed("publish") || (compiled != nil && len(compiled.Forwards) > 0),
+				MountsSet:     cmd.Flags().Changed("volume") || (compiled != nil && len(compiled.Mounts) > 0),
 			}
 			resolved, err := cfg.ResolveCreate(profileName, o)
 			if err != nil {
@@ -451,7 +528,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				mounts = profileMountsToVM(resolved.Mounts)
 			}
 
-			// Expand userdata presets (CLI --preset or profile.preset) before create.
+			// Expand userdata presets (CLI --preset, recipe.preset, or profile.preset).
 			// k3s also gets default resources (when unset) and auto-forward :6443.
 			cpusSet := o.CPUsSet || resolved.CPUs > 0
 			memSet := o.MemoryMBSet || resolved.MemoryMB > 0
@@ -462,14 +539,20 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				return err
 			}
 
-			var tags map[string]string
+			tags := map[string]string{}
 			if resolved.ProfileName != "" {
-				tags = map[string]string{"profile": resolved.ProfileName}
+				tags["profile"] = resolved.ProfileName
+			}
+			if compiled != nil {
+				for k, v := range compiled.Tags {
+					tags[k] = v
+				}
+			}
+			if len(tags) == 0 {
+				tags = nil
 			}
 
-			onEvent, stop := createProgressEvents("creating")
-			start := time.Now()
-			inst, err := c.CreateStream(ctx, api.CreateRequest{
+			req := api.CreateRequest{
 				Name:           name,
 				Persistent:     resolved.Persistent,
 				CPUs:           resolved.CPUs,
@@ -485,7 +568,14 @@ func cmdNew(cfgPath *string) *cobra.Command {
 				Mounts:         mounts,
 				SocketForwards: sockFwds,
 				Wait:           waitMode,
-			}, onEvent)
+			}
+			if compiled != nil && compiled.Timeout != "" {
+				req.Timeout = compiled.Timeout
+			}
+
+			onEvent, stop := createProgressEvents("creating")
+			start := time.Now()
+			inst, err := c.CreateStream(ctx, req, onEvent)
 			stop()
 			if err != nil {
 				return err
@@ -523,6 +613,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&gpu, "gpu", "", "guest GPU: virtio (virtio-gpu-pci) or empty for none")
 	cmd.Flags().StringVar(&network, "network", "", "slirp (default, isolated) or overlay (shared L2 between VMs)")
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
+	cmd.Flags().StringVar(&recipePath, "recipe", "", "sandbox recipe YAML (create + optional bootstrap readiness steps)")
 	cmd.Flags().StringVar(&profileName, "profile", "", "named profile from config (flags override profile)")
 	cmd.Flags().StringVar(&presetName, "preset", "", "userdata preset: docker, k3s, act (merged into cloud-init)")
 	cmd.Flags().StringVar(&waitMode, "wait", "", "readiness: auto (agent if golden image), ssh, agent, userdata, or bootstrap")

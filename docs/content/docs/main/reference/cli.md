@@ -96,8 +96,19 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `--publish-socket` | Host↔guest unix socket forward |
 | `--profile` | Named profile |
 | `--preset` | `docker`, `k3s`, or `act` |
-| `--userdata-file` | Extra cloud-init / shell |
+| `--recipe` | Sandbox recipe YAML (create + optional bootstrap steps) |
+| `--userdata-file` | Extra cloud-init / shell (not with `--recipe`) |
 | `--proxy` | Inject `HTTPS_PROXY` for egress proxy |
+
+### `grain recipe`
+
+| Command | Meaning |
+|---------|---------|
+| `grain recipe validate <file>` | Schema + compile check |
+| `grain recipe show <file>` | Print resolved create options |
+| `grain recipe show <file> --userdata` | Also print compiled cloud-init |
+
+Guide: [Sandbox recipes](../get-started/recipe/).
 
 Name is optional for `sh` / `rm` / `x` / `fs` / etc. when exactly one VM exists.
 

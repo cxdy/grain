@@ -1,0 +1,30 @@
+# Node-oriented sandbox: mount the current repo, publish port 3000, install tools.
+#
+#   grain new --recipe examples/recipes/node-dev.recipe.yaml
+#   grain sh node-dev
+#
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: node-dev
+  description: Repo mount + git/curl for node-ish workflows
+spec:
+  image: grain-ubuntu
+  cpus: 2
+  memory_mb: 4096
+  disk_gb: 20
+  ready_timeout: 15m
+  mounts:
+    - host: .
+      guest: /work
+  forwards:
+    - guest_port: 3000
+  bootstrap:
+    ready_name: node-dev
+    steps:
+      - name: packages
+        message: installing git and curl
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq git curl ca-certificates
