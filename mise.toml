@@ -1,0 +1,8 @@
+# Dev tools for grain. Install with: mise install  (or: just init)
+# Versions match .tool-versions for asdf users.
+# Docs: https://mise.jdx.dev/configuration.html
+
+[tools]
+go = "1.25.0"
+golangci-lint = "2.12.2"
+pre-commit = "4.5.1"
