@@ -12,13 +12,13 @@ Also read [SECURITY.md](SECURITY.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md
 
 ## Prerequisites
 
-- **Go 1.25+** (see [`.tool-versions`](.tool-versions); [mise](https://mise.jdx.dev/) recommended)
+- **Go 1.25+** (see [`mise.toml`](mise.toml) / [`.tool-versions`](.tool-versions); [mise](https://mise.jdx.dev/) recommended)
 - **[just](https://github.com/casey/just)**
 - **QEMU** for real VMs (`brew install qemu` on macOS; `qemu-system` + `qemu-img` on Linux)
-- Optional: **pre-commit**, **golangci-lint** (also listed in `.tool-versions`)
+- Optional: **pre-commit**, **golangci-lint** (pinned in `mise.toml`)
 
 ```bash
-just init          # mise install (if available) + pre-commit hooks
+just init          # mise install (from mise.toml) + pre-commit hooks
 just test          # unit tests (mock hypervisor — no QEMU required)
 just smoke-api     # CLI + daemon e2e without QEMU
 just coverage      # coverprofile + cobertura XML; fails under 75% (cmd/* excluded)
