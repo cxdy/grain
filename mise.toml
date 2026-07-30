@@ -1,8 +1,28 @@
 # Dev tools for grain. Install with: mise install  (or: just init)
-# Versions match .tool-versions for asdf users.
+# Core toolchain versions (go, golangci-lint, pre-commit) match .tool-versions
+# for asdf users.
 # Docs: https://mise.jdx.dev/configuration.html
+#
+# Not mise-manageable — install via system package manager (pacman/apt/brew):
+#   qemu            required for real VMs: qemu-system-x86_64/-aarch64 + qemu-img
+#                   (consult qemu and system installation docs)
+#   xorriso/mkisofs cloud-init seed ISOs on Linux; any of genisoimage, mkisofs,
+#                   or xorriso works (consult system installation docs)
+#   docker          optional: `just obs-up` observability stack
+#   ovmf            optional: UEFI firmware for golden image bakes (scripts/bake-golden.sh)
+#   firecracker     optional: experimental alternate hypervisor (Linux only)
+#   virtiofsd       optional: virtiofs mounts on Linux (falls back to 9p)
+#   openssh/curl    assumed present: ssh/scp for guest access, curl for API smoke tests
 
 [tools]
 go = "1.25.0"
 golangci-lint = "2.12.2"
 pre-commit = "4.5.1"
+just = "1.57.0"
+# node provides npx for `just markdownlint`; markdownlint-cli2 pin matches
+# .pre-commit-config.yaml
+node = "24.18.1"
+"npm:markdownlint-cli2" = "0.23.1"
+hugo = "0.139.4"
+goreleaser = "2.17.1"
+svu = "3.4.1"
