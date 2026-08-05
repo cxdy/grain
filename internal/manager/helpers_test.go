@@ -362,6 +362,42 @@ func TestWrapAgentWaitErr(t *testing.T) {
 	}
 }
 
+func TestWaitAgentReachableCancel(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := waitAgentReachable(ctx, agent.Target{Port: 1})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestWaitAgentReachableTCP(t *testing.T) {
+	t.Parallel()
+	// Real loopback agent-like health endpoint.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = c.Write([]byte("HTTP/1.0 200 OK\r\nContent-Length: 0\r\n\r\n"))
+			_ = c.Close()
+		}
+	}()
+	port := ln.Addr().(*net.TCPAddr).Port
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := waitAgentReachable(ctx, agent.Target{Port: port}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAgentTarget(t *testing.T) {
 	t.Parallel()
 	if agentTarget(nil).HasEndpoint() {

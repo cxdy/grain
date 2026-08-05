@@ -495,14 +495,19 @@ func (m *Manager) waitAgentMode(
 	if rem := time.Until(readyDeadline); rem > 0 && rem < probeFor {
 		probeFor = rem
 	}
-	probeCtx, probeCancel := context.WithTimeout(ctx, probeFor)
-	client, dialErr := agent.Dial(probeCtx, agentTarget(inst))
-	var probeErr error
-	if dialErr != nil {
-		probeErr = dialErr
-	} else {
-		probeErr = agent.Wait(probeCtx, client)
+	// Firecracker has no TCP hostfwd fallback: agent appears only after guest
+	// boot + systemd. Retry dial until budget expires (single Dial fails fast
+	// with CONNECT EOF while the guest is still booting).
+	if tgt := agentTarget(inst); tgt.FirecrackerUDS != "" {
+		if time.Until(readyDeadline) > probeFor {
+			probeFor = time.Until(readyDeadline)
+		}
+		if probeFor < agentBakedWait {
+			probeFor = agentBakedWait
+		}
 	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, probeFor)
+	probeErr := waitAgentReachable(probeCtx, agentTarget(inst))
 	probeCancel()
 	if probeErr == nil {
 		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID)
@@ -546,6 +551,51 @@ func wrapAgentWaitErr(inst *vm.Instance, probeErr error) error {
 			tgt.FirecrackerUDS, probeErr)
 	}
 	return fmt.Errorf("wait agent: guest agent not ready: %w", probeErr)
+}
+
+// waitAgentReachable dials and polls agent health until ctx is done.
+// Retries Dial (needed for Firecracker UDS CONNECT while the guest is booting).
+func waitAgentReachable(ctx context.Context, tgt agent.Target) error {
+	var last error
+	// Immediate attempt.
+	if client, err := agent.Dial(ctx, tgt); err == nil {
+		if err := agent.Wait(ctx, client); err == nil {
+			return nil
+		} else {
+			last = err
+		}
+	} else {
+		last = err
+	}
+
+	ticker := time.NewTicker(agent.WaitPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			if last != nil {
+				return last
+			}
+			return fmt.Errorf("wait for grain-agent: %w", ctx.Err())
+		case <-ticker.C:
+			if err := ctx.Err(); err != nil {
+				if last != nil {
+					return last
+				}
+				return err
+			}
+			client, err := agent.Dial(ctx, tgt)
+			if err != nil {
+				last = err
+				continue
+			}
+			if err := agent.Wait(ctx, client); err != nil {
+				last = err
+				continue
+			}
+			return nil
+		}
+	}
 }
 
 // waitSSHOrAgent waits until either the guest agent becomes healthy or SSH
@@ -1670,41 +1720,45 @@ func (m *Manager) waitOrDeployAgent(
 			probeFor = rem
 		}
 	}
-	probeCtx, probeCancel := context.WithTimeout(ctx, probeFor)
-	client, dialErr := agent.Dial(probeCtx, agentTarget(inst))
-	var probeErr error
-	if dialErr != nil {
-		probeErr = dialErr
-	} else {
-		probeErr = agent.Wait(probeCtx, client)
+	if tgt := agentTarget(inst); tgt.FirecrackerUDS != "" {
+		if rem := time.Until(readyDeadline); rem > probeFor {
+			probeFor = rem
+		}
+		if probeFor < agentBakedWait {
+			probeFor = agentBakedWait
+		}
 	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, probeFor)
+	probeErr := waitAgentReachable(probeCtx, agentTarget(inst))
 	probeCancel()
 	if probeErr == nil {
 		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "baked", baked)
 		return nil
 	}
 
-	// Deploy if we have a linux binary (golden images usually skip this path).
-	binPath, err := agent.LinuxBinaryPath(m.cfg.DataDir)
-	if err != nil {
-		m.log.Warn("guest agent not ready (no deploy binary)",
-			"name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "err", err)
-		// Still try a longer wait in case the agent comes up without our help.
-	} else {
-		if emit != nil {
-			emit(vm.CreateEvent{
-				Phase:   vm.PhaseWaitAgent,
-				Name:    inst.Name,
-				Message: "deploying guest agent over ssh",
-				SSHPort: inst.SSHPort,
-			})
-		}
-		m.log.Info("deploying guest agent", "name", inst.Name, "binary", binPath)
-		deployCtx, deployCancel := context.WithTimeout(ctx, agentWaitFallback)
-		err := guest.EnsureAgent(deployCtx, inst.IP, inst.SSHPort, sshUser, privKey, binPath)
-		deployCancel()
+	// Deploy over SSH when hostfwd is available (not Firecracker vsock-only).
+	if inst.SSHPort > 0 {
+		binPath, err := agent.LinuxBinaryPath(m.cfg.DataDir)
 		if err != nil {
-			m.log.Warn("guest agent deploy failed", "name", inst.Name, "err", err)
+			m.log.Warn("guest agent not ready (no deploy binary)",
+				"name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "err", err)
+			// Still try a longer wait in case the agent comes up without our help.
+		} else {
+			if emit != nil {
+				emit(vm.CreateEvent{
+					Phase:   vm.PhaseWaitAgent,
+					Name:    inst.Name,
+					Message: "deploying guest agent over ssh",
+					SSHPort: inst.SSHPort,
+				})
+			}
+			m.log.Info("deploying guest agent", "name", inst.Name, "binary", binPath)
+			deployCtx, deployCancel := context.WithTimeout(ctx, agentWaitFallback)
+			err := guest.EnsureAgent(deployCtx, inst.IP, inst.SSHPort, sshUser, privKey, binPath)
+			deployCancel()
+			if err != nil {
+				m.log.Warn("guest agent deploy failed", "name", inst.Name, "err", err)
+			}
 		}
 	}
 
@@ -1715,15 +1769,7 @@ func (m *Manager) waitOrDeployAgent(
 	}
 	waitCtx, waitCancel := context.WithTimeout(ctx, waitFor)
 	defer waitCancel()
-	client, err = agent.Dial(waitCtx, agentTarget(inst))
-	if err != nil {
-		m.log.Warn("guest agent not ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "err", err)
-		if hard {
-			return wrapAgentWaitErr(inst, err)
-		}
-		return nil
-	}
-	if err := agent.Wait(waitCtx, client); err != nil {
+	if err := waitAgentReachable(waitCtx, agentTarget(inst)); err != nil {
 		m.log.Warn("guest agent not ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "err", err)
 		if hard {
 			return wrapAgentWaitErr(inst, err)
