@@ -27,6 +27,7 @@ type Server struct {
 	Addr    string // listen address, default DefaultListen
 	Log     *slog.Logger
 	started time.Time
+	clip    *clipboardBridge
 
 	mu       sync.Mutex
 	listener net.Listener
@@ -45,6 +46,7 @@ func NewServer(addr string, log *slog.Logger) *Server {
 		Addr:    addr,
 		Log:     log,
 		started: time.Now(),
+		clip:    newClipboardBridge(),
 	}
 }
 
@@ -55,6 +57,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("HEAD /health", s.handleHealth)
 	mux.HandleFunc("GET /readiness", s.handleReadiness)
 	mux.HandleFunc("GET /stats", s.handleStats)
+	mux.HandleFunc("GET /clipboard", s.handleClipboard)
 	mux.HandleFunc("POST /exec", s.handleExec)
 	mux.HandleFunc("POST /cp", s.handleCPPut)
 	mux.HandleFunc("GET /cp", s.handleCPGet)

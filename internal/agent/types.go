@@ -191,8 +191,18 @@ var ShellEnvQueryKeys = []string{
 }
 
 // ShellControl is a JSON text WebSocket frame for PTY control messages.
+//
+// Types:
+//   - resize: client → agent (Cols/Rows)
+//   - clipboard_get: agent → client (request host clipboard; Id correlates reply)
+//   - clipboard: client → agent (Data is base64 clipboard payload; Id matches get)
 type ShellControl struct {
-	Type string `json:"type"` // "resize"
+	Type string `json:"type"` // "resize" | "clipboard_get" | "clipboard"
 	Cols int    `json:"cols,omitempty"`
 	Rows int    `json:"rows,omitempty"`
+	Id   string `json:"id,omitempty"`
+	// Data is base64-encoded clipboard bytes for type "clipboard".
+	Data string `json:"data,omitempty"`
+	// Error is set on type "clipboard" when the client could not read the clipboard.
+	Error string `json:"error,omitempty"`
 }

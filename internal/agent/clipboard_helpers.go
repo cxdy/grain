@@ -55,9 +55,18 @@ if ! { printf '%s' "$seq" >/dev/tty; } 2>/dev/null; then
 fi
 `
 
-	const osc52PasteStub = `#!/bin/sh
-# grain: paste via OSC 52 query is not reliably supported over grain sh
-echo "grain clipboard: paste not available in sandbox (copy uses OSC 52)" >&2
+	// pbpaste fetches the client host clipboard via the agent (shell session
+	// must be active — grain sh asks the laptop for paste data).
+	const osc52Paste = `#!/bin/sh
+# grain: paste from client clipboard via grain-agent GET /clipboard
+url="http://127.0.0.1:7475/clipboard"
+if command -v curl >/dev/null 2>&1; then
+  exec curl -sf --max-time 5 "$url"
+fi
+if command -v wget >/dev/null 2>&1; then
+  exec wget -q -O - --timeout=5 "$url"
+fi
+echo "grain clipboard: curl/wget required for paste" >&2
 exit 1
 `
 
@@ -114,7 +123,7 @@ exec "$(dirname "$0")/pbcopy"
 
 	files := map[string]string{
 		"pbcopy":   osc52Copy,
-		"pbpaste":  osc52PasteStub,
+		"pbpaste":  osc52Paste,
 		"xclip":    xclipShim,
 		"xsel":     xselShim,
 		"wl-copy":  wlCopyShim,
