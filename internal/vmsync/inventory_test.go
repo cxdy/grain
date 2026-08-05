@@ -111,7 +111,7 @@ func TestInventoryHostSymlinkAndIgnoreFile(t *testing.T) {
 	if inv["skip.me"] != nil {
 		t.Fatal("skip.me should be ignored")
 	}
-	if inv["link"] == nil || inv["link"].Type != "symlink" {
+	if inv["link"] == nil || inv["link"].Type != "symlink" || inv["link"].Target != "keep.txt" {
 		t.Fatalf("link: %+v", inv["link"])
 	}
 	if inv["dlink"] == nil || inv["dlink"].Type != "symlink" {

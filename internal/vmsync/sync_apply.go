@@ -357,6 +357,9 @@ func applyUpdateMode(ctx context.Context, opts syncApplyOpts, it syncPlanItem) e
 }
 
 func applyFileTransfer(ctx context.Context, opts syncApplyOpts, it syncPlanItem) error {
+	if it.Source != nil && it.Source.Type == "symlink" {
+		return applySymlinkTransfer(ctx, opts, it)
+	}
 	switch opts.Verb {
 	case syncPush:
 		return applyPushFile(ctx, opts, it)
@@ -365,6 +368,97 @@ func applyFileTransfer(ctx context.Context, opts syncApplyOpts, it syncPlanItem)
 	default:
 		return fmt.Errorf("sync: unknown verb %q", opts.Verb)
 	}
+}
+
+func applySymlinkTransfer(ctx context.Context, opts syncApplyOpts, it syncPlanItem) error {
+	target := ""
+	if it.Source != nil {
+		target = it.Source.Target
+	}
+	switch opts.Verb {
+	case syncPush:
+		return applyPushSymlink(ctx, opts, it, target)
+	case syncPull:
+		return applyPullSymlink(ctx, opts, it, target)
+	default:
+		return fmt.Errorf("sync: unknown verb %q", opts.Verb)
+	}
+}
+
+func applyPushSymlink(ctx context.Context, opts syncApplyOpts, it syncPlanItem, target string) error {
+	hp, err := safeRelJoin(opts.HostRoot, it.RelPath)
+	if err != nil {
+		return err
+	}
+	gp, err := safeGuestJoin(opts.GuestRoot, it.RelPath)
+	if err != nil {
+		return err
+	}
+	if target == "" {
+		t, err := os.Readlink(hp)
+		if err != nil {
+			return fmt.Errorf("host readlink %s: %w", it.RelPath, err)
+		}
+		target = t
+	}
+	if target == "" {
+		return fmt.Errorf("push symlink %s: empty target", it.RelPath)
+	}
+	if err := opts.FS.Symlink(ctx, gp, target); err != nil {
+		return fmt.Errorf("symlink %s: %w", gp, err)
+	}
+	hfi, err := os.Lstat(hp)
+	if err != nil {
+		return fmt.Errorf("host %s: %w", it.RelPath, err)
+	}
+	hostFP := lstatToFingerprint(hp, hfi)
+	gInfo, err := opts.FS.Stat(ctx, gp)
+	if err != nil {
+		return fmt.Errorf("stat guest %s: %w", gp, err)
+	}
+	guestFP := fsInfoToFingerprint(gInfo)
+	opts.State.setEntry(it.RelPath, hostFP, guestFP)
+	return nil
+}
+
+func applyPullSymlink(ctx context.Context, opts syncApplyOpts, it syncPlanItem, target string) error {
+	hp, err := safeRelJoin(opts.HostRoot, it.RelPath)
+	if err != nil {
+		return err
+	}
+	gp, err := safeGuestJoin(opts.GuestRoot, it.RelPath)
+	if err != nil {
+		return err
+	}
+	gInfo, err := opts.FS.Stat(ctx, gp)
+	if err != nil {
+		return fmt.Errorf("stat guest %s: %w", gp, err)
+	}
+	if target == "" {
+		target = gInfo.Target
+	}
+	if target == "" {
+		return fmt.Errorf("pull symlink %s: empty target (agent may lack target in FSInfo)", it.RelPath)
+	}
+	if err := os.MkdirAll(filepath.Dir(hp), 0o755); err != nil {
+		return err
+	}
+	// Replace any existing path at the destination.
+	_ = os.RemoveAll(hp)
+	if err := os.Symlink(target, hp); err != nil {
+		return fmt.Errorf("host symlink %s: %w", it.RelPath, err)
+	}
+	hfi, err := os.Lstat(hp)
+	if err != nil {
+		return err
+	}
+	hostFP := lstatToFingerprint(hp, hfi)
+	guestFP := fsInfoToFingerprint(gInfo)
+	if guestFP != nil && guestFP.Target == "" {
+		guestFP.Target = target
+	}
+	opts.State.setEntry(it.RelPath, hostFP, guestFP)
+	return nil
 }
 
 func applyPushFile(ctx context.Context, opts syncApplyOpts, it syncPlanItem) error {
@@ -383,6 +477,9 @@ func applyPushFile(ctx context.Context, opts syncApplyOpts, it syncPlanItem) err
 	if fi.IsDir() {
 		return fmt.Errorf("host %s: is directory", it.RelPath)
 	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return applyPushSymlink(ctx, opts, it, "")
+	}
 	f, err := os.Open(hp)
 	if err != nil {
 		return err
@@ -397,7 +494,7 @@ func applyPushFile(ctx context.Context, opts syncApplyOpts, it syncPlanItem) err
 		return fmt.Errorf("put %s: %w", gp, err)
 	}
 	// Host fingerprint from pre-transfer Lstat; guest from post-Put Stat.
-	hostFP := lstatToFingerprint(fi)
+	hostFP := lstatToFingerprint(hp, fi)
 	gInfo, err := opts.FS.Stat(ctx, gp)
 	if err != nil {
 		return fmt.Errorf("stat guest %s: %w", gp, err)
@@ -420,6 +517,9 @@ func applyPullFile(ctx context.Context, opts syncApplyOpts, it syncPlanItem) err
 	gInfo, err := opts.FS.Stat(ctx, gp)
 	if err != nil {
 		return fmt.Errorf("stat guest %s: %w", gp, err)
+	}
+	if gInfo.Type == "symlink" {
+		return applyPullSymlink(ctx, opts, it, gInfo.Target)
 	}
 	guestFP := fsInfoToFingerprint(gInfo)
 
@@ -447,7 +547,7 @@ func applyPullFile(ctx context.Context, opts syncApplyOpts, it syncPlanItem) err
 	if err != nil {
 		return err
 	}
-	hostFP := lstatToFingerprint(hfi)
+	hostFP := lstatToFingerprint(hp, hfi)
 	opts.State.setEntry(it.RelPath, hostFP, guestFP)
 	return nil
 }
@@ -464,7 +564,7 @@ func refreshBaselineBoth(ctx context.Context, opts syncApplyOpts, rel string, it
 		if err != nil {
 			return err
 		}
-		hostFP := lstatToFingerprint(hfi)
+		hostFP := lstatToFingerprint(hp, hfi)
 		var guestFP *syncFingerprint
 		if it.Source != nil {
 			guestFP = invToFingerprint(it.Source)
@@ -511,25 +611,32 @@ func refreshBaselineBoth(ctx context.Context, opts syncApplyOpts, rel string, it
 			if err != nil {
 				return err
 			}
-			hostFP = lstatToFingerprint(hfi)
+			hostFP = lstatToFingerprint(hp, hfi)
 		}
 		opts.State.setEntry(rel, hostFP, guestFP)
 	}
 	return nil
 }
 
-func lstatToFingerprint(fi os.FileInfo) *syncFingerprint {
+func lstatToFingerprint(path string, fi os.FileInfo) *syncFingerprint {
 	typ := "file"
-	if fi.IsDir() {
-		typ = "directory"
-	} else if fi.Mode()&os.ModeSymlink != 0 {
+	var target string
+	if fi.Mode()&os.ModeSymlink != 0 {
 		typ = "symlink"
+		if path != "" {
+			if t, err := os.Readlink(path); err == nil {
+				target = t
+			}
+		}
+	} else if fi.IsDir() {
+		typ = "directory"
 	}
 	return &syncFingerprint{
-		Type:  typ,
-		Size:  fi.Size(),
-		Mtime: fi.ModTime().Unix(),
-		Mode:  fmt.Sprintf("%04o", fi.Mode().Perm()),
+		Type:   typ,
+		Size:   fi.Size(),
+		Mtime:  fi.ModTime().Unix(),
+		Mode:   fmt.Sprintf("%04o", fi.Mode().Perm()),
+		Target: target,
 	}
 }
 
@@ -538,10 +645,11 @@ func fsInfoToFingerprint(info *agent.FSInfo) *syncFingerprint {
 		return nil
 	}
 	return &syncFingerprint{
-		Type:  info.Type,
-		Size:  info.Size,
-		Mtime: info.Mtime,
-		Mode:  normalizeSyncMode(info.Mode),
+		Type:   info.Type,
+		Size:   info.Size,
+		Mtime:  info.Mtime,
+		Mode:   normalizeSyncMode(info.Mode),
+		Target: info.Target,
 	}
 }
 

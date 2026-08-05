@@ -77,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /vms/{name}/fs/readdir", s.fsReadDir)
 	mux.HandleFunc("GET /vms/{name}/fs/stat", s.fsStat)
 	mux.HandleFunc("POST /vms/{name}/fs/mkdir", s.fsMkdir)
+	mux.HandleFunc("POST /vms/{name}/fs/symlink", s.fsSymlink)
 	mux.HandleFunc("DELETE /vms/{name}/fs/remove", s.fsRemove)
 	// Host secrets store
 	mux.HandleFunc("GET /secrets", s.listSecrets)
@@ -882,6 +883,37 @@ func (s *Server) fsMkdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := ac.Mkdir(r.Context(), body.Path, body.Recursive, body.Mode); err != nil {
+		writeAgentFSErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// fsSymlink proxies POST /fs/symlink JSON body to the guest agent.
+func (s *Server) fsSymlink(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ac, code, err := s.agentClient(name)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	var body agent.SymlinkRequest
+	if r.Body != nil {
+		defer func() { _ = r.Body.Close() }()
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
+			return
+		}
+	}
+	if body.Path == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("path is required"))
+		return
+	}
+	if body.Target == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("target is required"))
+		return
+	}
+	if err := ac.Symlink(r.Context(), body.Path, body.Target); err != nil {
 		writeAgentFSErr(w, err)
 		return
 	}

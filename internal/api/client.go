@@ -902,6 +902,38 @@ func (c *Client) Mkdir(ctx context.Context, name, guestPath string, recursive bo
 	return nil
 }
 
+// Symlink creates a symbolic link on the named VM via POST /vms/{name}/fs/symlink.
+// Existing paths at guestPath are replaced.
+func (c *Client) Symlink(ctx context.Context, name, guestPath, target string) error {
+	if guestPath == "" {
+		return errors.New("path is required")
+	}
+	if target == "" {
+		return errors.New("target is required")
+	}
+	body, err := json.Marshal(agent.SymlinkRequest{
+		Path:   guestPath,
+		Target: target,
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+url.PathEscape(name)+"/fs/symlink", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return decodeAPIError(res)
+	}
+	return nil
+}
+
 // Remove deletes guestPath on the named VM. If recursive, uses RemoveAll.
 func (c *Client) Remove(ctx context.Context, name, guestPath string, recursive bool) error {
 	if guestPath == "" {

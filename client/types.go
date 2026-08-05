@@ -219,11 +219,12 @@ type CPOpts struct {
 
 // FSInfo describes a guest filesystem entry.
 type FSInfo struct {
-	Name  string `json:"name"`
-	Type  string `json:"type"` // file|directory|symlink
-	Size  int64  `json:"size"`
-	Mtime int64  `json:"mtime"`
-	Mode  string `json:"mode"`
+	Name   string `json:"name"`
+	Type   string `json:"type"` // file|directory|symlink
+	Size   int64  `json:"size"`
+	Mtime  int64  `json:"mtime"`
+	Mode   string `json:"mode"`
+	Target string `json:"target,omitempty"` // symlink target when Type is symlink
 }
 
 // MkdirRequest is the JSON body for POST /vms/{name}/fs/mkdir.
@@ -231,4 +232,10 @@ type MkdirRequest struct {
 	Path      string `json:"path"`
 	Recursive bool   `json:"recursive"`
 	Mode      string `json:"mode"`
+}
+
+// SymlinkRequest is the JSON body for POST /vms/{name}/fs/symlink.
+type SymlinkRequest struct {
+	Path   string `json:"path"`
+	Target string `json:"target"`
 }

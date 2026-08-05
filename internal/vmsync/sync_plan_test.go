@@ -243,12 +243,36 @@ func TestClassifyIgnored(t *testing.T) {
 	}
 }
 
-func TestClassifySymlinkSkip(t *testing.T) {
+func TestClassifySymlinkSkipEmptyTarget(t *testing.T) {
 	t.Parallel()
 	host := map[string]*syncInvEntry{"l": {Type: "symlink", Size: 0, Mtime: 1}}
 	plan := classifyAll(host, nil, nil, nil, syncClassifyOpts{Verb: syncPush})
 	if plan.Items[0].Action != syncActSkip || plan.SkippedLink != 1 {
 		t.Fatalf("%+v counts link=%d", plan.Items[0], plan.SkippedLink)
+	}
+}
+
+func TestClassifySymlinkTransfer(t *testing.T) {
+	t.Parallel()
+	host := map[string]*syncInvEntry{"l": {Type: "symlink", Target: "a", Mtime: 1}}
+	plan := classifyAll(host, nil, nil, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActCreate {
+		t.Fatalf("create: %+v", plan.Items[0])
+	}
+	guest := map[string]*syncInvEntry{"l": {Type: "symlink", Target: "a", Mtime: 2}}
+	plan = classifyAll(host, guest, nil, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActSkip || !plan.Items[0].BaselineDirty {
+		t.Fatalf("match: %+v", plan.Items[0])
+	}
+	guest = map[string]*syncInvEntry{"l": {Type: "symlink", Target: "b"}}
+	plan = classifyAll(host, guest, nil, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActUpdate {
+		t.Fatalf("differ: %+v", plan.Items[0])
+	}
+	guest = map[string]*syncInvEntry{"l": {Type: "file", Size: 1, Mtime: 1}}
+	plan = classifyAll(host, guest, nil, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActConflict {
+		t.Fatalf("type conflict: %+v", plan.Items[0])
 	}
 }
 

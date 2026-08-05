@@ -72,7 +72,10 @@ GET /cp?path=/src&mode=binary|tar
 | GET | `/fs/readdir?path=` |
 | GET | `/fs/stat?path=` |
 | POST | `/fs/mkdir` body `{"path","recursive","mode"}` |
+| POST | `/fs/symlink` body `{"path","target"}` |
 | DELETE | `/fs/remove?path=&recursive=` |
+
+`readdir`/`stat` include `target` for symlink entries (link text; not followed).
 
 ## Stats
 

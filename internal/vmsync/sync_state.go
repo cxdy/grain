@@ -21,6 +21,7 @@ type syncFingerprint struct {
 	Size   int64  `json:"size"`
 	Mtime  int64  `json:"mtime"` // unix seconds
 	Mode   string `json:"mode,omitempty"`
+	Target string `json:"target,omitempty"` // symlink target
 	SHA256 string `json:"sha256,omitempty"`
 }
 
@@ -198,8 +199,8 @@ func fpContentEqual(a, b *syncFingerprint) bool {
 	case "directory":
 		return true
 	case "symlink":
-		// v1 skips symlinks; treat type-only.
-		return true
+		// Content identity is the link target string.
+		return a.Target == b.Target
 	default:
 		return a.Size == b.Size && a.Mtime == b.Mtime
 	}
@@ -211,10 +212,11 @@ func invToFingerprint(e *syncInvEntry) *syncFingerprint {
 		return nil
 	}
 	return &syncFingerprint{
-		Type:  e.Type,
-		Size:  e.Size,
-		Mtime: e.Mtime,
-		Mode:  normalizeSyncMode(e.Mode),
+		Type:   e.Type,
+		Size:   e.Size,
+		Mtime:  e.Mtime,
+		Mode:   normalizeSyncMode(e.Mode),
+		Target: e.Target,
 	}
 }
 
