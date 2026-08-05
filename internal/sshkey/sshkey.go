@@ -14,10 +14,10 @@ import (
 
 // Test hooks (package-level) so unit tests can exercise rare crypto / IO failures.
 var (
-	generateKey       = ed25519.GenerateKey
-	marshalPrivateKey = ssh.MarshalPrivateKey
-	newPublicKey      = ssh.NewPublicKey
-	writeFile         = os.WriteFile
+	generateKey                 = ed25519.GenerateKey
+	marshalPrivateKey           = ssh.MarshalPrivateKey
+	newPublicKey                = ssh.NewPublicKey
+	writeFile                   = os.WriteFile
 	randReader        io.Reader = rand.Reader
 )
 
