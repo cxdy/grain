@@ -876,7 +876,6 @@ func (s *Server) agentHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h)
 }
 
-
 // agentDeploy SCPs grain-agent into the guest over SSH (hostfwd on this daemon host).
 // The Linux agent binary must exist on the daemon host (just agent-linux / data_dir/agent).
 func (s *Server) agentDeploy(w http.ResponseWriter, r *http.Request) {

@@ -412,7 +412,6 @@ func (c *Client) AgentHealth(ctx context.Context, name string) (*agent.Health, e
 	return &h, nil
 }
 
-
 // AgentDeployResult is the JSON body for POST /vms/{name}/agent/deploy.
 type AgentDeployResult struct {
 	Name   string        `json:"name"`

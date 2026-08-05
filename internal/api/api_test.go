@@ -389,7 +389,6 @@ func TestAgentHealthProxy(t *testing.T) {
 	}
 }
 
-
 func TestAgentDeployEndpoint(t *testing.T) {
 	t.Parallel()
 	s, st := testServerWithStore(t)
