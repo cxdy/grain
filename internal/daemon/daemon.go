@@ -111,7 +111,8 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 	// write pid
 	pidPath := filepath.Join(cfg.DataDir, "grain.pid")
-	_ = os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0o644)
+	selfPID := os.Getpid()
+	_ = os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", selfPID)), 0o644)
 
 	// Optional MCP Streamable HTTP (same process as the daemon).
 	mcpCancel := func() {}
@@ -132,7 +133,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 
 	<-ctx.Done()
-	log.Info("shutting down")
+	log.Info("shutting down", "pid", selfPID)
 	mcpCancel()
 	shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -141,7 +142,35 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		_ = httpSrv.Shutdown(shCtx)
 	}
 	_ = mgr.CleanupEphemeral(context.Background())
-	_ = os.Remove(cfg.Socket)
-	_ = os.Remove(pidPath)
+	// Only unlink runtime files if we still own them. A KeepAlive/restart or a
+	// second grain up can replace grain.pid/grain.sock while Shutdown is blocked
+	// on long-lived clients (shell WebSocket, Docker probes, etc.). Unconditional
+	// remove left the successor serving TCP with an unlinked socket — CLI then
+	// reports "daemon not up" while the process is still alive.
+	removeRuntimeFilesIfOwned(cfg.Socket, pidPath, selfPID, log)
 	return nil
+}
+
+// removeRuntimeFilesIfOwned deletes the unix socket and pid file only when
+// grain.pid still contains selfPID. If another process has taken over (or the
+// pid file is gone), leave the paths alone.
+func removeRuntimeFilesIfOwned(socket, pidPath string, selfPID int, log *slog.Logger) {
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		if log != nil {
+			log.Info("skip runtime file cleanup — pid file missing or unreadable (successor may own socket)",
+				"pid", selfPID, "err", err)
+		}
+		return
+	}
+	var filePID int
+	if _, err := fmt.Sscanf(string(data), "%d", &filePID); err != nil || filePID != selfPID {
+		if log != nil {
+			log.Info("skip runtime file cleanup — pid file not owned by this process",
+				"pid", selfPID, "file_pid", filePID)
+		}
+		return
+	}
+	_ = os.Remove(socket)
+	_ = os.Remove(pidPath)
 }

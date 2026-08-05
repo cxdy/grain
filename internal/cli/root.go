@@ -220,6 +220,16 @@ MCP can also be enabled permanently:
 				// Detach from the controlling terminal's process group so a later
 				// shell Ctrl+C does not deliver SIGINT to the daemon.
 				c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+				// Persist daemon logs — background children inherit a closed TTY/pipe
+				// otherwise and we lose "shutting down" / crash lines.
+				logPath := filepath.Join(cfg.DataDir, "logs", "daemon.log")
+				if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err == nil {
+					if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+						c.Stdout = f
+						c.Stderr = f
+						defer func() { _ = f.Close() }()
+					}
+				}
 				if err := c.Start(); err != nil {
 					return err
 				}
@@ -286,8 +296,12 @@ func cmdDown(cfgPath *string) *cobra.Command {
 			pidPath := daemonPIDPath(cfg)
 			pid, err := readPID(pidPath)
 			if err != nil {
-				// Still try to remove a stale socket.
-				_ = os.Remove(cfg.Socket)
+				// Missing pid file: only remove socket if nothing is answering healthz.
+				// A running daemon can lose grain.pid after a racy restart; unlinking
+				// its socket makes the CLI think the daemon is down while TCP still works.
+				if herr := probeDaemonHealth(cfg); herr != nil {
+					_ = os.Remove(cfg.Socket)
+				}
 				return fmt.Errorf("daemon not running (%v)", err)
 			}
 			if !pidAlive(pid) {
@@ -335,10 +349,17 @@ func probeDaemonHealth(cfg config.Config) error {
 }
 
 // cleanupStaleDaemonFiles removes pid/socket left by a dead daemon process.
+// If a live pid owns the files, or the unix socket still answers healthz, leave
+// them alone — a missing pid file must not unlink a running daemon's socket.
 func cleanupStaleDaemonFiles(cfg config.Config) {
 	pidPath := daemonPIDPath(cfg)
 	if pid, err := readPID(pidPath); err == nil && pidAlive(pid) {
 		return // live process owns these files
+	}
+	// Socket path still serving? Another process may be alive without a pid file
+	// (racy shutdown wiped grain.pid). Do not unlink.
+	if err := probeDaemonHealth(cfg); err == nil {
+		return
 	}
 	_ = os.Remove(pidPath)
 	_ = os.Remove(cfg.Socket)
