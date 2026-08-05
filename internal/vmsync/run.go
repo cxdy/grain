@@ -57,7 +57,9 @@ type Options struct {
 	Delete        bool
 	DryRun        bool
 	Force         bool
-	Checksum      bool // reserved; planner ignores for now
+	// Checksum is reserved for a future content-hash refine. If true, Run returns
+	// a usage error — the flag is not implemented yet (avoid silent no-op).
+	Checksum      bool
 	Exclude       []string
 	NoDefaults    bool
 	NoGitignore   bool
@@ -87,6 +89,10 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 	res := &Result{ExitCode: ExitOK}
 
+	if opts.Checksum {
+		res.ExitCode = ExitUsage
+		return res, fmt.Errorf("sync: --checksum is not implemented yet")
+	}
 	if opts.FS == nil {
 		res.ExitCode = ExitUsage
 		return res, fmt.Errorf("sync: guest FS required")
@@ -215,8 +221,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		}
 		return res, err
 	}
-	fmt.Fprintf(out, "sync %s: created=%d updated=%d deleted=%d skipped=%d kept_dest=%d\n",
-		opts.Verb, plan.Created, plan.Updated, plan.Deleted, plan.Skipped, plan.KeptDest)
+	// Plan summary (counts + kept_dest) already printed via printPlanSummary.
 	return res, nil
 }
 
@@ -324,6 +329,13 @@ func printPlanSummary(out, errOut io.Writer, plan *syncPlan, opts Options) {
 				fmt.Fprintf(out, "skip %s (%s)\n", it.RelPath, it.Reason)
 			}
 		}
+	}
+	// Always print summary counts (dry-run and apply) so agents/humans see
+	// kept_dest and conflicts without requiring -v.
+	fmt.Fprintf(out, "sync: created=%d updated=%d deleted=%d skipped=%d kept_dest=%d conflicts=%d\n",
+		plan.Created, plan.Updated, plan.Deleted, plan.Skipped, plan.KeptDest, plan.Conflicts)
+	if plan.KeptDest > 0 {
+		fmt.Fprintf(out, "sync: %d path(s) kept on dest (use -v to list; --force to overwrite)\n", plan.KeptDest)
 	}
 	if plan.Conflicts > 0 {
 		fmt.Fprintf(errOut, "sync: %d conflict(s) — resolve or pass --force (no changes applied)\n", plan.Conflicts)

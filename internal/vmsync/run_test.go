@@ -42,6 +42,9 @@ func TestRunPushDryRunAndApply(t *testing.T) {
 	if res.Plan == nil || res.Plan.Created < 1 {
 		t.Fatalf("expected creates, plan=%+v out=%s", res.Plan, out.String())
 	}
+	if !strings.Contains(out.String(), "created=") || !strings.Contains(out.String(), "kept_dest=") {
+		t.Fatalf("dry-run should print summary counts: %q", out.String())
+	}
 
 	res, err = Run(ctx, Options{
 		Verb:        Push,
@@ -444,14 +447,94 @@ func TestPrintPlanSummaryBranches(t *testing.T) {
 			{RelPath: "s", Action: syncActSkip, Reason: "unchanged"},
 			{RelPath: "u", Action: syncActUpdateMode},
 		},
+		Created:   1,
+		KeptDest:  1,
+		Skipped:   1,
 		Conflicts: 1,
 	}
-	printPlanSummary(&out, &errOut, plan, Options{Verbose: true})
+	// Non-verbose: always print counts + kept_dest notice; list kept/skip only with -v.
+	printPlanSummary(&out, &errOut, plan, Options{})
 	s := out.String() + errOut.String()
-	for _, want := range []string{"conflict:", "create", "kept_dest", "skip", "update_mode", "conflict(s)"} {
+	for _, want := range []string{
+		"create a",
+		"created=1",
+		"updated=0",
+		"deleted=0",
+		"skipped=1",
+		"kept_dest=1",
+		"conflicts=1",
+		"1 path(s) kept on dest",
+		"use -v to list",
+		"--force to overwrite",
+		"conflict:",
+		"conflict(s)",
+	} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %q in %q", want, s)
 		}
+	}
+	if strings.Contains(out.String(), "kept_dest k") {
+		t.Fatalf("non-verbose should not list kept_dest path: %q", out.String())
+	}
+	if strings.Contains(out.String(), "skip s") {
+		t.Fatalf("non-verbose should not list skip path: %q", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	printPlanSummary(&out, &errOut, plan, Options{Verbose: true})
+	s = out.String() + errOut.String()
+	for _, want := range []string{"conflict:", "create", "kept_dest k", "skip", "update_mode", "conflict(s)", "kept_dest=1", "created=1"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("verbose missing %q in %q", want, s)
+		}
+	}
+}
+
+func TestPrintPlanSummaryKeptDestAndCountsAlways(t *testing.T) {
+	// Dry-run style: summary counts must surface without Verbose even when only kept_dest.
+	plan := &syncPlan{
+		Items: []syncPlanItem{
+			{RelPath: "only-dest.txt", Action: syncActKeptDest, Reason: "dest ahead"},
+			{RelPath: "new.txt", Action: syncActCreate},
+		},
+		Created:  1,
+		KeptDest: 1,
+	}
+	var out, errOut bytes.Buffer
+	printPlanSummary(&out, &errOut, plan, Options{})
+	s := out.String()
+	if !strings.Contains(s, "create new.txt") {
+		t.Fatalf("expected create line: %q", s)
+	}
+	if !strings.Contains(s, "sync: created=1 updated=0 deleted=0 skipped=0 kept_dest=1 conflicts=0") {
+		t.Fatalf("expected summary counts: %q", s)
+	}
+	if !strings.Contains(s, "1 path(s) kept on dest") {
+		t.Fatalf("expected kept_dest message: %q", s)
+	}
+	if strings.Contains(s, "kept_dest only-dest.txt") {
+		t.Fatalf("path listing should require -v: %q", s)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("unexpected errOut: %q", errOut.String())
+	}
+}
+
+func TestRunChecksumNotImplemented(t *testing.T) {
+	host := t.TempDir()
+	fs := newMemGuestFS()
+	ctx := context.Background()
+	res, err := Run(ctx, Options{
+		Verb: Push, VM: "vm1", HostRoot: host, GuestRoot: "/work",
+		DataDir: t.TempDir(), FS: fs, Checksum: true,
+		Out: ioDiscard{}, ErrOut: ioDiscard{},
+	})
+	if err == nil || res == nil || res.ExitCode != ExitUsage {
+		t.Fatalf("want usage error for --checksum, err=%v res=%+v", err, res)
+	}
+	if !strings.Contains(err.Error(), "--checksum is not implemented yet") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

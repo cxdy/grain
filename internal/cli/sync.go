@@ -54,7 +54,9 @@ func bindSyncFlags(cmd *cobra.Command, f *syncFlags) {
 	cmd.Flags().BoolVar(&f.delete, "delete", false, "remove dest paths missing on source (ignored paths never deleted)")
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "print plan only; no writes or state update")
 	cmd.Flags().BoolVar(&f.force, "force", false, "source-wins for conflicts and dest-ahead paths")
-	cmd.Flags().BoolVar(&f.checksum, "checksum", false, "reserved: content hash refine (not yet active)")
+	// Hidden: not implemented; Run errors if set so agents cannot assume hashing ran.
+	cmd.Flags().BoolVar(&f.checksum, "checksum", false, "not implemented: content hash refine")
+	_ = cmd.Flags().MarkHidden("checksum")
 	cmd.Flags().StringArrayVar(&f.exclude, "exclude", nil, "extra gitignore-style patterns (repeatable)")
 	cmd.Flags().BoolVar(&f.noDefaults, "no-defaults", false, "do not apply built-in ignores (.git/)")
 	cmd.Flags().BoolVar(&f.noGitignore, "no-gitignore", false, "do not load host .gitignore")
