@@ -53,9 +53,20 @@ fi
 SKU_LABEL="${SKU_LABEL:-}"
 if [[ -z "$SKU_LABEL" ]]; then
   arch="$(uname -m)"
-  # Best-effort instance metadata (AWS) else generic nested-virt label.
-  itype="$(curl -fsS --connect-timeout 1 --max-time 2 \
-    http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || true)"
+  # AWS IMDSv2 then IMDSv1; else generic KVM label.
+  itype=""
+  token="$(curl -fsS -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
+    --connect-timeout 1 --max-time 2 2>/dev/null || true)"
+  if [[ -n "$token" ]]; then
+    itype="$(curl -fsS -H "X-aws-ec2-metadata-token: $token" \
+      --connect-timeout 1 --max-time 2 \
+      http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || true)"
+  fi
+  if [[ -z "$itype" ]]; then
+    itype="$(curl -fsS --connect-timeout 1 --max-time 2 \
+      http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || true)"
+  fi
   if [[ -n "$itype" ]]; then
     SKU_LABEL="AWS ${itype} nested-virt ${arch}"
   else
