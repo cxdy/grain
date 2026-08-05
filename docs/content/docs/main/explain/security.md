@@ -57,8 +57,9 @@ Running grain on a team machine so developers create sandboxes remotely is a sup
 
 - Set `api_token`; daemon **will not** bind a non-loopback `api` without one  
 - Prefer `api: 127.0.0.1:7474` + SSH tunnel or TLS reverse proxy  
+- The control plane is **cleartext HTTP** unless you terminate TLS in front; Bearer tokens on bare `http://host:7474` are sniffable on the LAN  
+- Remote CLI: `GRAIN_API` / `--api` + `GRAIN_TOKEN` (CLI warns once on non-loopback cleartext `http://`; `GRAIN_INSECURE_HTTP=1` silences)  
 - **Firewall** port 7474 (and egress proxy 3128) — do not leave control plane open to the internet  
-- Remote CLI: `GRAIN_API` / `--api` + `GRAIN_TOKEN`  
 - Resource caps; published ports stay on host loopback  
 
 Happy path: [Remote lab](../guides/remote-lab/). Ops: [Remote sandbox host](../guides/remote-host/).

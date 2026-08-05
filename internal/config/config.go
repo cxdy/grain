@@ -22,16 +22,23 @@ type Config struct {
 	Socket string `yaml:"socket"`
 	// API is the daemon TCP listen address for the HTTP API (empty = unix only).
 	// Example: "127.0.0.1:7474". Not the same as APIURL (client dial target).
+	// The daemon serves cleartext HTTP only — for LAN/remote, prefer loopback
+	// plus SSH tunnel or a TLS-terminating reverse proxy; non-loopback binds
+	// require api_token and still expose Bearer tokens on the wire.
 	API string `yaml:"api"`
 	// APIURL is an optional CLI client base URL for a remote daemon
-	// (e.g. "http://sandbox.example:7474"). Empty = use local unix Socket.
+	// (e.g. "http://127.0.0.1:7474" via SSH -L, or "https://sandbox.example"
+	// behind a reverse proxy). Empty = use local unix Socket.
 	// Overridden by env GRAIN_API or CLI flag --api. Ignored by the daemon.
+	// Non-loopback http:// URLs trigger a one-time CLI warning (cleartext Bearer);
+	// silence with GRAIN_INSECURE_HTTP=1. Prefer tunnel or https:// when possible.
 	APIURL string `yaml:"api_url"`
 	// APIToken, when non-empty, requires Authorization: Bearer on all daemon
 	// routes except GET /healthz. Empty (default) means no auth — suitable for
 	// localhost / unix socket. CLI also reads env GRAIN_TOKEN.
 	// Required when API binds a non-loopback address (daemon refuses to start
 	// without a token) and when the CLI targets a non-loopback APIURL.
+	// Tokens on cleartext HTTP are sniffable — pair with tunnel or TLS.
 	APIToken string `yaml:"api_token"`
 	// AuthToken is an alias for APIToken (either field may be set).
 	AuthToken string `yaml:"auth_token"`
