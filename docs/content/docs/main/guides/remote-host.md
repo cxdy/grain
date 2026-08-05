@@ -278,7 +278,7 @@ grain --api http://127.0.0.1:7474 ls
 | `ls`, `new`, `rm`, `stop`, `start`, … | `up`, `down` |
 | `x`, `sh` (agent), `cp`, `sync`, `fs`, `stats` | `image ls/pull/import` |
 | `fwd add/rm` (metadata + host-side) | `proxy *`, `logs` (serial files) |
-| secrets inject / list (host store on server) | doctor (host tools); `agent deploy` (SSH hostfwd) |
+| secrets inject / list (host store on server); `agent deploy` (daemon SSH) | doctor (host tools) |
 
 ### Pattern C — SDKs / curl
 
@@ -350,7 +350,7 @@ Use `grain sync` (or reverse `grain cp`) to move trees between **laptop** and gu
 - No full bridge/VLAN networking (SLIRP hostfwd)
 - Density bound by host RAM/CPU
 - Ephemeral VMs vanish on daemon restart — use `-p` for durable labs
-- `grain agent deploy` and `image *` must run on the host (SSH hostfwd / data dir)
+- `image *` must run on the host (data dir); `agent deploy` works via remote CLI but the agent binary must be on the daemon host
 
 ## See also
 

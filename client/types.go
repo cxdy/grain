@@ -174,6 +174,13 @@ type Health struct {
 	Readiness    *Readiness `json:"readiness,omitempty"`
 }
 
+// AgentDeployResult is the JSON body for POST /vms/{name}/agent/deploy.
+type AgentDeployResult struct {
+	Name   string  `json:"name"`
+	Binary string  `json:"binary"`
+	Health *Health `json:"health,omitempty"`
+}
+
 // ExecResult is a buffered POST /vms/{name}/exec response.
 type ExecResult struct {
 	Stdout   string `json:"stdout"`

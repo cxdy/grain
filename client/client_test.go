@@ -200,6 +200,16 @@ func mockDaemon(t *testing.T, token string) *httptest.Server {
 		}
 		writeJSON(w, 200, &client.Health{Hostname: "guest", AgentVersion: "0.2.0"})
 	})
+	mux.HandleFunc("POST /vms/{name}/agent/deploy", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(w, r, token) {
+			return
+		}
+		writeJSON(w, 200, &client.AgentDeployResult{
+			Name:   r.PathValue("name"),
+			Binary: "/tmp/grain-agent",
+			Health: &client.Health{Hostname: "guest", AgentVersion: "0.2.0"},
+		})
+	})
 	mux.HandleFunc("GET /vms/{name}/stats", func(w http.ResponseWriter, r *http.Request) {
 		if !checkAuth(w, r, token) {
 			return
@@ -543,6 +553,11 @@ func TestDialHTTPWithToken(t *testing.T) {
 	h, err := c2.AgentHealth(ctx, "demo")
 	if err != nil || h.AgentVersion == "" {
 		t.Fatalf("AgentHealth: %v %+v", err, h)
+	}
+
+	dep, err := c2.DeployAgent(ctx, "demo")
+	if err != nil || dep.Name != "demo" || dep.Binary == "" {
+		t.Fatalf("DeployAgent: %v %+v", err, dep)
 	}
 
 	var stdout strings.Builder
@@ -1093,6 +1108,9 @@ func TestClientFullSuccessSurface(t *testing.T) {
 	mux.HandleFunc("GET /vms/{name}/agent/health", func(w http.ResponseWriter, r *http.Request) {
 		ok(w, &client.Health{Hostname: "g", AgentVersion: "1"})
 	})
+	mux.HandleFunc("POST /vms/{name}/agent/deploy", func(w http.ResponseWriter, r *http.Request) {
+		ok(w, &client.AgentDeployResult{Name: r.PathValue("name"), Binary: "/tmp/agent"})
+	})
 	mux.HandleFunc("GET /vms/{name}/stats", func(w http.ResponseWriter, r *http.Request) {
 		ok(w, &client.Stats{MemTotal: 1, UptimeSec: 1})
 	})
@@ -1195,6 +1213,9 @@ func TestClientFullSuccessSurface(t *testing.T) {
 		t.Fatalf("%d %v", code, err)
 	}
 	if _, err := c.AgentHealth(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DeployAgent(ctx, "n"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.Stats(ctx, "n"); err != nil {

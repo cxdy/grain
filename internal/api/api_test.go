@@ -389,6 +389,68 @@ func TestAgentHealthProxy(t *testing.T) {
 	}
 }
 
+
+func TestAgentDeployEndpoint(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+
+	// missing VM → 404
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/nope/agent/deploy", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("want 404 got %d %s", rr.Code, rr.Body.String())
+	}
+
+	createMockVM(t, h, "dep1")
+	inst, err := st.Get("dep1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// mock create leaves running with SSH; strip SSH to hit 400
+	inst.SSHPort = 0
+	if err := st.Put(inst); err != nil {
+		t.Fatal(err)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/dep1/agent/deploy", nil))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 no ssh got %d %s", rr.Code, rr.Body.String())
+	}
+
+	// restore SSH; no agent binary → 503
+	inst.SSHPort = 2201
+	inst.IP = "127.0.0.1"
+	if err := st.Put(inst); err != nil {
+		t.Fatal(err)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/dep1/agent/deploy", nil))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 binary missing got %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "agent binary") {
+		t.Fatalf("body: %s", rr.Body.String())
+	}
+
+	// plant binary under data dir → deploy attempts SSH and fails with 502
+	dataDir := filepath.Dir(filepath.Dir(st.Dir("dep1")))
+	agentDir := filepath.Join(dataDir, "agent")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"grain-agent-linux-amd64", "grain-agent-linux-arm64"} {
+		if err := os.WriteFile(filepath.Join(agentDir, name), []byte("#!/bin/true\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/dep1/agent/deploy", nil))
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("want 502 scp fail got %d %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestAPIClientExecAndAgentHealth(t *testing.T) {
 	t.Parallel()
 	s, st := testServerWithStore(t)

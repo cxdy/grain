@@ -68,7 +68,7 @@ func Root(version string) *cobra.Command {
   grain suspend / restore  stop process (free RAM); restore from disk/snapshot
   grain ls / rm / sh / x / cp / sync
   grain sync push|pull  host↔guest directory sync (agent required)
-  grain agent health|deploy  guest agent health; redeploy over SSH (local)
+  grain agent health|deploy  guest agent health; redeploy over SSH (local or remote API)
   grain fs              guest readdir/stat/mkdir/rm via agent
   grain profile ls      list named + builtin profiles
   grain fwd ls/add/rm   list or live-add/remove port forwards
@@ -1255,13 +1255,14 @@ func cmdAgent(cfgPath *string) *cobra.Command {
 	root.AddCommand(&cobra.Command{
 		Use:   "deploy [name]",
 		Short: "Install or refresh grain-agent in the guest over SSH",
-		Long: `SCP the host's grain-agent Linux binary into the guest and enable the
-systemd unit. Use after upgrading the host CLI so the guest agent picks up
-new features (clipboard env, readiness fields, etc.).
+		Long: `SCP the grain-agent Linux binary into the guest and enable the systemd
+unit. Use after upgrading the host CLI so the guest agent picks up new
+features (clipboard env, readiness fields, etc.).
 
-Requires a local daemon (SSH hostfwd is on the grain host). Remote CLI users
-should SSH to the host and run deploy there, or recreate the VM with a golden
-image that already bakes the agent.
+Local CLI (no GRAIN_API): SCPs from this machine via SSH hostfwd.
+Remote CLI (GRAIN_API): calls POST /vms/{name}/agent/deploy on the daemon so
+SSH hostfwd runs on the sandbox host. The agent binary must exist on the
+daemon host (just agent-linux or data_dir/agent/grain-agent-linux-$arch).
 
   just agent-linux          # build bin/grain-agent-linux-$arch if missing
   grain agent deploy NAME
@@ -1279,9 +1280,6 @@ func runAgentDeploy(cfgPath *string, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireLocalDaemon(cfg, "agent deploy"); err != nil {
-		return err
-	}
 	c, err := clientFrom(cfg)
 	if err != nil {
 		return err
@@ -1290,6 +1288,25 @@ func runAgentDeploy(cfgPath *string, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	// Remote CLI: deploy must run on the daemon host (SSH hostfwd lives there).
+	if remoteMode(cfg) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		fmt.Fprintf(os.Stderr, "deploying grain-agent to %s via daemon API\n", name)
+		result, err := c.DeployAgent(ctx, name)
+		if err != nil {
+			return err
+		}
+		if result.Health != nil && result.Health.AgentVersion != "" {
+			fmt.Printf("deployed agent version %s on %s\n", result.Health.AgentVersion, name)
+			return nil
+		}
+		fmt.Fprintf(os.Stderr, "deployed on %s (health not yet available; agent may still be starting)\n", name)
+		return nil
+	}
+
+	// Local: SCP directly via hostfwd on this machine.
 	host, port, err := getVMSSH(c, name)
 	if err != nil {
 		return err

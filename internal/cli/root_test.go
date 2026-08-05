@@ -1656,10 +1656,10 @@ func TestRunAgentDeployErrorPaths(t *testing.T) {
 	if err := runAgentDeploy(&bad, nil); err == nil {
 		t.Fatal("config")
 	}
-	// remote rejected
+	// remote: unreachable API
 	cfg := withRemoteCfg(t, "http://127.0.0.1:9")
-	if err := runAgentDeploy(&cfg, []string{"vm"}); err == nil || !strings.Contains(err.Error(), "local") {
-		t.Fatalf("remote: %v", err)
+	if err := runAgentDeploy(&cfg, []string{"vm"}); err == nil {
+		t.Fatal("expected remote dial error")
 	}
 	// local: missing agent binary / missing VM
 	dir := t.TempDir()
@@ -1705,6 +1705,77 @@ func TestRunAgentDeployErrorPaths(t *testing.T) {
 	if err == nil {
 		// EnsureAgent might succeed only if something listens — usually fails
 		t.Log("EnsureAgent unexpectedly succeeded")
+	}
+}
+
+
+func TestRunAgentDeployRemoteAPI(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]*vm.Instance{{
+			Name: "lab-1", Status: vm.StatusRunning, SSHPort: 2201, IP: "127.0.0.1",
+		}})
+	})
+	mux.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(&vm.Instance{
+			Name: r.PathValue("name"), Status: vm.StatusRunning, SSHPort: 2201, IP: "127.0.0.1",
+		})
+	})
+	var gotDeploy bool
+	mux.HandleFunc("POST /vms/{name}/agent/deploy", func(w http.ResponseWriter, r *http.Request) {
+		gotDeploy = true
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"name":   r.PathValue("name"),
+			"binary": "/tmp/grain-agent-linux-test",
+			"health": map[string]any{"hostname": "lab-1", "agent_version": "0.9.9"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cfgPath := withRemoteCfg(t, srv.URL)
+	if err := runAgentDeploy(&cfgPath, []string{"lab-1"}); err != nil {
+		t.Fatalf("remote deploy: %v", err)
+	}
+	if !gotDeploy {
+		t.Fatal("expected POST /vms/{name}/agent/deploy")
+	}
+
+	// API error surfaces to caller
+	muxErr := http.NewServeMux()
+	muxErr.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]*vm.Instance{{Name: "x", Status: vm.StatusRunning, SSHPort: 1}})
+	})
+	muxErr.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(&vm.Instance{Name: "x", Status: vm.StatusRunning, SSHPort: 1})
+	})
+	muxErr.HandleFunc("POST /vms/{name}/agent/deploy", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "agent binary not found on daemon host"})
+	})
+	srvErr := httptest.NewServer(muxErr)
+	t.Cleanup(srvErr.Close)
+	cfgErr := withRemoteCfg(t, srvErr.URL)
+	if err := runAgentDeploy(&cfgErr, []string{"x"}); err == nil || !strings.Contains(err.Error(), "agent binary") {
+		t.Fatalf("want binary error, got %v", err)
+	}
+
+	// success without health still ok
+	muxNoH := http.NewServeMux()
+	muxNoH.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]*vm.Instance{{Name: "y", Status: vm.StatusRunning, SSHPort: 1}})
+	})
+	muxNoH.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(&vm.Instance{Name: "y", Status: vm.StatusRunning, SSHPort: 1})
+	})
+	muxNoH.HandleFunc("POST /vms/{name}/agent/deploy", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"name": "y", "binary": "/b"})
+	})
+	srvNoH := httptest.NewServer(muxNoH)
+	t.Cleanup(srvNoH.Close)
+	cfgNoH := withRemoteCfg(t, srvNoH.URL)
+	if err := runAgentDeploy(&cfgNoH, []string{"y"}); err != nil {
+		t.Fatalf("deploy without health: %v", err)
 	}
 }
 

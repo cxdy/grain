@@ -1492,6 +1492,70 @@ func (m *Manager) waitOrDeployAgent(
 	return nil
 }
 
+// AgentDeployResult is returned after a successful host→guest agent deploy.
+type AgentDeployResult struct {
+	Name   string        `json:"name"`
+	Binary string        `json:"binary"`
+	Health *agent.Health `json:"health,omitempty"`
+}
+
+// DeployAgent SCPs the daemon host's grain-agent Linux binary into the guest,
+// installs the systemd unit, and restarts the service. The binary must exist
+// on the daemon host (see agent.LinuxBinaryPath / just agent-linux).
+// SSH hostfwd is used, so this must run on the machine that owns the VM.
+func (m *Manager) DeployAgent(ctx context.Context, name string) (*AgentDeployResult, error) {
+	inst, err := m.st.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if inst.Status != vm.StatusRunning && !m.rt.Running(inst) {
+		return nil, fmt.Errorf("vm %q is not running", name)
+	}
+	if inst.SSHPort <= 0 {
+		return nil, fmt.Errorf("vm %q has no SSH port", name)
+	}
+
+	binPath, err := agent.LinuxBinaryPath(m.cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("agent binary not found on daemon host (run: just agent-linux): %w", err)
+	}
+	priv, _, err := sshkey.Ensure(m.cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("ssh key: %w", err)
+	}
+	user := m.resolveSSHUser(inst.Image)
+	host := inst.IP
+	if host == "" {
+		host = "127.0.0.1"
+	}
+
+	m.log.Info("deploying guest agent", "name", name, "binary", binPath, "ssh", fmt.Sprintf("%s@%s:%d", user, host, inst.SSHPort))
+	if err := guest.EnsureAgent(ctx, host, inst.SSHPort, user, priv, binPath); err != nil {
+		return nil, err
+	}
+
+	result := &AgentDeployResult{Name: name, Binary: binPath}
+	if !agentTarget(inst).HasEndpoint() {
+		return result, nil
+	}
+	// Best-effort health probe so callers can report the new agent version.
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	client, err := agent.Dial(waitCtx, agentTarget(inst))
+	if err != nil {
+		return result, nil
+	}
+	if err := agent.Wait(waitCtx, client); err != nil {
+		return result, nil
+	}
+	h, err := client.Health(waitCtx)
+	if err != nil {
+		return result, nil
+	}
+	result.Health = h
+	return result, nil
+}
+
 // agentTarget builds an agent.Dial target from instance metadata.
 func agentTarget(inst *vm.Instance) agent.Target {
 	if inst == nil {

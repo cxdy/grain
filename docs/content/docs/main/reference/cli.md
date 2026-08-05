@@ -79,7 +79,7 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `grain stats [name]` | Guest resource stats |
 | `grain fwd ls\|add\|rm` | Port forwards |
 | `grain agent health [name]` | Agent health JSON (includes readiness when present) |
-| `grain agent deploy [name]` | Install/refresh guest agent over SSH (local daemon) |
+| `grain agent deploy [name]` | Install/refresh guest agent over SSH (local or remote via daemon API) |
 | `grain status [name]` | One-line VM + guest readiness |
 
 ### `grain new` flags

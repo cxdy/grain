@@ -54,6 +54,7 @@ curl -s http://127.0.0.1:7474/openapi.yaml
 | POST | `/vms/{name}/restore` | From suspended |
 | POST | `/vms/{name}/exec` | Agent exec (`buffered=true\|false`) |
 | GET | `/vms/{name}/agent/health` | Agent health |
+| POST | `/vms/{name}/agent/deploy` | Deploy/refresh agent over SSH (binary on daemon host) |
 | GET | `/vms/{name}/stats` | Guest stats |
 | PUT/GET | `/vms/{name}/cp` | File/tar copy |
 | GET/POST/DELETE | `/vms/{name}/fs/*` | readdir, stat, mkdir, remove |
