@@ -99,6 +99,81 @@ func TestPullSpecWithSHA256Sidecar(t *testing.T) {
 	}
 }
 
+func TestPullSpecFCKernelInstallsVmlinux(t *testing.T) {
+	t.Parallel()
+	payload := make([]byte, 8*1024)
+	for i := range payload {
+		payload[i] = byte(i)
+	}
+	sum := sha256.Sum256(payload)
+	wantHex := hex.EncodeToString(sum[:])
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/vmlinux-amd64", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(payload)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	m := NewManager(dir)
+	m.Client = &http.Client{Timeout: 10 * time.Second}
+	spec := Spec{
+		ID:        IDFCKernel,
+		URL:       srv.URL + "/vmlinux-amd64",
+		SHA256:    wantHex,
+		Format:    "raw",
+		LocalOnly: false,
+	}
+	if err := m.pullSpec(context.Background(), spec, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !m.Ready(IDFCKernel) {
+		t.Fatal("ready")
+	}
+	p, err := m.DiskPath(IDFCKernel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p != m.KernelPath() {
+		t.Fatalf("path %s want %s", p, m.KernelPath())
+	}
+}
+
+func TestPullSpecRawRootfs(t *testing.T) {
+	t.Parallel()
+	payload := make([]byte, 2*1024*1024)
+	sum := sha256.Sum256(payload)
+	wantHex := hex.EncodeToString(sum[:])
+	mux := http.NewServeMux()
+	mux.HandleFunc("/root.raw", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(payload)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	m := NewManager(dir)
+	m.Client = &http.Client{Timeout: 10 * time.Second}
+	spec := Spec{
+		ID:        "fc-raw-test",
+		URL:       srv.URL + "/root.raw",
+		SHA256:    wantHex,
+		Format:    "raw",
+		HasAgent:  true,
+		LocalOnly: false,
+	}
+	if err := m.pullSpec(context.Background(), spec, nil); err != nil {
+		t.Fatal(err)
+	}
+	p, err := m.DiskPath(spec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(p) != "disk.raw" {
+		t.Fatalf("want disk.raw got %s", p)
+	}
+}
+
 func TestPullSpecSidecarMismatch(t *testing.T) {
 	t.Parallel()
 

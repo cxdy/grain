@@ -158,7 +158,9 @@ func (m *Manager) Pull(ctx context.Context, id string, progress func(written, to
 	return m.pullSpec(ctx, spec, progress)
 }
 
-// pullSpec downloads and installs spec under images/<spec.ID>/.
+// pullSpec downloads and installs spec.
+// Most images land under images/<id>/disk.{qcow2,img,raw}.
+// Catalog id fc-kernel installs to DataDir/kernels/vmlinux.
 // Used by Pull and by tests with httptest-backed Specs.
 func (m *Manager) pullSpec(ctx context.Context, spec Spec, progress func(written, total int64)) error {
 	id := spec.ID
@@ -175,16 +177,26 @@ func (m *Manager) pullSpec(ctx context.Context, spec Spec, progress func(written
 		return nil
 	}
 
-	dir := m.Dir(id)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+	var dest string
+	if id == IDFCKernel {
+		dest = m.KernelPath()
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return err
+		}
+	} else {
+		dir := m.Dir(id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		ext := ".img"
+		switch {
+		case strings.EqualFold(spec.Format, "qcow2"):
+			ext = ".qcow2"
+		case strings.EqualFold(spec.Format, "raw"):
+			ext = ".raw"
+		}
+		dest = filepath.Join(dir, "disk"+ext)
 	}
-
-	ext := ".img"
-	if spec.Format == "qcow2" {
-		ext = ".qcow2"
-	}
-	dest := filepath.Join(dir, "disk"+ext)
 	partial := dest + ".partial"
 
 	// Resolve expected digest: pinned Spec.SHA256, else companion URL.sha256 sidecar.
@@ -254,15 +266,22 @@ func (m *Manager) pullSpec(ctx context.Context, spec Spec, progress func(written
 		return err
 	}
 
-	// remove tiny placeholders
-	for _, name := range []string{"disk.img", "disk.qcow2", "disk.raw"} {
-		p := filepath.Join(dir, name)
-		if st, err := os.Stat(p); err == nil && st.Size() < 1024*1024 {
-			_ = os.Remove(p)
+	// remove tiny placeholders (rootfs disks only)
+	if id != IDFCKernel {
+		dir := m.Dir(id)
+		for _, name := range []string{"disk.img", "disk.qcow2", "disk.raw"} {
+			p := filepath.Join(dir, name)
+			if st, err := os.Stat(p); err == nil && st.Size() < 1024*1024 {
+				_ = os.Remove(p)
+			}
 		}
 	}
 	if err := os.Rename(partial, dest); err != nil {
 		return err
+	}
+	if id == IDFCKernel {
+		_ = os.WriteFile(dest+".source", []byte(spec.URL+"\n"), 0o644)
+		return nil
 	}
 	m.writeMeta(id, spec, spec.HasAgent)
 	return nil

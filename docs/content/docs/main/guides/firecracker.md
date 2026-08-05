@@ -108,6 +108,8 @@ grain’s QEMU catalog images (`ubuntu-cloud`, `grain-ubuntu`, `alpine-cloud`) a
 
 These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. Until GitHub/CI bake publishes digests + URLs, `grain image pull grain-ubuntu-fc` / `fc-kernel` refuses (local-only). BYO remains first-class.
 
+**Bake contract (planned):** release tag `fc-latest` with `grain-ubuntu-fc-<arch>.raw` and `vmlinux-<arch>` (+ `.sha256` sidecars). Scaffold: `scripts/bake-fc.sh --dry-run` and workflow **Bake Firecracker artifacts** (dry-run only until real bake lands).
+
 ### Operator path today (BYO)
 
 1. Prefer a **raw** golden rootfs (ext4/squashfs layout that boots with the FC kernel’s `root=/dev/vda`).
