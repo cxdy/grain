@@ -456,7 +456,11 @@ func (f *FirecrackerRuntime) resolveKernel() (string, error) {
 	if f.DataDir != "" {
 		hint = filepath.Join(f.DataDir, "kernels", FCDefaultKernel)
 	}
-	return "", fmt.Errorf("firecracker kernel not found — set kernel_path or place a vmlinux at %s (see docs: Firecracker on Linux / guides/firecracker)", hint)
+	explicit := strings.TrimSpace(f.KernelPath)
+	if explicit != "" {
+		return "", fmt.Errorf("firecracker kernel_path %s missing or empty (BYO misconfigured) — fix kernel_path or place vmlinux at %s; import: grain image import <vmlinux> --id fc-kernel (see guides/firecracker)", explicit, hint)
+	}
+	return "", fmt.Errorf("firecracker kernel not found — place a vmlinux at %s or: grain image import <vmlinux> --id fc-kernel (see guides/firecracker)", hint)
 }
 
 // ensureRawRootfs returns a raw disk path suitable for Firecracker.

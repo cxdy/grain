@@ -82,12 +82,16 @@ grain doctor
 | `firecracker` (or `firecracker_binary`) | **Hard** | Binary missing, or not Linux |
 | `/dev/kvm` | **Hard** | Missing or not RDWR — Firecracker cannot start |
 | Nested virt CPU flags | Soft (`·`) | Host looks like a VM without `vmx`/`svm` |
-| Firecracker kernel | Soft (`·`) | Missing `kernel_path` / default `vmlinux` — Start will hard-fail later |
+| Firecracker kernel | **Hard** | Missing default `…/kernels/vmlinux`, or **BYO misconfigured** when `kernel_path` is set but empty/absent. Fix: place vmlinux, or `grain image import <vmlinux> --id fc-kernel` |
 | `qemu-img` | **Hard** | Needed to convert qcow2 disks to raw at Start |
 | QEMU system binary | Soft | Optional when hypervisor is firecracker |
-| Base image / agent / socket | Same as QEMU path | Image ready, optional agent binary, daemon up |
+| Base image | **Hard** | Default image not ready (`pull` or `import` as appropriate) |
+| FC catalog rootfs / QEMU default | Soft (`·`) | Notes when default image is QEMU-oriented or `grain-ubuntu-fc` not imported |
+| Agent binary / socket | Soft | Optional agent host binary; daemon up |
 
 Hard failures print `✗` and exit non-zero. Soft items print `·` and do not fail doctor.
+
+Doctor **distinguishes** “no kernel at the default path” (missing Grain/BYO artifact) from “you set `kernel_path` and that file is gone” (BYO misconfigured).
 
 If `grain new` fails, prefer the **create error** and `~/.grain/logs/<name>.log` over later agent/vsock messages — Firecracker often exits immediately when KVM is unavailable (`firecracker exited immediately` + KVM hint).
 
@@ -99,8 +103,8 @@ grain’s QEMU catalog images (`ubuntu-cloud`, `grain-ubuntu`, `alpine-cloud`) a
 
 | Catalog ID | Role | Status today |
 |------------|------|----------------|
-| **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **LocalOnly** — not pullable yet; `grain image import … --id grain-ubuntu-fc` when you have a BYO rootfs |
-| **`fc-kernel`** | Guest **vmlinux** artifact | **LocalOnly** — place kernel at `~/.grain/kernels/vmlinux` (or `kernel_path`); pull path lands with the bake pipeline |
+| **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **LocalOnly** — not pullable yet; `grain image import <raw> --id grain-ubuntu-fc` stores `images/grain-ubuntu-fc/disk.raw` |
+| **`fc-kernel`** | Guest **vmlinux** artifact | **LocalOnly** — `grain image import <vmlinux> --id fc-kernel` installs to `~/.grain/kernels/vmlinux` (or set `kernel_path`) |
 
 These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. Until GitHub/CI bake publishes digests + URLs, `grain image pull grain-ubuntu-fc` / `fc-kernel` refuses (local-only). BYO remains first-class.
 
@@ -111,10 +115,14 @@ These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators a
 3. Standard Ubuntu cloud images need a **matching Firecracker-capable kernel**; they are not drop-in FC guests without extra work (kernel + init + virtio drivers).
 
 ```bash
-# Example BYO import into the reserved rootfs ID (once you have a raw image)
+# BYO kernel → catalog id (installs under data_dir/kernels/vmlinux)
+grain image import ./vmlinux --id fc-kernel
+
+# BYO raw rootfs → catalog id (images/grain-ubuntu-fc/disk.raw; keeps format raw)
 grain image import ./rootfs.ext4 --id grain-ubuntu-fc
-# Kernel still via path, not image pull (until fc-kernel is published):
-#   cp vmlinux ~/.grain/kernels/vmlinux
+
+# Create with the FC rootfs id (hypervisor: firecracker in config)
+grain new -i grain-ubuntu-fc --wait agent
 ```
 
 See also [Images](../images/#firecracker-rootfs-experimental) for the QEMU/golden workflow; FC is a separate experimental path.

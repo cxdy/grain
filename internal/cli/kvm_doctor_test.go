@@ -122,3 +122,76 @@ func configDoctorFC(dir, fcBin, kernel string) config.Config {
 		SSHUser:           "ubuntu",
 	}
 }
+
+func TestCheckFirecrackerKernelMissingDefault(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := config.Config{DataDir: dir, KernelPath: ""}
+	err := checkFirecrackerKernel(cfg)()
+	if err == nil {
+		t.Fatal("expected missing kernel")
+	}
+	if !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("err: %v", err)
+	}
+	if !strings.Contains(err.Error(), "fc-kernel") {
+		t.Fatalf("want fc-kernel import hint: %v", err)
+	}
+}
+
+func TestCheckFirecrackerKernelBYOMisconfigured(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "nope", "vmlinux")
+	cfg := config.Config{DataDir: dir, KernelPath: bad}
+	err := checkFirecrackerKernel(cfg)()
+	if err == nil {
+		t.Fatal("expected BYO error")
+	}
+	if !strings.Contains(err.Error(), "BYO misconfigured") {
+		t.Fatalf("err: %v", err)
+	}
+}
+
+func TestCheckFirecrackerKernelOK(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	k := filepath.Join(dir, "kernels", "vmlinux")
+	if err := os.MkdirAll(filepath.Dir(k), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(k, []byte("vmlinux-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{DataDir: dir, KernelPath: ""}
+	if err := checkFirecrackerKernel(cfg)(); err != nil {
+		t.Fatal(err)
+	}
+	// Explicit path
+	cfg2 := config.Config{DataDir: dir, KernelPath: k}
+	if err := checkFirecrackerKernel(cfg2)(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunDoctorFirecrackerKernelHardFail(t *testing.T) {
+	// Runs on all OSes: kernel check is not linux-gated (binary/OS is).
+	dir := t.TempDir()
+	fakeBin := filepath.Join(dir, "firecracker")
+	if err := os.WriteFile(fakeBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Image present so we fail on kernel, not image.
+	imgDir := filepath.Join(dir, "images", "grain-ubuntu")
+	if err := os.MkdirAll(imgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(imgDir, "disk.qcow2"), make([]byte, 2*1024*1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := configDoctorFC(dir, fakeBin, "") // empty kernel_path, no file
+	err := runDoctor(cfg)
+	if err == nil {
+		t.Fatal("expected doctor issues without kernel")
+	}
+}

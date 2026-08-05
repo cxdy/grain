@@ -103,6 +103,11 @@ func runImageImport(cfg config.Config, srcPath, id string) error {
 		return err
 	}
 	fmt.Printf("ok %s in %s\n", id, time.Since(start).Round(time.Second))
+	if id == image.IDFCKernel {
+		fmt.Printf("kernel: %s\n", p)
+		fmt.Println("use: set hypervisor: firecracker (kernel_path empty uses this path)")
+		return nil
+	}
 	fmt.Printf("disk: %s\n", p)
 	if m.ImageHasAgent(id) {
 		fmt.Println("has_agent: true (create will prefer guest agent wait)")
@@ -164,15 +169,17 @@ func runDoctor(cfg config.Config) error {
 				fmt.Printf("  · %s\n", hint)
 			}
 		}
-		// Kernel soft check (Start will hard-fail if missing).
-		kpath := strings.TrimSpace(cfg.KernelPath)
-		if kpath == "" {
-			kpath = filepath.Join(cfg.DataDir, "kernels", "vmlinux")
-		}
-		if st, err := os.Stat(kpath); err == nil && st.Size() > 0 {
-			fmt.Printf("  ✓ firecracker kernel %s\n", kpath)
+		// Kernel is required for Start — hard-fail here so create errors are fewer surprises.
+		// Distinguish explicit kernel_path misconfig vs missing default / catalog artifact.
+		if err := checkFirecrackerKernel(cfg)(); err != nil {
+			fmt.Printf("  ✗ firecracker kernel: %v\n", err)
+			ok = false
 		} else {
-			fmt.Printf("  · firecracker kernel missing — set kernel_path or place vmlinux at %s\n", kpath)
+			kpath := strings.TrimSpace(cfg.KernelPath)
+			if kpath == "" {
+				kpath = filepath.Join(cfg.DataDir, filepath.FromSlash(image.DefaultKernelRel))
+			}
+			fmt.Printf("  ✓ firecracker kernel %s\n", kpath)
 		}
 	}
 
@@ -228,10 +235,27 @@ func runDoctor(cfg config.Config) error {
 	}
 	check("base image "+def, func() error {
 		if !imgs.Ready(def) {
+			if def == image.IDGrainUbuntuFC {
+				return fmt.Errorf("missing — run: grain image import <raw-rootfs> --id %s (catalog pull not published yet)", def)
+			}
+			if def == image.IDFCKernel {
+				return fmt.Errorf("missing — run: grain image import <vmlinux> --id %s (not a rootfs; installs under kernels/)", def)
+			}
 			return fmt.Errorf("missing — run: grain image pull %s", def)
 		}
 		return nil
 	})
+	// Firecracker soft guidance: QEMU cloud images are not drop-in FC guests.
+	if hv == "firecracker" {
+		if def == image.IDUbuntuCloud || def == image.IDGrainUbuntu || def == image.IDAlpineCloud {
+			fmt.Printf("  · default image %s is QEMU-oriented — prefer grain image import … --id %s for Firecracker rootfs\n", def, image.IDGrainUbuntuFC)
+		}
+		if def != image.IDGrainUbuntuFC && !imgs.Ready(image.IDGrainUbuntuFC) {
+			fmt.Printf("  · %s not imported (optional catalog FC rootfs id; BYO image ids also work)\n", image.IDGrainUbuntuFC)
+		} else if def != image.IDGrainUbuntuFC && imgs.Ready(image.IDGrainUbuntuFC) {
+			fmt.Printf("  ✓ %s ready (FC rootfs catalog id)\n", image.IDGrainUbuntuFC)
+		}
+	}
 
 	// Guest agent binary (soft): needed for SSH deploy into non-golden images.
 	if path, err := agent.LinuxBinaryPath(cfg.DataDir); err == nil {
@@ -263,6 +287,29 @@ func runDoctor(cfg config.Config) error {
 	}
 	fmt.Println("all good")
 	return nil
+}
+
+// checkFirecrackerKernel returns a doctor check for the FC guest kernel.
+// Explicit kernel_path that is missing is a BYO misconfiguration; empty
+// kernel_path with no default file is a missing artifact (import/place vmlinux).
+func checkFirecrackerKernel(cfg config.Config) func() error {
+	return func() error {
+		explicit := strings.TrimSpace(cfg.KernelPath)
+		defaultPath := filepath.Join(cfg.DataDir, filepath.FromSlash(image.DefaultKernelRel))
+		kpath := explicit
+		if kpath == "" {
+			kpath = defaultPath
+		}
+		if st, err := os.Stat(kpath); err == nil && st.Size() > 0 && !st.IsDir() {
+			return nil
+		}
+		if explicit != "" {
+			return fmt.Errorf("kernel_path %s missing or empty (BYO misconfigured) — fix the path, or remove kernel_path to use %s; import: grain image import <vmlinux> --id %s",
+				explicit, defaultPath, image.IDFCKernel)
+		}
+		return fmt.Errorf("missing at %s — place a Firecracker vmlinux there, or: grain image import <vmlinux> --id %s (pull not published yet; see guides/firecracker)",
+			defaultPath, image.IDFCKernel)
+	}
 }
 
 // kvmDevicePath is the character device Firecracker needs. Overridable in tests.
