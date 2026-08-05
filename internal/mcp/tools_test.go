@@ -151,7 +151,7 @@ func mockDaemon(t *testing.T, vms map[string]*client.Instance) *httptest.Server 
 			}
 			// Agent unreachable when paused/suspended/stopped (mirrors real guest).
 			if inst.Status != client.StatusRunning {
-				http.Error(w, `{"error":"agent unreachable"}`, 502)
+				http.Error(w, `{"error":"agent unreachable"}`, http.StatusBadGateway)
 				return
 			}
 			_ = json.NewEncoder(w).Encode(client.Health{
@@ -432,10 +432,9 @@ func TestLifecycleStatusPauseResumeSuspendRestore(t *testing.T) {
 	bad, err := sess.CallTool(ctx, &mcp.CallToolParams{
 		Name: grainmcp.ToolStatus, Arguments: map[string]any{"name": ""},
 	})
-	if err == nil && bad != nil && !bad.IsError {
-		// SDK may surface tool errors as IsError result
-		if !strings.Contains(strings.ToLower(textOf(t, bad)), "required") {
-			// accept either transport error or error result
+	if err == nil {
+		if bad == nil || !bad.IsError {
+			t.Fatal("expected error result for empty name")
 		}
 	}
 

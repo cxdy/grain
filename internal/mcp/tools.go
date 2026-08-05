@@ -201,7 +201,7 @@ func (s *Server) register(srv *mcp.Server) {
 	}, s.toolSuspendVM)
 
 	mcp.AddTool(srv, &mcp.Tool{
-		Name: ToolRestoreVM,
+		Name:        ToolRestoreVM,
 		Description: "Restore a suspended sandbox (POST /vms/{name}/restore). Loads savevm when available, else cold boot.",
 	}, s.toolRestoreVM)
 
