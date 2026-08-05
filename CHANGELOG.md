@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **Hypervisor feature matrix (QEMU vs Firecracker)** — new explain page comparing capabilities today with production-track target phases (**vFC-1** agent path over FC vsock UDS `CONNECT`, **vFC-2** net/mounts). Linked from Firecracker guide, product surface, and concepts; sidebar entry under Understand. Zero VMM code.
 - **Single-tenant / single-operator model** — document multi-user RBAC as an intentional non-goal: one `data_dir` owner (0700), unix socket 0600, shared `api_token` (not per-user roles); shared hosts use separate OS users/`data_dir` or separate hosts. `SECURITY.md`, explain/security, remote-host, remote-lab; config comments near `DataDir` / `APIToken`.
 
 

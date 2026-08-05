@@ -67,7 +67,7 @@ For a **shared remote machine** (daemon as a service, teammates over SSH or SDKs
 | `mock` | Tests / CI without QEMU |
 | `firecracker` | Experimental Linux-only backend (KVM + raw rootfs + vsock; no SLIRP/hostfwd) |
 
-Firecracker is **not** the default product path. Operators who need it should follow the experimental guide: [Firecracker on Linux](../../guides/firecracker/) (`kernel_path`, `firecracker_binary`, doctor checks, limits vs QEMU).
+Firecracker is **not** the default product path. Operators who need it should follow the experimental guide: [Firecracker on Linux](../../guides/firecracker/) (`kernel_path`, `firecracker_binary`, doctor checks, limits vs QEMU). For a capability snapshot (QEMU vs FC **today**, plus production phases **vFC-1 agent** / **vFC-2 net**), see [Hypervisor matrix](../../explain/hypervisor-matrix/).
 
 ## Where data lives
 

@@ -40,7 +40,9 @@ grain’s local microVM product surface as of the v0.2 line.
 | Shared overlay network between VMs (`network: overlay`) | Done |
 | Firecracker backend | Experimental (Linux) — operator path documented; not production networking |
 
-**Firecracker (experimental):** Linux + KVM only, separate `vmlinux` (`kernel_path`), raw rootfs, agent via Firecracker vsock (no SLIRP/hostfwd). See [Firecracker on Linux](../../guides/firecracker/) for config, doctor checks, and limits vs QEMU. Production-hardened Firecracker (CNI/TAP, jailer, catalog images) remains deferred.
+**Firecracker (experimental):** Linux + KVM only, separate `vmlinux` (`kernel_path`), raw rootfs, agent via Firecracker vsock UDS (no SLIRP/hostfwd; host side is `CONNECT` protocol, not AF_VSOCK). See [Firecracker on Linux](../../guides/firecracker/) for config, doctor checks, and limits vs QEMU.
+
+**Production track is multi-phase** (docs-first; no VMM work in the matrix ticket): **vFC-1** = host agent path over FC vsock UDS, **vFC-2** = net/mounts. Full capability table: [Hypervisor matrix (QEMU vs Firecracker)](../hypervisor-matrix/). Jailer, CNI/TAP production networking, and catalog FC images remain deferred beyond those phases.
 
 **Platforms:** macOS and Linux hosts with hardware virtualization. Native Windows is not a host (use the remote API/SDKs against a supported host). WSL is Linux from grain’s point of view; virt must be available to that environment.
 

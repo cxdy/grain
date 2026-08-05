@@ -184,7 +184,7 @@ grain stop <name>
 | Catalog cloud images | First-class | Converted raw or custom rootfs; not drop-in |
 | Guest kernel | QEMU/UEFI path | Separate **vmlinux** (`kernel_path`) |
 | SSH + hostfwd / `-P` | Yes | **No** |
-| Guest agent reachability | TCP hostfwd and/or vhost-vsock | **FC vsock UDS** only |
+| Guest agent reachability | TCP hostfwd and/or vhost-vsock | **FC vsock UDS** only (`CONNECT`, not host AF_VSOCK) |
 | 9p / virtiofs mounts | Yes | **No** (not wired) |
 | Overlay network | Yes | **No** |
 | Egress proxy via SLIRP | Yes | **No** host path |
@@ -194,10 +194,13 @@ grain stop <name>
 | Jailer / production isolation extras | N/A | **Jailer-less** experimental launch |
 | `agent_transport` config | auto / tcp / vsock | Ignored (FC vsock always) |
 
-**Out of scope for this experimental path:** CNI/TAP, SLIRP hostfwd, production jailer, and a polished catalog FC image. Those remain deferred until a future production Firecracker track — this guide is intentionally the complete **experimental** operator surface.
+**Out of scope for this experimental path:** CNI/TAP, SLIRP hostfwd, production jailer, and a polished catalog FC image.
+
+**Production track (multi-phase):** the full QEMU-vs-FC matrix with target phases is in [Hypervisor matrix](../../explain/hypervisor-matrix/) — **vFC-1** = host agent dial over FC vsock UDS (`CONNECT`), **vFC-2** = net/mounts (hostfwd, overlay, proxy path, shares). This guide stays the complete **experimental** operator surface; the matrix is the phase map.
 
 ## Related
 
+- [Hypervisor matrix](../../explain/hypervisor-matrix/) — QEMU vs FC today + vFC-1 / vFC-2 targets
 - [Images](../images/#firecracker-rootfs-experimental) — base images, golden bake (QEMU-oriented); FC rootfs notes
 - [Networking](../networking/) — QEMU SLIRP / hostfwd (not used by FC)
 - [Guest agent](../agent/) — guest agent HTTP API
