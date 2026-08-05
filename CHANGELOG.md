@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Firecracker experimental operator path** — guide covers Linux+KVM only, `kernel_path` / `firecracker_binary`, raw rootfs, vsock-only agent (no SLIRP/hostfwd), doctor checks, and limits vs QEMU; cross-linked from concepts, product surface, config, troubleshooting, networking, and architecture. Closes the “Firecracker production path” TODO as a documented **experimental** path (full production networking/jailer still deferred). Kernel missing error points at the site guide instead of a stale `docs/firecracker.md` path.
 
+### Docs
+
+- **Firecracker support policy (vFC-1 agent)** — docs label **FC agent production** (pull, doctor, create `--wait agent`, vsock UDS) vs **QEMU-only** SSH/hostfwd/`grain fwd`/overlay/mounts until vFC-2. Matrix/parity/FC guide updated; CLI root help notes publish/fwd are QEMU hostfwd. Bench: `scripts/bench-fc.sh`; smoke: `scripts/smoke-fc.sh`.
+
 ### Fixed
 
 - **Install / `grain update` quieter when already set up** — `scripts/install.sh` skips the MCP enable prompt when `~/.grain/config.yaml` already exists, and drops the long “Next steps” footer (install progress + short “grain X installed” / PATH line only).

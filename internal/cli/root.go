@@ -48,7 +48,7 @@ func Root(version string) *cobra.Command {
   grain image import    register local golden qcow2
   grain new             ephemeral sandbox
   grain new -p          persistent sandbox
-  grain new -P 8080:80  publish host:guest ports
+  grain new -P 8080:80  publish host:guest ports (QEMU/SLIRP hostfwd; not Firecracker)
   grain new -v HOST:GUEST  share host dir via virtio-9p
   grain new --profile agent   named profile from config
   grain new --profile remote-coding  durable remote lab (builtin: -p, 4c/8G)
@@ -73,7 +73,7 @@ func Root(version string) *cobra.Command {
   grain agent health|deploy  guest agent health; redeploy over SSH (local or remote API)
   grain fs              guest readdir/stat/mkdir/rm via agent
   grain profile ls      list named + builtin profiles
-  grain fwd ls/add/rm   list or live-add/remove port forwards
+  grain fwd ls/add/rm   list or live-add/remove port forwards (QEMU hostfwd; not FC)
   grain stats [name]    guest resource stats (agent)
   grain secret ls|set|rm|inject  host secrets store
   grain proxy up|down|allow|deny|ls|client  egress allowlist proxy

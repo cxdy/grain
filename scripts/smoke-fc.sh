@@ -21,10 +21,18 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 command -v "$GRAIN_BIN" >/dev/null || die "grain not found (set GRAIN_BIN)"
 [[ "$(uname -s)" == Linux ]] || die "smoke-fc requires Linux"
-[[ -e /dev/kvm ]] || die "missing /dev/kvm"
+[[ -e /dev/kvm ]] || die "missing /dev/kvm (nested virt must expose KVM)"
+command -v firecracker >/dev/null 2>&1 || die "firecracker not on PATH"
+
+# Daemon must be up with hypervisor: firecracker.
+if ! "$GRAIN_BIN" ls >/dev/null 2>&1; then
+  die "grain daemon not reachable — run: grain up (with hypervisor: firecracker)"
+fi
 
 log "doctor"
-"$GRAIN_BIN" doctor || die "grain doctor failed"
+if ! "$GRAIN_BIN" doctor; then
+  die "grain doctor failed — fix ✗ items (kernel import/pull, KVM, firecracker binary); see logs under ~/.grain/logs/"
+fi
 
 # Prefer already-local images; otherwise pull.
 if ! "$GRAIN_BIN" image ls 2>/dev/null | awk '$1=="fc-kernel" && $2=="yes"{found=1} END{exit !found}'; then

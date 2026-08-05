@@ -1,34 +1,45 @@
 ---
-title: "Firecracker on Linux (experimental)"
-description: "Experimental Firecracker hypervisor path: Linux+KVM, raw rootfs, vsock agent, doctor checks, and limits vs QEMU."
+title: "Firecracker on Linux"
+description: "Firecracker backend on Linux+KVM: agent production (vFC-1) over vsock, catalog pull, doctor; networking remains QEMU-only until vFC-2."
 section: guides
 keywords:
   - Firecracker
   - KVM
   - hypervisor
   - Linux
-  - experimental
   - vsock
   - rootfs
   - kernel_path
+  - vFC-1
+  - support policy
 ---
 
 {{< only-need href="get-started/quickstart/" >}}
 Default backend is QEMU — use that path unless you deliberately need Firecracker.
 {{< /only-need >}}
 
-grain can launch sandboxes with [Firecracker](https://firecracker-microvm.github.io/) instead of QEMU.
+grain can launch sandboxes with [Firecracker](https://firecracker-microvm.github.io/) instead of QEMU on **Linux + KVM**.
 
-**Status: experimental.** This page is the supported **operator path** for trying Firecracker today. It is **not** a production-hardened backend: no SLIRP/hostfwd networking, no jailer, limited image story, and several QEMU features are missing. Default remains `hypervisor: qemu`. The mock backend is unchanged for unit tests.
+## Support policy
 
-macOS, hosts without the Firecracker binary, and hosts without a usable **`/dev/kvm`** fail with clear errors (`grain doctor` and create both surface KVM issues).
+| Tier | Status | What works |
+|------|--------|------------|
+| **FC agent production (vFC-1)** | **Supported** | Pull `fc-kernel` + `grain-ubuntu-fc`; doctor; `grain new --wait agent`; `grain x` / agent shell / cp / sync / MCP guest tools over vsock UDS + `CONNECT` |
+| **FC net / mounts** | **Not available** (vFC-2 later) | SSH hostfwd, `grain new -P` / `grain fwd`, overlay, egress proxy hostfwd, 9p/virtiofs |
+| **Default product path** | **QEMU** | macOS + Linux; full SLIRP/publish/mounts/overlay/GPU where applicable |
+
+CLI flags for **publish / fwd / SSH** describe the QEMU hostfwd model. On `hypervisor: firecracker` they do **not** open guest ports on the host — use the **agent** path.
+
+Default remains `hypervisor: qemu`. Jailer-less FC launch (single-tenant only). Nested KVM: works when the outer hypervisor exposes `vmx`/`svm` so `/dev/kvm` exists in this guest.
+
+macOS, missing Firecracker binary, or unusable **`/dev/kvm`** fail with clear errors (`grain doctor` and create).
 
 ## When to use this path
 
-| Use Firecracker (experimental) when… | Prefer QEMU when… |
-|--------------------------------------|-------------------|
-| You are on **Linux with KVM** and want a microVM backend | You need the default product path (macOS or Linux) |
-| You bring your own **FC kernel + raw rootfs** | You want catalog images (`grain-ubuntu`, `ubuntu-cloud`) with SSH |
+| Use Firecracker when… | Prefer QEMU when… |
+|------------------------|-------------------|
+| You are on **Linux with KVM** and want agent-first microVMs | You need macOS host or full product networking |
+| Catalog **`grain-ubuntu-fc` / `fc-kernel`** (or BYO raw + vmlinux) is enough | You need catalog qcow2 cloud images with **SSH** |
 | You accept **vsock-only** agent access (no hostfwd) | You need publish ports, SSH, overlay, mounts, proxy, GPU |
 
 ## Quick config
@@ -245,9 +256,22 @@ grain stop <name>
 | Jailer / production isolation extras | N/A | **Jailer-less** experimental launch |
 | `agent_transport` config | auto / tcp / vsock | Ignored (FC vsock always) |
 
-**Out of scope for this experimental path:** CNI/TAP, SLIRP hostfwd, production jailer, and **published** (pullable) catalog FC artifacts. Catalog IDs `grain-ubuntu-fc` / `fc-kernel` are reserved scaffolding; bake + digests are the next Phase 1 work.
+**Not on FC today (use QEMU):** CNI/TAP, SLIRP hostfwd, `grain fwd` / `-P`, overlay, mounts, jailer multi-tenant claims.
 
-**Production track (multi-phase):** the full QEMU-vs-FC matrix with target phases is in [Hypervisor matrix](../../explain/hypervisor-matrix/) — **vFC-1** = host agent dial over FC vsock UDS (`CONNECT`), **vFC-2** = net/mounts (hostfwd, overlay, proxy path, shares). This guide stays the complete **experimental** operator surface (BYO + doctor + vsock); the matrix is the phase map.
+**vFC-1 (agent) is shipped:** pullable `fc-latest` catalog, host UDS `CONNECT` dial, create-wait agent. Full table: [Hypervisor matrix](../../explain/hypervisor-matrix/). **vFC-2** = net/mounts later.
+
+### Boot metric (reference SKU)
+
+Primary project metric: wall time for `grain new -i grain-ubuntu-fc --wait agent` (create through agent ready).
+
+| Field | Value |
+|-------|--------|
+| **Reference host class** | **AWS `m7i-flex.large` nested-virt x86_64** (Ubuntu 24.04 guest host, `/dev/kvm`, Firecracker on PATH) |
+| **How to measure** | `./scripts/bench-fc.sh -n 5` (wraps `bench-create.sh` with `grain-ubuntu-fc` + `--wait agent`) |
+| **Smoke** | `./scripts/smoke-fc.sh` |
+| **Sample p50 (2026-08)** | **~1990 ms** create→agent ready (N=5; p95 ~1999 ms on this SKU) |
+
+Nested virt is slower than bare-metal KVM; re-run `bench-fc.sh` on your class before publishing numbers in a release.
 
 ## Related
 

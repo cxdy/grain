@@ -15,21 +15,30 @@ keywords:
 ---
 
 {{< only-need href="guides/firecracker/" >}}
-Operator setup for the experimental Firecracker backend (kernel, doctor, raw rootfs).
+Operator setup for the Firecracker backend (kernel, doctor, catalog pull, vsock agent).
 {{< /only-need >}}
 
-This page is the **capability snapshot** for grain’s two real hypervisors: **QEMU** (default product path) and **Firecracker** (experimental Linux backend). It is **documentation only** — no VMM code changes land with this matrix.
+This page is the **capability snapshot** for grain’s two real hypervisors: **QEMU** (default product path) and **Firecracker** (Linux + KVM backend).
 
-**Production plan is multi-phase.** Firecracker is intentionally not a single “flip the switch” replacement for QEMU. The track is:
+## Support policy (read this first)
 
-| Phase | Focus |
-|-------|--------|
-| **Today** | Experimental FC launch: Linux+KVM, raw rootfs, vsock device configured, jailer-less |
-| **vFC-1 (agent)** | Host↔guest **agent path** over Firecracker vsock UDS (`CONNECT` protocol) so `grain x` / `sh` / `cp` / create-wait agent work without SSH |
-| **vFC-2 (net)** | Networking and mounts parity path: hostfwd/publish, overlay, egress proxy host path, 9p/virtiofs (or FC equivalents) |
-| **never** | Not planned for Firecracker (use QEMU), or permanently out of scope for this backend |
+| Label | Meaning |
+|-------|---------|
+| **FC agent production (vFC-1)** | Supported for agent-first workflows on Linux+KVM: pull `fc-kernel` / `grain-ubuntu-fc`, `grain new --wait agent`, `grain x` / `sh` / `cp` / sync / MCP tools that use the guest agent. Host dial uses Firecracker vsock UDS + `CONNECT`. |
+| **FC net experimental / later (vFC-2)** | **Not** available on Firecracker today: SSH hostfwd, `grain new -P` / `grain fwd`, overlay L2, egress proxy hostfwd, 9p/virtiofs mounts. Use **QEMU** for those. |
+| **QEMU default** | Full product path on macOS + Linux (SLIRP, publish, mounts, overlay, GPU where applicable). |
 
-Operator how-to (config, doctor, layout): [Firecracker on Linux](../../guides/firecracker/). Product checklist: [Product surface](../parity/).
+CLI flags such as `--publish` / `grain fwd` describe the **QEMU/SLIRP** hostfwd model. They do **not** enable networking on `hypervisor: firecracker` (no guest ports are published). Prefer agent APIs on FC.
+
+**Production plan is multi-phase.** Firecracker is not a drop-in QEMU replacement:
+
+| Phase | Focus | Status |
+|-------|--------|--------|
+| **vFC-1 (agent)** | Catalog kernel/rootfs, doctor, host UDS `CONNECT` dial, create-wait agent | **Shipped** on `main` / `fc-latest` |
+| **vFC-2 (net)** | TAP/publish/SSH/overlay/mounts parity path | **Later** — use QEMU until then |
+| **never** | macOS FC host, virtio GPU, QEMU-style savevm | Use QEMU |
+
+Operator how-to: [Firecracker on Linux](../../guides/firecracker/). Product checklist: [Product surface](../parity/).
 
 ## How to read the matrix
 
@@ -47,10 +56,10 @@ Statuses in the FC column are intentional honesty, not TODOs disguised as featur
 |------------|------|---------------------|--------------|
 | **Host OS** | macOS + Linux | **Linux only** | **never** (FC is Linux/KVM-only) |
 | **Acceleration / KVM** | HVF (macOS), KVM (Linux), TCG fallback on Linux | **KVM required** (`/dev/kvm` RDWR); no TCG | — (hard requirement today) |
-| **Images / rootfs** | Catalog qcow2 (`grain-ubuntu`, `ubuntu-cloud`, …) + import | Raw rootfs preferred; qcow2 converted via `qemu-img` at Start; not drop-in catalog | later (catalog FC rootfs); not vFC-1 |
-| **Guest kernel** | QEMU/UEFI path from image | Separate **vmlinux** (`kernel_path` or `~/.grain/kernels/vmlinux`) | — (operator-supplied today) |
-| **SSH + hostfwd / `-P` / `grain fwd`** | Yes (SLIRP hostfwd) | **No** — `SSHPort` / published ports not configured | **vFC-2 net** |
-| **Agent transport** | TCP hostfwd and/or host **AF_VSOCK** (`vhost-vsock-pci`); `agent_transport: auto\|tcp\|vsock` | On Start: `SSHPort=0`, `AgentPort=0`, **`AgentCID` set**, Firecracker `vsock` with `uds_path` = `vms/<name>/fc-vsock.sock`. Host side is **not** AF_VSOCK: clients must dial the UDS and send `CONNECT <port>\n` ([FC vsock docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md)). Guest agent still listens on AF_VSOCK **7475**. Host `agent.Dial` AF_VSOCK path does **not** speak CONNECT yet | **vFC-1 agent** |
+| **Images / rootfs** | Catalog qcow2 (`grain-ubuntu`, `ubuntu-cloud`, …) + import | Catalog **`grain-ubuntu-fc`** raw (pull `fc-latest`) or import; qcow2→raw via `qemu-img` at Start | — (vFC-1 catalog shipped) |
+| **Guest kernel** | QEMU/UEFI path from image | Catalog **`fc-kernel`** → `~/.grain/kernels/vmlinux`, or `kernel_path` / import | — (vFC-1 catalog shipped) |
+| **SSH + hostfwd / `-P` / `grain fwd`** | Yes (SLIRP hostfwd) | **No** — `SSHPort` / published ports not configured (QEMU-only UX) | **vFC-2 net** |
+| **Agent transport** | TCP hostfwd and/or host **AF_VSOCK** (`vhost-vsock-pci`); `agent_transport: auto\|tcp\|vsock` | On Start: `SSHPort=0`, `AgentPort=0`, **`AgentCID` set**, Firecracker `vsock` with `uds_path` = `vms/<name>/fc-vsock.sock`. Host **`agent.Dial` speaks UDS + `CONNECT <port>\n`** (not host AF_VSOCK). Guest agent listens on AF_VSOCK **7475**. Create-wait / CLI / daemon proxy use this path | **vFC-1 agent (done)** |
 | **Mounts (9p / virtiofs)** | Yes (virtiofs on Linux) | **Not wired** | **vFC-2 net** (mounts ride the net/FS phase) |
 | **Overlay network** (`network: overlay`) | Yes (shared L2 between VMs) | **No** | **vFC-2 net** |
 | **Egress proxy** (SLIRP hostfwd path) | Yes | **No** host path (no SLIRP/hostfwd) | **vFC-2 net** |
@@ -62,29 +71,22 @@ Statuses in the FC column are intentional honesty, not TODOs disguised as featur
 | **GPU** (`virtio` / `--gpu`) | Yes | **No** | **never** (use QEMU) |
 | **Jailer / production isolation extras** | N/A | **Jailer-less** experimental launch | later (not vFC-1 / vFC-2 scope) |
 
-## Agent path detail (why vFC-1 exists)
+## Agent path detail (vFC-1)
 
-Firecracker Start already wires the **guest** side:
+Firecracker Start wires the guest and host agent path:
 
 1. `SSHPort = 0`, `AgentPort = 0` (no TCP hostfwd)
 2. `AgentCID` allocated (same CID allocator as QEMU vsock)
 3. Vsock UDS at `~/.grain/vms/<name>/fc-vsock.sock`
+4. Host `agent.Dial` / create-wait / daemon proxy: connect UDS → `CONNECT 7475\n` → HTTP to grain-agent
 
-That is **not** the same as QEMU’s host AF_VSOCK (`/dev/vhost-vsock`). A host client must:
-
-```text
-connect(unix: …/fc-vsock.sock)
-write("CONNECT 7475\n")
-# then HTTP to grain-agent
-```
-
-Until the host dial stack speaks that **CONNECT** protocol (and create-wait / CLI use it), “agent configured” ≠ “agent usable from the CLI.” That gap is **vFC-1**. SSH remains a QEMU-first bootstrap path; FC production agent access is vsock-first.
+That is **not** QEMU’s host AF_VSOCK (`/dev/vhost-vsock`). SSH remains a **QEMU** bootstrap path; FC agent access is vsock-first (baked agent in `grain-ubuntu-fc`; no SSH deploy on FC).
 
 ## What each phase does *not* include
 
-- **vFC-1** does not add SLIRP, publish ports, overlay, proxy hostfwd, or mounts.
+- **vFC-1** does not add SLIRP, publish ports, overlay, proxy hostfwd, or mounts — those stay **QEMU-only** until vFC-2.
 - **vFC-2** does not promise macOS Firecracker, GPU, or QEMU savevm semantics.
-- **Jailer**, polished **catalog FC images**, and CNI/TAP production networking may land in later production work beyond vFC-2; they are **not** implied by this matrix’s first two phases.
+- **Jailer** and multi-host CNI remain out of the agent-production bar (optional later; single-tenant only).
 
 ## Related
 

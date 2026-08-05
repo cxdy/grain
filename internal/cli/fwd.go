@@ -99,6 +99,9 @@ func cmdFwd(cfgPath *string) *cobra.Command {
 		Short: "Inspect and manage port forwards",
 		Long: `Inspect SLIRP hostfwd and live SSH port mappings for grain VMs.
 
+These flows use QEMU SLIRP hostfwd / SSH -L. Firecracker does not configure
+SSHPort or published ports (agent path only until vFC-2 networking).
+
 Create-time SLIRP forwards:
 
   grain new --publish 8080:80 -P 4430:443
