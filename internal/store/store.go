@@ -18,7 +18,7 @@ type Store struct {
 
 func New(dataDir string) (*Store, error) {
 	dir := filepath.Join(dataDir, "vms")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	return &Store{dir: dir}, nil
@@ -36,7 +36,7 @@ func (s *Store) Put(inst *vm.Instance) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	d := s.Dir(inst.Name)
-	if err := os.MkdirAll(d, 0o755); err != nil {
+	if err := os.MkdirAll(d, 0o700); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(inst, "", "  ")
@@ -44,7 +44,8 @@ func (s *Store) Put(inst *vm.Instance) error {
 		return err
 	}
 	tmp := s.path(inst.Name) + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	// Owner-only: meta may include host paths, ports, and tags.
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, s.path(inst.Name))

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **Image pull fail-closed digests** — production catalog pulls refuse install when neither a pinned `SHA256` nor a companion `.sha256` sidecar is available (`grain-ubuntu` sidecar required; no silent skip). `ubuntu-cloud` digests refreshed to current noble minimal SHA256SUMS; `alpine-cloud` pins SHA-256 of the published qcow2 (Alpine ships `.sha512`/`.asc` only). Spec field `AllowUnverified` is for tests/dev only.
+- **Remote API transport guidance** — CLI prints a one-time stderr warning when dialing a non-loopback cleartext `http://` API URL (Bearer tokens are sniffable); silence with `GRAIN_INSECURE_HTTP=1`. Daemon non-loopback bind warning mentions cleartext HTTP. Docs (`SECURITY.md`, remote-lab, config) recommend SSH tunnel to `127.0.0.1` or HTTPS reverse proxy. `https://` API URLs use the default TLS client.
 
 ### Added
 
