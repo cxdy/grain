@@ -129,10 +129,12 @@ func TestPullSpecHTTPError(t *testing.T) {
 	t.Cleanup(srv.Close)
 	m := NewManager(t.TempDir())
 	m.Client = &http.Client{Timeout: 10 * time.Second}
+	// Pin present so resolve does not fail-close before the image GET.
 	err := m.pullSpec(context.Background(), Spec{
 		ID:     "404img",
 		URL:    srv.URL + "/missing.qcow2",
 		Format: "qcow2",
+		SHA256: strings.Repeat("ab", 32),
 	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "HTTP") {
 		t.Fatalf("err %v", err)
@@ -426,7 +428,8 @@ func TestPullSpecCanceledContext(t *testing.T) {
 		ID:     "cancel-img",
 		URL:    srv.URL + "/disk.qcow2",
 		Format: "qcow2",
-		SHA256: "", // skip sidecar prefer
+		// Pin so we reach the cancelled image GET (not fail-closed on empty digest).
+		SHA256: strings.Repeat("cd", 32),
 	}, nil)
 	if err == nil {
 		t.Fatal("expected cancel/error")
@@ -436,7 +439,8 @@ func TestPullSpecCanceledContext(t *testing.T) {
 func TestPullSpecDownloadErrorNoBody(t *testing.T) {
 	t.Parallel()
 	// Connection refused mid-way via closed server after start is hard;
-	// cover HTTP non-200 already exists. Cover empty pinned SHA + no sidecar → skip verify.
+	// cover HTTP non-200 already exists. AllowUnverified: empty pin + no sidecar
+	// is only valid for explicit dev/test Specs (production fail-closes).
 	payload := make([]byte, 2*1024*1024)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, ".sha256") {
@@ -451,10 +455,11 @@ func TestPullSpecDownloadErrorNoBody(t *testing.T) {
 	m.Client = &http.Client{Timeout: 15 * time.Second}
 	// SizeHint used when ContentLength unknown
 	err := m.pullSpec(context.Background(), Spec{
-		ID:       "nolength",
-		URL:      srv.URL + "/x.img",
-		Format:   "raw", // .img extension path
-		SizeHint: int64(len(payload)),
+		ID:              "nolength",
+		URL:             srv.URL + "/x.img",
+		Format:          "raw", // .img extension path
+		SizeHint:        int64(len(payload)),
+		AllowUnverified: true,
 	}, func(written, total int64) {
 		if total != int64(len(payload)) && total != -1 && total != 0 {
 			// total may be sizeHint
@@ -470,13 +475,13 @@ func TestPullSpecDownloadErrorNoBody(t *testing.T) {
 	}
 }
 
-func TestResolveWantSHA256NetworkFailSkips(t *testing.T) {
+func TestResolveWantSHA256NetworkFailErrors(t *testing.T) {
 	t.Parallel()
-	// Unreachable URL for sidecar
+	// Unreachable URL for sidecar — fail closed (no silent skip).
 	got, err := resolveWantSHA256(context.Background(), &http.Client{Timeout: 100 * time.Millisecond},
 		"http://127.0.0.1:1/nope.qcow2", "")
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("expected sidecar network error")
 	}
 	if got != "" {
 		t.Fatalf("%q", got)

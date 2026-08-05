@@ -198,3 +198,98 @@ func TestResolveWantSHA256Sidecar(t *testing.T) {
 		t.Fatalf("pinned: got %q", got)
 	}
 }
+
+// TestPullSpecFailClosedNoDigest: empty pin + missing sidecar must refuse install.
+func TestPullSpecFailClosedNoDigest(t *testing.T) {
+	t.Parallel()
+
+	payload := make([]byte, 2*1024*1024)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/disk.qcow2", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(payload)
+	})
+	mux.HandleFunc("/disk.qcow2.sha256", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	m := NewManager(t.TempDir())
+	m.Client = &http.Client{Timeout: 30 * time.Second}
+	spec := Spec{
+		ID:     "no-digest",
+		URL:    srv.URL + "/disk.qcow2",
+		SHA256: "",
+		Format: "qcow2",
+		// AllowUnverified intentionally false — production fail-closed.
+	}
+	err := m.pullSpec(context.Background(), spec, nil)
+	if err == nil {
+		t.Fatal("expected refuse unverified pull")
+	}
+	if !strings.Contains(err.Error(), "refusing unverified pull") {
+		t.Fatalf("err %v", err)
+	}
+	if m.Ready(spec.ID) {
+		t.Fatal("must not install without digest")
+	}
+}
+
+// TestPullSpecAllowUnverifiedEmptyDigest: explicit opt-in skips verify (dev/tests).
+func TestPullSpecAllowUnverifiedEmptyDigest(t *testing.T) {
+	t.Parallel()
+
+	payload := make([]byte, 2*1024*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".sha256") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	t.Cleanup(srv.Close)
+
+	m := NewManager(t.TempDir())
+	m.Client = &http.Client{Timeout: 30 * time.Second}
+	spec := Spec{
+		ID:              "dev-unverified",
+		URL:             srv.URL + "/disk.qcow2",
+		SHA256:          "",
+		Format:          "qcow2",
+		AllowUnverified: true,
+	}
+	if err := m.pullSpec(context.Background(), spec, nil); err != nil {
+		t.Fatalf("AllowUnverified pull: %v", err)
+	}
+	if !m.Ready(spec.ID) {
+		t.Fatal("expected Ready")
+	}
+}
+
+// TestPullSpecSidecarHTTPError: non-404 sidecar failure must not skip verify.
+func TestPullSpecSidecarHTTPError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".sha256") {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+
+	m := NewManager(t.TempDir())
+	m.Client = &http.Client{Timeout: 10 * time.Second}
+	err := m.pullSpec(context.Background(), Spec{
+		ID:     "sidecar-500",
+		URL:    srv.URL + "/disk.qcow2",
+		Format: "qcow2",
+	}, nil)
+	if err == nil {
+		t.Fatal("expected sidecar HTTP error")
+	}
+	if !strings.Contains(err.Error(), "sha256 sidecar") {
+		t.Fatalf("err %v", err)
+	}
+}

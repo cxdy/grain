@@ -10,8 +10,12 @@ type Spec struct {
 	ID          string
 	Description string
 	// URL for current GOARCH (empty if unsupported or local-only).
-	URL    string
-	SHA256 string // optional; empty skips verify unless a .sha256 sidecar is available
+	URL string
+	// SHA256 pin for the downloadable artifact (hex, lowercase preferred).
+	// Empty: pull tries companion URL.sha256 sidecar. If both pin and sidecar
+	// are missing, pull fails unless AllowUnverified is set (dev/tests only).
+	// RISK: AllowUnverified or a silent skip path installs without integrity check.
+	SHA256 string
 	// Format: qcow2 | raw
 	Format string
 	// Default SSH user after cloud-init.
@@ -23,13 +27,27 @@ type Spec struct {
 	HasAgent bool
 	// LocalOnly images cannot be pulled; register via grain image import.
 	LocalOnly bool
+	// AllowUnverified permits pull when Spec.SHA256 is empty and no companion
+	// .sha256 sidecar is available. Catalog production IDs leave this false
+	// (fail closed). Set only for tests or explicit local/dev Specs.
+	AllowUnverified bool
 }
 
 // Digests from https://cloud-images.ubuntu.com/minimal/releases/noble/release/SHA256SUMS
 // (ubuntu-24.04-minimal-cloudimg-{arm64,amd64}.img). Refresh when Ubuntu rolls the release pointer.
 const (
-	ubuntuNobleMinimalArm64SHA256 = "7e938df669e3b1923595eeda97aa28569350c5283e05a835cc912a2486a54934"
-	ubuntuNobleMinimalAmd64SHA256 = "d99d1abe3284e568161b3b7dabfbd6cf67956a7f4274b13842f10aa9c7807a2c"
+	ubuntuNobleMinimalArm64SHA256 = "3a42e0355636bcc4820af28f5bd2c9591502613ab238ad4fa6d4c3659c03d9cf"
+	ubuntuNobleMinimalAmd64SHA256 = "b3064efb500d71d6ccbe619b1716062b803e285116e040627b430aaee14cced6"
+)
+
+// Alpine cloud qcow2 SHA-256 pins (generic UEFI + cloud-init).
+// Alpine publishes companion .sha512 (and GPG .asc), not .sha256 sidecars.
+// Digests computed from the published qcow2 and cross-checked against the
+// official .sha512 files on dl-cdn.alpinelinux.org. Refresh when alpineCloud*
+// version/rev constants change.
+const (
+	alpineCloudArm64SHA256 = "3059a6280977c2122982632e0317c5ddbd39069d46ca1e60480de283091f720f"
+	alpineCloudAmd64SHA256 = "20acb6673d31497bc292a8f6a075d98aa47d03cfe79ddf3c811840e60cf6f8c5"
 )
 
 // Catalog IDs.
@@ -104,6 +122,9 @@ func catalogFor(arch string) map[string]Spec {
 	case "amd64", "arm64":
 		grainURL = grainUbuntuReleaseBase + "grain-ubuntu-" + arch + ".qcow2"
 	}
+	// Golden: digest is not pinned in-tree (assets rewrite on golden-latest).
+	// Pull requires the companion .sha256 sidecar from the same release; empty
+	// pin + missing sidecar fails closed (no silent skip).
 	c[IDGrainUbuntu] = Spec{
 		ID:          IDGrainUbuntu,
 		Description: "Ubuntu golden image with grain-agent (pull or import)",
@@ -119,7 +140,7 @@ func catalogFor(arch string) map[string]Spec {
 	// Alpine Linux cloud — generic UEFI + cloud-init (NoCloud auto-detected).
 	// Agent is deployed over SSH after boot (HasAgent: false). SSH user: alpine.
 	// Alpine uses aarch64/x86_64 in filenames (not arm64/amd64).
-	// SHA256 left empty: Alpine publishes GPG (.asc) not sha256sum sidecars.
+	// SHA256 pinned from published qcow2 (Alpine ships .sha512/.asc, not .sha256).
 	switch arch {
 	case "arm64":
 		c[IDAlpineCloud] = Spec{
@@ -129,7 +150,7 @@ func catalogFor(arch string) map[string]Spec {
 				"https://dl-cdn.alpinelinux.org/alpine/%s/releases/cloud/generic_alpine-%s-aarch64-uefi-cloudinit-%s.qcow2",
 				alpineCloudSeries, alpineCloudVersion, alpineCloudRev,
 			),
-			SHA256:   "",
+			SHA256:   alpineCloudArm64SHA256,
 			Format:   "qcow2",
 			SSHUser:  "alpine",
 			SizeHint: 240 * 1024 * 1024,
@@ -143,7 +164,7 @@ func catalogFor(arch string) map[string]Spec {
 				"https://dl-cdn.alpinelinux.org/alpine/%s/releases/cloud/generic_alpine-%s-x86_64-uefi-cloudinit-%s.qcow2",
 				alpineCloudSeries, alpineCloudVersion, alpineCloudRev,
 			),
-			SHA256:   "",
+			SHA256:   alpineCloudAmd64SHA256,
 			Format:   "qcow2",
 			SSHUser:  "alpine",
 			SizeHint: 200 * 1024 * 1024,
