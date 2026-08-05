@@ -69,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	// Interactive PTY shell (WebSocket) — required for remote CLI `grain sh`
 	mux.HandleFunc("GET /vms/{name}/shell", s.shellVM)
 	mux.HandleFunc("GET /vms/{name}/agent/health", s.agentHealth)
+	mux.HandleFunc("POST /vms/{name}/agent/deploy", s.agentDeploy)
 	mux.HandleFunc("GET /vms/{name}/stats", s.vmStats)
 	mux.HandleFunc("PUT /vms/{name}/cp", s.putCP)
 	mux.HandleFunc("GET /vms/{name}/cp", s.getCP)
@@ -873,6 +874,32 @@ func (s *Server) agentHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h)
+}
+
+// agentDeploy SCPs grain-agent into the guest over SSH (hostfwd on this daemon host).
+// The Linux agent binary must exist on the daemon host (just agent-linux / data_dir/agent).
+func (s *Server) agentDeploy(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	// Deploy can take a few minutes (scp + systemctl restart + health).
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	result, err := s.mgr.DeployAgent(ctx, name)
+	if err != nil {
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "not found") && strings.Contains(msg, "vm"):
+			writeErr(w, http.StatusNotFound, err)
+		case strings.Contains(msg, "agent binary not found"):
+			writeErr(w, http.StatusServiceUnavailable, err)
+		case strings.Contains(msg, "not running"), strings.Contains(msg, "no SSH port"):
+			writeErr(w, http.StatusBadRequest, err)
+		default:
+			// SCP/SSH install failures, key issues, etc.
+			writeErr(w, http.StatusBadGateway, err)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 // vmStats proxies GET /stats from the guest grain-agent.

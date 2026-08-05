@@ -203,6 +203,9 @@ func TestAPIClientSuccessSurface(t *testing.T) {
 	mux.HandleFunc("GET /vms/{name}/agent/health", func(w http.ResponseWriter, r *http.Request) {
 		okJSON(w, `{"hostname":"g","agent_version":"1"}`)
 	})
+	mux.HandleFunc("POST /vms/{name}/agent/deploy", func(w http.ResponseWriter, r *http.Request) {
+		okJSON(w, `{"name":"n","binary":"/tmp/agent","health":{"hostname":"g","agent_version":"1"}}`)
+	})
 	mux.HandleFunc("GET /vms/{name}/stats", func(w http.ResponseWriter, r *http.Request) {
 		okJSON(w, `{"uptime_sec":1}`)
 	})
@@ -277,6 +280,11 @@ func TestAPIClientSuccessSurface(t *testing.T) {
 	}
 	if _, err := c.AgentHealth(ctx, "n"); err != nil {
 		t.Fatal(err)
+	}
+	if res, err := c.DeployAgent(ctx, "n"); err != nil {
+		t.Fatal(err)
+	} else if res.Name != "n" || res.Binary == "" {
+		t.Fatalf("deploy result %+v", res)
 	}
 	if _, err := c.Stats(ctx, "n"); err != nil {
 		t.Fatal(err)

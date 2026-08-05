@@ -161,15 +161,15 @@ ssh -N \
   sandbox.example.com
 ```
 
-## 7. Agent deploy is local-daemon only
+## 7. Agent deploy (remote CLI)
 
 | Command | Remote CLI (`GRAIN_API`) |
 |---------|---------------------------|
 | `ls`, `new`, `rm`, `stop`, `start`, `sh`, `x`, `cp`, `sync`, `fs`, `fwd`, `stats` | Yes (agent ops via daemon proxy) |
+| `grain agent deploy` | **Yes** — daemon runs SSH deploy on the host (`POST /vms/{name}/agent/deploy`) |
 | `up`, `down`, `image *`, `doctor`, `logs`, `proxy *` | No — run on host |
-| `grain agent deploy` | **No** — local daemon only (needs SSH hostfwd on the host) |
 
-If the agent is missing on a non-golden image: SSH to the host and run `grain agent deploy NAME`, or recreate from `grain-ubuntu` with `--wait agent`.
+The **agent binary must exist on the daemon host** (`just agent-linux` or `~/.grain/agent/grain-agent-linux-$arch`), not on the laptop. Prefer golden `grain-ubuntu` with `--wait agent` so deploy is rarely needed.
 
 ## 8. Security (non-negotiable)
 

@@ -33,7 +33,7 @@ The guest agent is a small HTTP server that runs **inside** each Linux VM. The h
 | **Filesystem** | `/fs/*` | `grain fs ls\|stat\|mkdir\|rm` · daemon FS routes |
 | **Stats** | `GET /stats` | uptime, mem, load (and disk when available); host Prometheus `/metrics` for VM counts |
 | **Secrets** | `POST /secrets/materialize` | write a payload into the guest (default `/run/grain/secrets/<name>`); host store under `~/.grain/secrets` |
-| **Deploy** | — | automatic SSH install of `grain-agent` when missing |
+| **Deploy** | — | automatic SSH install; `grain agent deploy` · `POST /vms/{name}/agent/deploy` |
 
 Buffered exec returns JSON (`stdout`/`stderr`/`exit_code`). Streaming exec (`buffered=false`) emits NDJSON frames: `started` → `stdout`/`stderr` → `exit`.
 
@@ -196,15 +196,15 @@ Requires a healthy agent. See [CLI reference](../../reference/cli/#grain-sync-pu
 
 ### Refresh / redeploy the guest agent
 
-After upgrading the **host** CLI, an older in-guest agent may lack new features (terminal env, readiness fields, …). Redeploy from the machine that runs the daemon:
+After upgrading the **host** CLI, an older in-guest agent may lack new features (terminal env, readiness fields, …). Redeploy so the guest picks up the new binary:
 
 ```bash
-just agent-linux                 # if bin/grain-agent-linux-$arch is missing
-grain agent deploy sbox-1        # SCP + systemd enable (local daemon only)
+just agent-linux                 # if bin/grain-agent-linux-$arch is missing on the daemon host
+grain agent deploy sbox-1        # SCP + systemd enable (local or remote CLI)
 grain agent health sbox-1        # confirm agent_version
 ```
 
-Remote CLI (`GRAIN_API`) cannot deploy over SSH hostfwd (ports live on the sandbox host). SSH to the host and run `grain agent deploy`, or recreate the VM from a golden image with a baked agent.
+With `GRAIN_API`, the CLI calls `POST /vms/{name}/agent/deploy` so SSH hostfwd runs on the sandbox host. The **agent binary must exist on the daemon host** (not the laptop). Or recreate the VM from a golden image with a baked agent.
 
 `grain doctor` reports whether the host-side agent binary is present (soft warning if missing).
 

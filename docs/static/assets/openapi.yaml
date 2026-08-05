@@ -559,6 +559,35 @@ paths:
         "503":
           $ref: "#/components/responses/Error"
 
+  /vms/{name}/agent/deploy:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [agent]
+      summary: Deploy or refresh guest agent over SSH
+      description: |
+        SCP the daemon host's grain-agent Linux binary into the guest and enable
+        the systemd unit. Runs on the daemon host (SSH hostfwd). The binary must
+        exist on the daemon host (`just agent-linux` or `data_dir/agent/`).
+      operationId: agentDeploy
+      responses:
+        "200":
+          description: Deploy succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDeployResult"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+
   /vms/{name}/cp:
     parameters:
       - $ref: "#/components/parameters/VMName"
@@ -971,6 +1000,17 @@ components:
           format: int64
         userdata_ran:
           type: boolean
+
+    AgentDeployResult:
+      type: object
+      properties:
+        name:
+          type: string
+        binary:
+          type: string
+          description: Path of the agent binary used on the daemon host
+        health:
+          $ref: "#/components/schemas/AgentHealth"
 
     ExecResult:
       type: object

@@ -1138,6 +1138,58 @@ func TestWaitOrDeployAgentSoftAndHard(t *testing.T) {
 	}
 }
 
+func TestDeployAgentValidation(t *testing.T) {
+	m, _, st, dir := unitMgr(t, "mock")
+	ctx := context.Background()
+
+	if _, err := m.DeployAgent(ctx, "missing"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("missing vm: %v", err)
+	}
+
+	inst := &vm.Instance{
+		Name: "d1", Status: vm.StatusStopped, SSHPort: 22, IP: "127.0.0.1",
+		CPUs: 1, MemoryMB: 512, DiskGB: 2, Image: "ubuntu-cloud",
+	}
+	if err := st.Put(inst); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.DeployAgent(ctx, "d1"); err == nil || !strings.Contains(err.Error(), "not running") {
+		t.Fatalf("stopped: %v", err)
+	}
+
+	inst.Status = vm.StatusRunning
+	inst.SSHPort = 0
+	if err := st.Put(inst); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.DeployAgent(ctx, "d1"); err == nil || !strings.Contains(err.Error(), "SSH") {
+		t.Fatalf("no ssh: %v", err)
+	}
+
+	inst.SSHPort = 2201
+	if err := st.Put(inst); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.DeployAgent(ctx, "d1"); err == nil || !strings.Contains(err.Error(), "agent binary") {
+		t.Fatalf("no binary: %v", err)
+	}
+
+	agentDir := filepath.Join(dir, "agent")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"grain-agent-linux-amd64", "grain-agent-linux-arm64"} {
+		if err := os.WriteFile(filepath.Join(agentDir, name), []byte("#!/bin/true\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// SSH to closed port fails
+	_, err := m.DeployAgent(ctx, "d1")
+	if err == nil {
+		t.Fatal("expected scp/ssh failure")
+	}
+}
+
 func TestWaitOrDeployAgentWithLiveAgent(t *testing.T) {
 	srv := agent.NewServer("127.0.0.1:0", nil)
 	errCh := make(chan error, 1)

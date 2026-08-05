@@ -637,6 +637,28 @@ func (c *Client) AgentHealth(ctx context.Context, name string) (*Health, error) 
 	return &h, nil
 }
 
+// DeployAgent asks the daemon to SCP/install grain-agent into the guest over SSH.
+// The agent binary must exist on the daemon host (not the remote client machine).
+func (c *Client) DeployAgent(ctx context.Context, name string) (*AgentDeployResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms/"+url.PathEscape(name)+"/agent/deploy", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var out AgentDeployResult
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // Stats proxies guest grain-agent GET /stats for the named VM.
 func (c *Client) Stats(ctx context.Context, name string) (*Stats, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/vms/"+url.PathEscape(name)+"/stats", nil)
