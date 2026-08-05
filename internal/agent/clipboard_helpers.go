@@ -59,12 +59,13 @@ fi
 	// must be active — grain sh asks the laptop for paste data).
 	const osc52Paste = `#!/bin/sh
 # grain: paste from client clipboard via grain-agent GET /clipboard
+# Supports text and image/png|jpeg (host grain sh reads screenshot pasteboard types).
 url="http://127.0.0.1:7475/clipboard"
 if command -v curl >/dev/null 2>&1; then
-  exec curl -sf --max-time 5 "$url"
+  exec curl -sf --max-time 20 "$url"
 fi
 if command -v wget >/dev/null 2>&1; then
-  exec wget -q -O - --timeout=5 "$url"
+  exec wget -q -O - --timeout=20 "$url"
 fi
 echo "grain clipboard: curl/wget required for paste" >&2
 exit 1
