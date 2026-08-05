@@ -45,6 +45,30 @@ func TestCatalogArchVariants(t *testing.T) {
 	if gu.Format != "qcow2" || gu.SSHUser != "ubuntu" || !gu.HasAgent {
 		t.Fatalf("%+v", gu)
 	}
+	// Firecracker Phase 1 scaffold IDs: always present, LocalOnly until bake.
+	fcRoot, ok := c[IDGrainUbuntuFC]
+	if !ok {
+		t.Fatal("missing grain-ubuntu-fc")
+	}
+	if fcRoot.Format != "raw" || !fcRoot.HasAgent || !fcRoot.LocalOnly || fcRoot.URL != "" {
+		t.Fatalf("grain-ubuntu-fc scaffold: %+v", fcRoot)
+	}
+	if fcRoot.AllowUnverified {
+		t.Fatal("grain-ubuntu-fc must not AllowUnverified")
+	}
+	fcKern, ok := c[IDFCKernel]
+	if !ok {
+		t.Fatal("missing fc-kernel")
+	}
+	if fcKern.Format != "raw" || !fcKern.LocalOnly || fcKern.URL != "" || fcKern.HasAgent {
+		t.Fatalf("fc-kernel scaffold: %+v", fcKern)
+	}
+	if _, err := Get(IDGrainUbuntuFC); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Get(IDFCKernel); err != nil {
+		t.Fatal(err)
+	}
 	// ubuntu-cloud and alpine-cloud present on amd64/arm64
 	arch := runtime.GOARCH
 	switch arch {

@@ -93,11 +93,29 @@ If `grain new` fails, prefer the **create error** and `~/.grain/logs/<name>.log`
 
 ## Image / rootfs notes
 
-grain’s catalog images (`ubuntu-cloud`, `grain-ubuntu`) are **qcow2 cloud images** aimed at QEMU + cloud-init. For Firecracker:
+grain’s QEMU catalog images (`ubuntu-cloud`, `grain-ubuntu`, `alpine-cloud`) are **qcow2 cloud images** aimed at QEMU + cloud-init. They are **not** drop-in Firecracker guests.
+
+### Reserved Firecracker catalog IDs (Phase 1 scaffold)
+
+| Catalog ID | Role | Status today |
+|------------|------|----------------|
+| **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **LocalOnly** — not pullable yet; `grain image import … --id grain-ubuntu-fc` when you have a BYO rootfs |
+| **`fc-kernel`** | Guest **vmlinux** artifact | **LocalOnly** — place kernel at `~/.grain/kernels/vmlinux` (or `kernel_path`); pull path lands with the bake pipeline |
+
+These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. Until GitHub/CI bake publishes digests + URLs, `grain image pull grain-ubuntu-fc` / `fc-kernel` refuses (local-only). BYO remains first-class.
+
+### Operator path today (BYO)
 
 1. Prefer a **raw** golden rootfs (ext4/squashfs layout that boots with the FC kernel’s `root=/dev/vda`).
 2. If the VM disk is still **qcow2**, Start runs `qemu-img convert -O raw` into `disk.raw` under the VM dir (when `qemu-img` is available). Otherwise Start refuses with a conversion hint.
 3. Standard Ubuntu cloud images need a **matching Firecracker-capable kernel**; they are not drop-in FC guests without extra work (kernel + init + virtio drivers).
+
+```bash
+# Example BYO import into the reserved rootfs ID (once you have a raw image)
+grain image import ./rootfs.ext4 --id grain-ubuntu-fc
+# Kernel still via path, not image pull (until fc-kernel is published):
+#   cp vmlinux ~/.grain/kernels/vmlinux
+```
 
 See also [Images](../images/#firecracker-rootfs-experimental) for the QEMU/golden workflow; FC is a separate experimental path.
 
@@ -134,7 +152,7 @@ On Start, grain:
 
 Firecracker’s host-side vsock is **not** AF_VSOCK/`/dev/vhost-vsock`. Host clients connect to the UDS and send `CONNECT <port>\n` (see [Firecracker vsock docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md)). Guest agent listens on AF_VSOCK port **7475**.
 
-QEMU’s `agent_transport: auto|tcp|vsock` path (vhost-vsock / TCP hostfwd) does not apply here. Full CLI `grain agent` dial over FC UDS may need a small host connector; the guest agent binary is unchanged.
+QEMU’s `agent_transport: auto|tcp|vsock` path (vhost-vsock / TCP hostfwd) does not apply here. Host `agent.Dial` prefers Firecracker UDS + CONNECT when the instance has no TCP agent port (see production track **vFC-1**). The guest agent binary is unchanged.
 
 For the QEMU networking model (SLIRP, publish, live forwards), see [Networking](../networking/).
 
@@ -194,9 +212,9 @@ grain stop <name>
 | Jailer / production isolation extras | N/A | **Jailer-less** experimental launch |
 | `agent_transport` config | auto / tcp / vsock | Ignored (FC vsock always) |
 
-**Out of scope for this experimental path:** CNI/TAP, SLIRP hostfwd, production jailer, and a polished catalog FC image.
+**Out of scope for this experimental path:** CNI/TAP, SLIRP hostfwd, production jailer, and **published** (pullable) catalog FC artifacts. Catalog IDs `grain-ubuntu-fc` / `fc-kernel` are reserved scaffolding; bake + digests are the next Phase 1 work.
 
-**Production track (multi-phase):** the full QEMU-vs-FC matrix with target phases is in [Hypervisor matrix](../../explain/hypervisor-matrix/) — **vFC-1** = host agent dial over FC vsock UDS (`CONNECT`), **vFC-2** = net/mounts (hostfwd, overlay, proxy path, shares). This guide stays the complete **experimental** operator surface; the matrix is the phase map.
+**Production track (multi-phase):** the full QEMU-vs-FC matrix with target phases is in [Hypervisor matrix](../../explain/hypervisor-matrix/) — **vFC-1** = host agent dial over FC vsock UDS (`CONNECT`), **vFC-2** = net/mounts (hostfwd, overlay, proxy path, shares). This guide stays the complete **experimental** operator surface (BYO + doctor + vsock); the matrix is the phase map.
 
 ## Related
 
