@@ -71,6 +71,12 @@ func (s *Server) Handler() http.Handler {
 // virtio-vsock (Linux guests when AF_VSOCK is available). Blocks until
 // Shutdown or a fatal TCP listen error. Vsock listen failure is non-fatal.
 func (s *Server) ListenAndServe() error {
+	// Guest clipboard shims (OSC 52) for TUIs over grain sh — best-effort.
+	if dir, err := ensureClipboardHelpers(); err != nil {
+		s.Log.Debug("clipboard helpers unavailable", "err", err)
+	} else {
+		s.Log.Info("clipboard helpers ready", "dir", dir)
+	}
 	ln, err := net.Listen("tcp", s.Addr)
 	if err != nil {
 		return err

@@ -122,14 +122,24 @@ grain sh --ssh sbox-1            # force classic SSH
 
 ### Clipboard (OSC 52)
 
-TUIs inside the guest (for example **Grok Build**) often copy via **OSC 52** escape sequences so the selection can reach the host over a PTY. `grain sh` intercepts those sequences on the **host CLI** and writes the payload to the local clipboard (`pbcopy` on macOS; `wl-copy` / `xclip` / `xsel` on Linux), including over remote `GRAIN_API` shells.
+Copy from tools inside the guest (for example **Grok Build**) reaches your laptop in two hops:
+
+1. **Guest → PTY:** the app must emit clipboard data. Many tools look for `pbcopy` / `xclip` / `wl-copy` first and report “clipboard unavailable” if none exist. Sandboxes have no GUI clipboard, so the guest agent installs **OSC 52 shims** on `PATH` (`/var/lib/grain/bin/{pbcopy,xclip,wl-copy,…}`) that write an OSC 52 sequence to the TTY when invoked.
+2. **PTY → laptop:** `grain sh` (local or remote/`GRAIN_API`) intercepts OSC 52 on the **client CLI** and copies to the local system clipboard (`pbcopy` on macOS; `wl-copy` / `xclip` / `xsel` on Linux).
 
 | Env | Effect |
 |-----|--------|
-| `GRAIN_OSC52_CLIPBOARD=0` | Disable host clipboard intercept |
+| `GRAIN_OSC52_CLIPBOARD=0` | Disable host CLI clipboard intercept |
 | `GRAIN_OSC52_PASSTHROUGH=0` | After copying, do not re-emit OSC 52 to the terminal |
 
 Sequences are still passed through by default so terminals with native OSC 52 (iTerm2, Ghostty, Kitty, …) keep working.
+
+**If Grok (or similar) says clipboard unavailable:**
+
+1. Use a guest agent build that installs the shims; redeploy: `grain agent deploy NAME`, then open a **new** `grain sh` session.
+2. Inside the guest: `which pbcopy` should show `/var/lib/grain/bin/pbcopy`.
+3. On the machine where you run `grain sh`, ensure a clipboard helper exists (`pbcopy` / `wl-copy` / …) and `GRAIN_OSC52_CLIPBOARD` is not set to `0`.
+4. Terminal **selection** copy (mouse drag + Cmd/Ctrl+C in the host terminal) is separate from OSC 52 and depends on the host terminal UI, not grain.
 
 ### Terminal identity (Shift+Enter / keyboard protocol)
 

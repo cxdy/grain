@@ -167,7 +167,18 @@ func startLoginShell(shellPath string, cols, rows int, extraEnv []string) (*exec
 	// Login shell: argv0 with leading "-" is the traditional convention.
 	cmd := exec.Command(shell, "-l")
 	cmd.Dir = home
-	cmd.Env = mergeShellEnv(shellEnv(home, shell, uid), extraEnv)
+	env := mergeShellEnv(shellEnv(home, shell, uid), extraEnv)
+	// OSC 52 clipboard shims (pbcopy/xclip/wl-copy) so guest TUIs can copy to
+	// the client host via grain sh intercept. Best-effort if /var is read-only.
+	if _, err := ensureClipboardHelpers(); err == nil {
+		for i, kv := range env {
+			if len(kv) >= 5 && kv[:5] == "PATH=" {
+				env[i] = pathWithClipboardBin(kv)
+				break
+			}
+		}
+	}
+	cmd.Env = env
 	if os.Geteuid() == 0 && (uid != 0 || gid != 0) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{

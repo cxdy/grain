@@ -83,7 +83,9 @@ if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
 $SUDO install -m 0755 /tmp/grain-agent.new `+GuestAgentBin+`
 $SUDO cp /tmp/grain-agent.service `+GuestAgentServicePath+`
 $SUDO systemctl daemon-reload
-$SUDO systemctl enable --now grain-agent
+$SUDO systemctl enable grain-agent
+# restart (not only enable --now) so a replaced binary is actually loaded
+$SUDO systemctl restart grain-agent
 rm -f /tmp/grain-agent.new /tmp/grain-agent.service
 `) + "\n"
 
