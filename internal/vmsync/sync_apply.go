@@ -557,10 +557,9 @@ func parseOctalMode(s string, def os.FileMode) os.FileMode {
 	return os.FileMode(v) & os.ModePerm
 }
 
-// discardWriter is used when hashing guest content (future --checksum).
+// discardWriter discards bytes (used in tests; hashing streams into sha256 directly).
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
-// ensure we keep io import used if discardWriter only — use in test helper.
 var _ io.Writer = discardWriter{}

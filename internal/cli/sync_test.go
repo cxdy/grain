@@ -384,13 +384,12 @@ func TestBindSyncFlagsPresent(t *testing.T) {
 			t.Fatalf("missing flag %s", name)
 		}
 	}
-	// --checksum is registered but hidden (not implemented).
-	if !cmd.Flags().Lookup("checksum").Hidden {
-		t.Fatal("checksum flag should be hidden")
+	if cmd.Flags().Lookup("checksum").Hidden {
+		t.Fatal("checksum flag should be visible")
 	}
 }
 
-func TestSyncChecksumHiddenFromHelp(t *testing.T) {
+func TestSyncChecksumShownInHelp(t *testing.T) {
 	cfg := ""
 	cmd := cmdSyncPush(&cfg)
 	buf := new(bytes.Buffer)
@@ -400,7 +399,7 @@ func TestSyncChecksumHiddenFromHelp(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(buf.String(), "--checksum") {
-		t.Fatalf("help should not list hidden --checksum: %s", buf.String())
+	if !strings.Contains(buf.String(), "--checksum") {
+		t.Fatalf("help should list --checksum: %s", buf.String())
 	}
 }

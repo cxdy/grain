@@ -57,8 +57,9 @@ type Options struct {
 	Delete bool
 	DryRun bool
 	Force  bool
-	// Checksum is reserved for a future content-hash refine. If true, Run returns
-	// a usage error — the flag is not implemented yet (avoid silent no-op).
+	// Checksum enables content-hash refine: after size/mtime classification,
+	// files that would be skipped are re-compared via SHA-256 on host and guest.
+	// Differing hashes upgrade skip → update.
 	Checksum      bool
 	Exclude       []string
 	NoDefaults    bool
@@ -89,10 +90,6 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 	res := &Result{ExitCode: ExitOK}
 
-	if opts.Checksum {
-		res.ExitCode = ExitUsage
-		return res, fmt.Errorf("sync: --checksum is not implemented yet")
-	}
 	if opts.FS == nil {
 		res.ExitCode = ExitUsage
 		return res, fmt.Errorf("sync: guest FS required")
@@ -183,6 +180,15 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		Force:    opts.Force,
 		Checksum: opts.Checksum,
 	})
+	if opts.Checksum {
+		if err := refinePlanChecksum(ctx, plan, opts, hostRoot, guestRoot); err != nil {
+			res.Plan = plan
+			res.ExitCode = ExitApply
+			return res, err
+		}
+		// Record that this run used content-hash refine (state metadata).
+		st.Fingerprint = "checksum"
+	}
 	res.Plan = plan
 
 	printPlanSummary(out, errOut, plan, opts)

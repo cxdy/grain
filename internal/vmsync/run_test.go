@@ -521,20 +521,103 @@ func TestPrintPlanSummaryKeptDestAndCountsAlways(t *testing.T) {
 	}
 }
 
-func TestRunChecksumNotImplemented(t *testing.T) {
+func TestRunChecksumRefineSameSizeDifferentContent(t *testing.T) {
+	// Cold-start: same size, different bytes. Without --checksum → skip;
+	// with --checksum → update and apply transfers host content.
 	host := t.TempDir()
+	const hostBody = "AAAA"
+	const guestBody = "BBBB"
+	if len(hostBody) != len(guestBody) {
+		t.Fatal("test setup requires equal sizes")
+	}
+	if err := os.WriteFile(filepath.Join(host, "f.txt"), []byte(hostBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dataOff := t.TempDir()
+	dataOn := t.TempDir()
+	fsOff := newMemGuestFS()
+	fsOn := newMemGuestFS()
+	ctx := context.Background()
+	for _, fs := range []*memGuestFS{fsOff, fsOn} {
+		_ = fs.Mkdir(ctx, "/work", true, "0755")
+		_ = fs.PutFile(ctx, "/work/f.txt", stringReader(guestBody), int64(len(guestBody)), agentCP())
+	}
+
+	// Without checksum: size match → skip (no transfer).
+	resOff, err := Run(ctx, Options{
+		Verb: Push, VM: "vm1", HostRoot: host, GuestRoot: "/work",
+		APIIdentity: "test-off", DataDir: dataOff, FS: fsOff,
+		Out: ioDiscard{}, ErrOut: ioDiscard{},
+		NoDefaults: true,
+	})
+	if err != nil {
+		t.Fatalf("checksum off: %v", err)
+	}
+	if resOff.Plan == nil || resOff.Plan.Updated != 0 {
+		t.Fatalf("checksum off: want no updates, plan=%+v", resOff.Plan)
+	}
+	if resOff.Plan.Skipped < 1 {
+		t.Fatalf("checksum off: want skip for same-size file, plan=%+v", resOff.Plan)
+	}
+	// Guest content must remain guestBody.
+	var gotOff bytes.Buffer
+	if err := fsOff.GetFile(ctx, "/work/f.txt", &gotOff); err != nil {
+		t.Fatal(err)
+	}
+	if gotOff.String() != guestBody {
+		t.Fatalf("checksum off: guest mutated to %q", gotOff.String())
+	}
+
+	// With checksum: content differ → update + apply.
+	resOn, err := Run(ctx, Options{
+		Verb: Push, VM: "vm1", HostRoot: host, GuestRoot: "/work",
+		APIIdentity: "test-on", DataDir: dataOn, FS: fsOn,
+		Out: ioDiscard{}, ErrOut: ioDiscard{},
+		NoDefaults: true, Checksum: true,
+	})
+	if err != nil {
+		t.Fatalf("checksum on: %v", err)
+	}
+	if resOn.Plan == nil || resOn.Plan.Updated < 1 {
+		t.Fatalf("checksum on: want update, plan=%+v", resOn.Plan)
+	}
+	if resOn.Applied < 1 {
+		t.Fatalf("checksum on: want applied transfer, applied=%d", resOn.Applied)
+	}
+	var gotOn bytes.Buffer
+	if err := fsOn.GetFile(ctx, "/work/f.txt", &gotOn); err != nil {
+		t.Fatal(err)
+	}
+	if gotOn.String() != hostBody {
+		t.Fatalf("checksum on: guest want %q got %q", hostBody, gotOn.String())
+	}
+}
+
+func TestRunChecksumMatchStillSkips(t *testing.T) {
+	host := t.TempDir()
+	body := "same"
+	if err := os.WriteFile(filepath.Join(host, "f.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	fs := newMemGuestFS()
 	ctx := context.Background()
+	_ = fs.Mkdir(ctx, "/work", true, "0755")
+	_ = fs.PutFile(ctx, "/work/f.txt", stringReader(body), int64(len(body)), agentCP())
+
 	res, err := Run(ctx, Options{
 		Verb: Push, VM: "vm1", HostRoot: host, GuestRoot: "/work",
-		DataDir: t.TempDir(), FS: fs, Checksum: true,
+		APIIdentity: "test", DataDir: t.TempDir(), FS: fs,
 		Out: ioDiscard{}, ErrOut: ioDiscard{},
+		NoDefaults: true, Checksum: true, DryRun: true,
 	})
-	if err == nil || res == nil || res.ExitCode != ExitUsage {
-		t.Fatalf("want usage error for --checksum, err=%v res=%+v", err, res)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "--checksum is not implemented yet") {
-		t.Fatalf("err=%v", err)
+	if res.Plan == nil || res.Plan.Updated != 0 {
+		t.Fatalf("identical content should not update: %+v", res.Plan)
+	}
+	if res.Plan.Skipped < 1 {
+		t.Fatalf("want skip: %+v", res.Plan)
 	}
 }
 
