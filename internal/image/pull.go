@@ -110,7 +110,8 @@ func fileSHA256(path string) (string, error) {
 }
 
 // VerifySHA256 hashes path and compares to want.
-// If want is empty, verification is skipped (dev).
+// If want is empty, verification is skipped (dev/AllowUnverified only —
+// production pulls must not reach here with an empty want; see pullSpec).
 // On mismatch the file at path is removed.
 func VerifySHA256(path, want string) error {
 	if want == "" {
@@ -169,6 +170,11 @@ func (m *Manager) pullSpec(ctx context.Context, spec Spec, progress func(written
 	wantSHA, err := resolveWantSHA256(ctx, m.client(), spec.URL, spec.SHA256)
 	if err != nil {
 		return err
+	}
+	// Fail closed: production catalog IDs must not install without a digest.
+	// Empty pin + missing sidecar was previously a silent skip (supply-chain risk).
+	if wantSHA == "" && !spec.AllowUnverified {
+		return fmt.Errorf("image %q: no SHA256 pin and no companion .sha256 sidecar (refusing unverified pull; import a local disk or fix the release sidecar)", id)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, spec.URL, nil)
@@ -251,7 +257,10 @@ func (m *Manager) client() *http.Client {
 // resolveWantSHA256 returns the digest to verify after download.
 // If pinned is non-empty it is used as-is. Otherwise, when imageURL is set,
 // fetch imageURL+".sha256" and parse the first 64-hex token (sha256sum format).
-// Missing sidecar or empty pin → empty string (verification skipped).
+//
+// Missing sidecar or empty pin → empty string (caller fail-closes unless
+// Spec.AllowUnverified). Sidecar network/HTTP errors (other than 404) are
+// returned so pulls do not silently skip integrity checks.
 func resolveWantSHA256(ctx context.Context, client *http.Client, imageURL, pinned string) (string, error) {
 	if pinned != "" {
 		return strings.TrimSpace(pinned), nil
@@ -269,19 +278,25 @@ func resolveWantSHA256(ctx context.Context, client *http.Client, imageURL, pinne
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		// Network failure for optional sidecar: skip verify rather than fail pull.
-		return "", nil
+		return "", fmt.Errorf("sha256 sidecar: %w", err)
 	}
 	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode != http.StatusOK {
-		// No sidecar published yet — skip verification.
+	if res.StatusCode == http.StatusNotFound {
+		// No sidecar published — empty want; pullSpec fail-closes unless AllowUnverified.
 		return "", nil
+	}
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("sha256 sidecar: HTTP %s", res.Status)
 	}
 	body, err := io.ReadAll(io.LimitReader(res.Body, 4096))
 	if err != nil {
-		return "", nil
+		return "", fmt.Errorf("sha256 sidecar: read: %w", err)
 	}
-	return ParseSHA256Sidecar(string(body)), nil
+	digest := ParseSHA256Sidecar(string(body))
+	if digest == "" {
+		return "", fmt.Errorf("sha256 sidecar: no valid digest in body")
+	}
+	return digest, nil
 }
 
 // ParseSHA256Sidecar extracts a 64-char hex digest from sha256sum-style output:

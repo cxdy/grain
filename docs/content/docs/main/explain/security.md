@@ -99,4 +99,11 @@ Happy path: [Remote lab](../guides/remote-lab/). Ops: [Remote sandbox host](../g
 
 ## Images
 
-Only pull images from sources you trust (`ubuntu-cloud`, `grain-ubuntu` from your releases, `alpine-cloud` from Alpine). Verify SHA256 when provided.
+Only pull images from sources you trust (`ubuntu-cloud`, `grain-ubuntu` from your releases, `alpine-cloud` from Alpine).
+
+Pull **requires** a digest before install:
+
+- **Pinned** catalog SHA-256 for `ubuntu-cloud` and `alpine-cloud`
+- Companion **`.sha256` sidecar** for `grain-ubuntu` (empty catalog pin)
+
+If neither pin nor sidecar is available, pull **fails closed** (no silent unverified install). See [Images](../guides/images/#sha-256-verification).

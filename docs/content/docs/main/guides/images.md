@@ -54,7 +54,7 @@ ssh_user: ubuntu     # override per image when needed (alpine-cloud → alpine)
 
 - arm64 / amd64 from [Alpine cloud images](https://alpinelinux.org/cloud/) (`generic` UEFI + cloud-init qcow2)
 - qcow2, **cloud-init** (NoCloud auto-detected on the generic image), SSH user **`alpine`**
-- ~200–240 MB download (no pinned SHA256 — Alpine publishes GPG `.asc`, not sha256sum sidecars)
+- ~200–240 MB download with **pinned SHA-256** in the catalog (Alpine publishes companion `.sha512` / GPG `.asc`, not `.sha256` sidecars — grain pins the SHA-256 of the published qcow2)
 - **HasAgent: false** — same SSH agent deploy path as `ubuntu-cloud`
 - Filenames use Alpine arch names (`aarch64` / `x86_64`); grain maps `GOARCH` accordingly
 
@@ -94,7 +94,7 @@ grain image ls                  # LOCAL=yes for grain-ubuntu
 grain new -i grain-ubuntu
 ```
 
-Pull downloads the large qcow2 with progress, then verifies against the companion `.sha256` sidecar when present (catalog SHA256 is empty so the sidecar is authoritative). If the sidecar is missing, verification is skipped.
+Pull downloads the large qcow2 with progress, then verifies against the companion `.sha256` sidecar (catalog SHA256 is empty so the sidecar is authoritative). **If the sidecar is missing or unreachable, pull fails** (fail closed — no silent install without a digest).
 
 Import remains the offline / custom path:
 
@@ -253,15 +253,25 @@ The script times N `grain new` runs, deletes each VM after timing (unless `--kee
 
 ## SHA-256 verification
 
-Catalog entries pin a **SHA-256** digest for the current noble minimal release files. After download (before rename into place):
+Catalog production IDs always require a digest before install (fail closed):
 
-1. grain hashes the partial file
-2. on **mismatch**, the partial is deleted and pull fails with `sha256 mismatch: got … want …`
-3. on success, the file is renamed to `disk.qcow2` (or `.img`) and `source.url` / `ssh_user` hints are written
+| Image | Digest source |
+|-------|----------------|
+| `ubuntu-cloud` | Pinned in catalog from Ubuntu [SHA256SUMS](https://cloud-images.ubuntu.com/minimal/releases/noble/release/SHA256SUMS) |
+| `alpine-cloud` | Pinned in catalog (SHA-256 of the published qcow2; Alpine ships `.sha512`/`.asc` only) |
+| `grain-ubuntu` | Companion **`URL.sha256`** sidecar on the `golden-latest` release (catalog pin empty) |
 
-If a digest is empty in the catalog, pull tries a companion **`URL.sha256`** sidecar (sha256sum format). When neither pin nor sidecar is available, verification is skipped.
+After download (before rename into place):
 
-When Ubuntu rolls the release pointer, digests in the catalog must be refreshed to match [SHA256SUMS](https://cloud-images.ubuntu.com/minimal/releases/noble/release/SHA256SUMS).
+1. grain resolves the expected digest (catalog pin, else companion `URL.sha256`)
+2. if **no digest** is available, pull **fails** with `refusing unverified pull` (unless a non-catalog Spec sets `AllowUnverified` for tests/dev only)
+3. grain hashes the partial file
+4. on **mismatch**, the partial is deleted and pull fails with `sha256 mismatch: got … want …`
+5. on success, the file is renamed to `disk.qcow2` (or `.img`) and `source.url` / `ssh_user` hints are written
+
+**Risk note:** empty catalog `SHA256` without a reachable sidecar used to skip verification. That path is closed for production IDs. `VerifySHA256` with an empty want still no-ops for low-level callers, but `grain image pull` / `pullSpec` refuse that path unless `AllowUnverified` is set.
+
+When Ubuntu rolls the release pointer, digests in the catalog must be refreshed to match [SHA256SUMS](https://cloud-images.ubuntu.com/minimal/releases/noble/release/SHA256SUMS). When Alpine rolls `alpineCloudVersion` / rev, recompute the qcow2 SHA-256 pins (cross-check against the published `.sha512`).
 
 ## Why not tiny custom images by default?
 

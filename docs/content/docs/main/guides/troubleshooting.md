@@ -101,7 +101,13 @@ If the guest never accepts SSH, serial often shows cloud-init failures (bad YAML
 sha256 mismatch: got … want …
 ```
 
-The partial download is deleted. Causes: interrupted/corrupt download, or Ubuntu moved the release file while the catalog digest is stale. Retry pull; if it keeps failing, update grain (catalog digests) or check network/proxy MITM.
+The partial download is deleted. Causes: interrupted/corrupt download, or Ubuntu/Alpine moved the release file while the catalog digest is stale. Retry pull; if it keeps failing, update grain (catalog digests) or check network/proxy MITM.
+
+```text
+image "…": no SHA256 pin and no companion .sha256 sidecar (refusing unverified pull …)
+```
+
+Fail closed: grain will not install a download without a digest. For `grain-ubuntu`, ensure the `golden-latest` release still publishes the `.qcow2.sha256` companion. For other IDs, refresh catalog pins or import a local disk (`grain image import`).
 
 ```text
 image "…" not pulled (run: grain image pull …)
