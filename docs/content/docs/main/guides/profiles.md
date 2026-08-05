@@ -44,6 +44,8 @@ grain new --profile remote-coding --wait agent -n alice-dev
 grain sync push ~/proj alice-dev:/work/proj
 ```
 
+Full host + laptop flow: [Remote lab happy path](../remote-lab/).
+
 ### Config examples
 
 ```yaml

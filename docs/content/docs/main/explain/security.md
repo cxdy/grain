@@ -61,7 +61,7 @@ Running grain on a team machine so developers create sandboxes remotely is a sup
 - Remote CLI: `GRAIN_API` / `--api` + `GRAIN_TOKEN`  
 - Resource caps; published ports stay on host loopback  
 
-Full guide: [Remote sandbox host](../guides/remote-host/).
+Happy path: [Remote lab](../guides/remote-lab/). Ops: [Remote sandbox host](../guides/remote-host/).
 
 ## Images
 

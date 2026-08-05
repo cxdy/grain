@@ -122,6 +122,7 @@ grain fwd ls lab         # host port → guest 6443
 | [First sandbox](https://grainvm.com/get-started/first-sandbox/) | Tutorial + interactive demo |
 | [act](https://grainvm.com/guides/recipes/act/) | GitHub Actions in a microVM |
 | [k3s](https://grainvm.com/guides/recipes/k3s/) | Single-node cluster preset |
+| [Remote lab](https://grainvm.com/guides/remote-lab/) | Host + laptop CLI happy path |
 | [Guides](https://grainvm.com/guides/) | Images, agent, networking, mounts, proxy |
 | [Reference](https://grainvm.com/reference/cli/) | CLI, config, API, SDKs |
 
