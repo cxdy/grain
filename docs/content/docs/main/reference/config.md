@@ -84,9 +84,17 @@ CLI: `grain new --arch amd64 --gpu virtio --network overlay`.
 
 ```yaml
 hypervisor: firecracker
-firecracker_binary: firecracker
-kernel_path: ""              # default ~/.grain/kernels/vmlinux
+firecracker_binary: firecracker   # PATH lookup or absolute path
+kernel_path: ""                   # default ~/.grain/kernels/vmlinux (under data_dir)
 ```
+
+| Key | Default | Notes |
+|-----|---------|--------|
+| `hypervisor` | `qemu` | `firecracker` selects the experimental Linux backend; restart the daemon after changing |
+| `firecracker_binary` | `firecracker` | Binary name on `PATH` or absolute path |
+| `kernel_path` | empty | Guest **vmlinux**; empty uses `data_dir/kernels/vmlinux` |
+
+Linux + KVM only. No SLIRP/hostfwd; agent uses Firecracker vsock. Prefer a raw rootfs. Full operator path: [Firecracker on Linux](../../guides/firecracker/).
 
 ## Resource caps
 

@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`grain sh` forwards host terminal env** — `TERM` / `TERM_PROGRAM` / `COLORTERM` (and locale) into the guest PTY so TUIs can negotiate keyboard protocols the same as local sessions (Shift+Enter newlines in Grok Build, etc.).
 - **Guest readiness protocol** — custom images/bootstrap write `/var/lib/grain/readiness/*`; agent `GET /health` includes `readiness` and `GET /readiness`; create wait mode `bootstrap` polls until `state=ready` (fails on `failed`/timeout, VM left running). CLI: `grain status`, create progress surfaces guest messages. Docs: [Readiness protocol](https://grainvm.com/docs/0.3.0/explain/readiness/). Helper: `scripts/grain-ready-report.sh`.
 
+### Changed
+
+- **Firecracker experimental operator path** — guide covers Linux+KVM only, `kernel_path` / `firecracker_binary`, raw rootfs, vsock-only agent (no SLIRP/hostfwd), doctor checks, and limits vs QEMU; cross-linked from concepts, product surface, config, troubleshooting, networking, and architecture. Closes the “Firecracker production path” TODO as a documented **experimental** path (full production networking/jailer still deferred). Kernel missing error points at the site guide instead of a stale `docs/firecracker.md` path.
+
 ### Fixed
 
 - **Firecracker doctor** — when `hypervisor: firecracker`, `grain doctor` hard-fails if `/dev/kvm` is missing or not RDWR-accessible (plus a soft nested-virt CPU flag hint).
@@ -178,7 +182,7 @@ First public release: local Linux microVM control plane for macOS and Linux.
 
 - macOS menu-bar tray app, Rosetta x86_64 guests, GPU/PCI passthrough
 - Full HA multi-node cluster networking (single-node k3s preset only)
-- Production-hardened Firecracker (still experimental)
+- Production-hardened Firecracker (CNI/TAP/hostfwd, jailer, catalog FC images) — experimental operator path is documented in [Firecracker on Linux](https://grainvm.com/docs/main/guides/firecracker/); full production track remains deferred
 - Measured sub-second marketing claims without hardware bench (use `scripts/bench-create.sh`)
 - Windows host and **WSL / WSL2** (macOS + Linux only; use remote API/SDK from Windows if needed)
 

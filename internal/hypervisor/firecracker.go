@@ -192,7 +192,7 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 	_ = os.Remove(pidFile)
 
 	// Attach cloud-init seed as a secondary read-only drive when present (best-effort;
-	// NoCloud typically expects an ISO/label; see docs/firecracker.md).
+	// NoCloud typically expects an ISO/label; see guides/firecracker).
 	cfg := BuildFCConfig(kernel, rawDisk, inst.CPUs, inst.MemoryMB, cid, vsockUDS)
 	seed := filepath.Join(vmDir, "seed.iso")
 	if st, err := os.Stat(seed); err == nil && st.Size() > 0 {
@@ -456,7 +456,7 @@ func (f *FirecrackerRuntime) resolveKernel() (string, error) {
 	if f.DataDir != "" {
 		hint = filepath.Join(f.DataDir, "kernels", FCDefaultKernel)
 	}
-	return "", fmt.Errorf("firecracker kernel not found — set kernel_path or place a vmlinux at %s (see docs/firecracker.md)", hint)
+	return "", fmt.Errorf("firecracker kernel not found — set kernel_path or place a vmlinux at %s (see docs: Firecracker on Linux / guides/firecracker)", hint)
 }
 
 // ensureRawRootfs returns a raw disk path suitable for Firecracker.
