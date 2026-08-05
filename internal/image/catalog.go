@@ -55,6 +55,11 @@ const (
 	IDUbuntuCloud = "ubuntu-cloud"
 	IDGrainUbuntu = "grain-ubuntu"
 	IDAlpineCloud = "alpine-cloud"
+	// Firecracker Phase 1 scaffolding (explicit IDs — not dual-use of qcow2 grain-ubuntu).
+	// Assets are not published yet; entries are LocalOnly until the bake pipeline lands.
+	// See grain-notes firecracker-production-plan Phase 1 / docs guides/firecracker.
+	IDGrainUbuntuFC = "grain-ubuntu-fc"
+	IDFCKernel      = "fc-kernel"
 )
 
 // Alpine cloud image release pin (generic UEFI + cloud-init qcow2).
@@ -170,6 +175,28 @@ func catalogFor(arch string) map[string]Spec {
 			SizeHint: 200 * 1024 * 1024,
 			HasAgent: false,
 		}
+	}
+
+	// Firecracker production track (Phase 1 scaffold): reserved catalog IDs.
+	// Prefer explicit FC IDs over dual-use of grain-ubuntu qcow2 so pull/import
+	// never confuses QEMU cloud images with FC raw rootfs / vmlinux.
+	// Until bake publishes artifacts + digests, LocalOnly (import BYO or wait).
+	// Expected future layout (not wired yet):
+	//   grain-ubuntu-fc → raw rootfs under images/ (HasAgent)
+	//   fc-kernel       → vmlinux under data_dir/kernels/ (or pull installs there)
+	c[IDGrainUbuntuFC] = Spec{
+		ID:          IDGrainUbuntuFC,
+		Description: "Firecracker raw rootfs with grain-agent (Phase 1 scaffold; import BYO until published)",
+		Format:      "raw",
+		SSHUser:     "ubuntu",
+		HasAgent:    true,
+		LocalOnly:   true,
+	}
+	c[IDFCKernel] = Spec{
+		ID:          IDFCKernel,
+		Description: "Firecracker guest kernel vmlinux (Phase 1 scaffold; place at data_dir/kernels/vmlinux)",
+		Format:      "raw",
+		LocalOnly:   true,
 	}
 
 	return c
