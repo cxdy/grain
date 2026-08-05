@@ -468,8 +468,16 @@ print_mcp_enable_later() {
 }
 
 # Prompt (or honor GRAIN_ENABLE_MCP) for default MCP on grain up.
+# Skip entirely when ~/.grain/config.yaml already exists (updates / reinstalls).
 maybe_configure_mcp() {
-  local reply=""
+  local cfg reply=""
+  cfg="$(grain_config_path)"
+
+  # Existing config ⇒ user already set up grain; never prompt or rewrite MCP.
+  if [[ -f "$cfg" ]]; then
+    return 0
+  fi
+
   # Non-interactive override for CI / curl automation.
   case "${GRAIN_ENABLE_MCP:-}" in
     1|true|yes|y|Y)
@@ -512,14 +520,34 @@ maybe_configure_mcp() {
   esac
 }
 
-print_next_steps() {
+# Short post-install summary (no "Next steps" wall — updates and reinstalls stay quiet).
+print_install_summary() {
   local dest_dir="$1"
   local dest="${dest_dir}/${BIN_NAME}"
-  printf '\n'
-  printf '%s\n' "${BOLD}grain installed${RESET}"
+  local ver=""
+
+  # Prefer newly installed binary for version string.
+  if [[ -x "$dest" ]]; then
+    ver="$("$dest" version 2>/dev/null | head -1 | tr -d '\r' || true)"
+  elif command -v grain >/dev/null 2>&1; then
+    ver="$(grain version 2>/dev/null | head -1 | tr -d '\r' || true)"
+  fi
+  # "grain version" may print "grain 0.6.1" or just "0.6.1" / "v0.6.1".
+  if [[ -n "$ver" ]]; then
+    ver="$(printf '%s' "$ver" | sed -E 's/^grain[[:space:]]+//I; s/^v//')"
+    printf '\n'
+    printf '%s\n' "${BOLD}grain ${ver} installed${RESET}"
+  else
+    printf '\n'
+    printf '%s\n' "${BOLD}grain installed${RESET}"
+  fi
+
   if command -v grain >/dev/null 2>&1; then
     ok "grain is on PATH: $(command -v grain)"
-    grain version 2>/dev/null || true
+  elif [[ -x "$dest" ]]; then
+    # Install dir may not be on PATH yet for this shell.
+    ok "installed ${dest}"
+    warn "grain is not on PATH yet — add: export PATH=\"${dest_dir}:\$PATH\""
   else
     warn "grain is not on PATH yet"
     printf '  add to your shell profile:\n'
@@ -527,44 +555,8 @@ print_next_steps() {
     printf '  binary: %s\n' "$dest"
   fi
 
+  # First-time only (no config yet): optional MCP prompt.
   maybe_configure_mcp
-
-  printf '\n'
-  printf '%s\n' "${BOLD}Next steps${RESET}"
-  printf '  1. Install QEMU (required for real VMs):\n'
-  case "$(detect_os)" in
-    darwin)
-      printf '       brew install qemu\n'
-      printf '       # ensure Homebrew is on PATH (Apple Silicon often needs):\n'
-      printf '       #   eval "$(/opt/homebrew/bin/brew shellenv)"\n'
-      ;;
-    linux)
-      if command -v apt-get >/dev/null 2>&1; then
-        printf '       sudo apt-get install -y qemu-system qemu-utils\n'
-      elif command -v dnf >/dev/null 2>&1; then
-        printf '       sudo dnf install -y qemu-system-x86 qemu-img\n'
-      else
-        printf '       install qemu-system and qemu-img for your distro\n'
-      fi
-      ;;
-  esac
-  printf '  2. Verify dependencies:\n'
-  printf '       grain doctor\n'
-  printf '  3. Start the daemon and create a sandbox:\n'
-  printf '       grain up\n'
-  printf '       grain image pull grain-ubuntu   # agent-ready golden image\n'
-  printf '       grain new && grain sh\n'
-  printf '  4. Optional workloads:\n'
-  printf '       grain act -- -l                 # GitHub Actions via act in a microVM\n'
-  printf '       grain new --preset k3s -n lab -p\n'
-  printf '\n'
-  printf 'Guest agent for non-golden images is under ~/.grain/agent/\n'
-  printf 'Docs:    https://grainvm.com\n'
-  printf 'MCP:     https://grainvm.com/guides/mcp/\n'
-  printf 'act:     https://grainvm.com/guides/recipes/act/\n'
-  printf 'k3s:     https://grainvm.com/guides/recipes/k3s/\n'
-  printf 'Upgrade:   grain update      # or: grain update --check\n'
-  printf 'Uninstall: grain uninstall   # or: grain uninstall --purge -y\n'
 }
 
 # --- main ---------------------------------------------------------------------
@@ -578,13 +570,13 @@ main() {
 
   if install_from_release "$os" "$arch" "$dest_dir"; then
     install_agent_from_release "$arch" || true
-    print_next_steps "$dest_dir"
+    print_install_summary "$dest_dir"
     return 0
   fi
 
   warn "release install unavailable — trying go install fallback"
   if install_from_go "$dest_dir"; then
-    print_next_steps "$dest_dir"
+    print_install_summary "$dest_dir"
     return 0
   fi
 
