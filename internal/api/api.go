@@ -149,7 +149,11 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	var body createBody
 	if r.Body != nil {
 		defer func() { _ = r.Body.Close() }()
-		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
+		// Empty body is allowed (defaults). Non-empty invalid JSON → 400.
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
+			return
+		}
 	}
 
 	q := r.URL.Query()
@@ -1044,7 +1048,11 @@ func (s *Server) injectSecret(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Body != nil {
 		defer func() { _ = r.Body.Close() }()
-		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body)
+		// Empty body is allowed (default path). Non-empty invalid JSON → 400.
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
+			return
+		}
 	}
 	ac, code, err := s.agentClient(vmName)
 	if err != nil {
