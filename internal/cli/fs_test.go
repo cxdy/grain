@@ -194,12 +194,8 @@ func TestCmdFsRemoteErrorPaths(t *testing.T) {
 		}
 	}
 
-	// Auth fail for non-loopback remote.
-	apiURLFlag = "http://example.com:9"
-	t.Cleanup(func() { apiURLFlag = "" })
-	t.Setenv("GRAIN_API", "")
-	t.Setenv("GRAIN_TOKEN", "")
-	cfg := ""
+	// Auth fail for non-loopback remote (isolated config: no ~/.grain token).
+	cfg := withRemoteCfg(t, "http://example.com:9")
 	cmd := cmdFsLs(&cfg)
 	cmd.SetArgs([]string{"vm", "/tmp"})
 	if err := cmd.Execute(); err == nil {

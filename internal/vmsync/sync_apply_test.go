@@ -442,3 +442,504 @@ func TestApplyDirCreatePush(t *testing.T) {
 		t.Fatalf("dirs=%v", fs.dirs)
 	}
 }
+
+func TestApplySyncPlanValidation(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	fs := newMemGuestFS()
+	plan := &syncPlan{}
+	if _, err := applySyncPlan(context.Background(), nil, syncApplyOpts{FS: fs, HostRoot: host, GuestRoot: "/w"}); err == nil {
+		t.Fatal("nil plan")
+	}
+	if _, err := applySyncPlan(context.Background(), plan, syncApplyOpts{HostRoot: host, GuestRoot: "/w"}); err == nil {
+		t.Fatal("nil FS")
+	}
+	if _, err := applySyncPlan(context.Background(), plan, syncApplyOpts{FS: fs, HostRoot: "", GuestRoot: "/w"}); err == nil {
+		t.Fatal("empty roots")
+	}
+	// Nil state is auto-created; empty plan succeeds.
+	res, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs, State: nil,
+	})
+	if err != nil || res.Applied != 0 {
+		t.Fatalf("empty plan: %+v %v", res, err)
+	}
+}
+
+func TestApplyUpdateModePullAndPush(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	path := filepath.Join(host, "m.txt")
+	if err := os.WriteFile(path, []byte("body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	fs.files["/work/m.txt"] = []byte("body")
+	st := newSyncState("local", "vm", host, "/work")
+
+	// Pull: chmod host file.
+	plan := &syncPlan{Items: []syncPlanItem{{
+		RelPath: "m.txt", Action: syncActUpdateMode,
+		Source: inv(4, 1, "0600"), Dest: inv(4, 1, "0644"),
+	}}}
+	var prog []ProgressEvent
+	res, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
+		Verb: syncPull, HostRoot: host, GuestRoot: "/work", FS: fs, State: st,
+		OnProgress: func(e ProgressEvent) { prog = append(prog, e) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Applied != 1 {
+		t.Fatalf("applied=%d", res.Applied)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %o", fi.Mode().Perm())
+	}
+	if len(prog) != 1 || prog[0].Phase != "chmod" {
+		t.Fatalf("progress %+v", prog)
+	}
+
+	// Push: update_mode re-Puts with new mode.
+	st2 := newSyncState("local", "vm", host, "/work")
+	plan2 := &syncPlan{Items: []syncPlanItem{{
+		RelPath: "m.txt", Action: syncActUpdateMode,
+		Source: inv(4, 1, "0755"), Dest: inv(4, 1, "0644"),
+	}}}
+	res2, err := applySyncPlan(context.Background(), plan2, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs, State: st2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.Applied != 1 || fs.puts < 1 {
+		t.Fatalf("push update_mode applied=%d puts=%d", res2.Applied, fs.puts)
+	}
+}
+
+func TestApplyDeletePullAndDirCreatePull(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	gone := filepath.Join(host, "gone.txt")
+	if err := os.WriteFile(gone, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	fs.dirs["/work"] = true
+	fs.dirs["/work/subdir"] = true
+	st := newSyncState("local", "vm", host, "/work")
+	st.setEntry("gone.txt",
+		&syncFingerprint{Type: "file", Size: 1, Mtime: 1},
+		&syncFingerprint{Type: "file", Size: 1, Mtime: 1},
+	)
+	plan := &syncPlan{
+		Items: []syncPlanItem{
+			{RelPath: "gone.txt", Action: syncActDelete, Dest: inv(1, 1, "0644")},
+			{RelPath: "subdir", Action: syncActCreate, Source: &syncInvEntry{Type: "directory", Mode: "0700"}},
+			{RelPath: "nested/deep", Action: syncActCreate, Source: &syncInvEntry{Type: "directory", Mode: "0755"}},
+		},
+		Deleted: 1, Created: 2,
+	}
+	// Ensure nested source dirs exist on guest for inventory-like Source.
+	fs.dirs["/work/nested"] = true
+	fs.dirs["/work/nested/deep"] = true
+
+	res, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
+		Verb: syncPull, HostRoot: host, GuestRoot: "/work", FS: fs, State: st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Applied != 3 {
+		t.Fatalf("applied=%d", res.Applied)
+	}
+	if _, err := os.Stat(gone); !os.IsNotExist(err) {
+		t.Fatal("expected host delete")
+	}
+	if st2, err := os.Stat(filepath.Join(host, "subdir")); err != nil || !st2.IsDir() {
+		t.Fatalf("subdir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(host, "nested", "deep")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestApplyDeepestDeletesFirst(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	fs := newMemGuestFS()
+	fs.files["/work/a/b/c.txt"] = []byte("x")
+	fs.dirs["/work/a"] = true
+	fs.dirs["/work/a/b"] = true
+	st := newSyncState("local", "vm", host, "/work")
+	// Deletes should sort deepest first via depthKey.
+	plan := &syncPlan{
+		Items: []syncPlanItem{
+			{RelPath: "a", Action: syncActDelete},
+			{RelPath: "a/b/c.txt", Action: syncActDelete},
+			{RelPath: "a/b", Action: syncActDelete},
+		},
+		Deleted: 3,
+	}
+	_, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs, State: st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fs.rms != 3 {
+		t.Fatalf("rms=%d", fs.rms)
+	}
+}
+
+func TestApplyContextCancel(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	if err := os.WriteFile(filepath.Join(host, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	plan := &syncPlan{Items: []syncPlanItem{
+		{RelPath: "a.txt", Action: syncActCreate, Source: inv(1, 1, "0644")},
+	}}
+	res, err := applySyncPlan(ctx, plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs,
+		State: newSyncState("l", "v", host, "/work"),
+	})
+	if err == nil {
+		t.Fatal("expected cancel")
+	}
+	if res.ExitCode != syncExitApply {
+		t.Fatalf("exit %d", res.ExitCode)
+	}
+}
+
+func TestApplyContextCancelOnDelete(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	fs := newMemGuestFS()
+	fs.files["/work/x"] = []byte("x")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	plan := &syncPlan{Items: []syncPlanItem{{RelPath: "x", Action: syncActDelete}}}
+	res, err := applySyncPlan(ctx, plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs,
+		State: newSyncState("l", "v", host, "/work"),
+	})
+	if err == nil || res.ExitCode != syncExitApply {
+		t.Fatalf("want cancel apply, got %v %+v", err, res)
+	}
+}
+
+func TestApplyContextCancelOnDirCreate(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(host, "d"), 0o755)
+	fs := newMemGuestFS()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	plan := &syncPlan{Items: []syncPlanItem{{
+		RelPath: "d", Action: syncActCreate, Source: &syncInvEntry{Type: "directory", Mode: "0755"},
+	}}}
+	res, err := applySyncPlan(ctx, plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs,
+		State: newSyncState("l", "v", host, "/work"),
+	})
+	if err == nil || res.ExitCode != syncExitApply {
+		t.Fatalf("want cancel, got %v %+v", err, res)
+	}
+}
+
+func TestApplyColdStartBaselinePull(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	fs := newMemGuestFS()
+	st := newSyncState("local", "vm", host, "/work")
+	plan := &syncPlan{Items: []syncPlanItem{{
+		RelPath: "same.txt", Action: syncActSkip, BaselineDirty: true,
+		Source: inv(5, 1, "0644"), Dest: inv(5, 9, "0644"),
+	}}}
+	res, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
+		Verb: syncPull, HostRoot: host, GuestRoot: "/work", FS: fs, State: st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Dirty {
+		t.Fatal("expected dirty")
+	}
+	e, ok := st.entry("same.txt")
+	if !ok || e.Host == nil || e.Guest == nil {
+		t.Fatalf("baseline %+v ok=%v", e, ok)
+	}
+	// Pull: Source=guest, Dest=host → host fp from Dest, guest from Source
+	if e.Host.Mtime != 9 || e.Guest.Mtime != 1 {
+		t.Fatalf("host/guest mtimes %+v %+v", e.Host, e.Guest)
+	}
+}
+
+func TestApplyKeptDestNoOp(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	fs := newMemGuestFS()
+	st := newSyncState("local", "vm", host, "/work")
+	plan := &syncPlan{Items: []syncPlanItem{{
+		RelPath: "f", Action: syncActKeptDest, Reason: "dest ahead",
+	}}}
+	res, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs, State: st,
+	})
+	if err != nil || res.Applied != 0 || res.Dirty {
+		t.Fatalf("%+v %v", res, err)
+	}
+}
+
+func TestApplyFileOpUnexpected(t *testing.T) {
+	t.Parallel()
+	err := applyFileOp(context.Background(), syncApplyOpts{Verb: syncPush}, syncPlanItem{
+		RelPath: "x", Action: syncActSkip,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestApplyFileTransferUnknownVerb(t *testing.T) {
+	t.Parallel()
+	err := applyFileTransfer(context.Background(), syncApplyOpts{Verb: "sideways"}, syncPlanItem{RelPath: "x"})
+	if err == nil {
+		t.Fatal("expected unknown verb")
+	}
+}
+
+func TestApplyPushFileMissingHost(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	fs := newMemGuestFS()
+	err := applyPushFile(context.Background(), syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs,
+		State: newSyncState("l", "v", host, "/work"),
+	}, syncPlanItem{RelPath: "nope.txt", Action: syncActCreate, Source: inv(1, 1, "0644")})
+	if err == nil {
+		t.Fatal("expected missing host file")
+	}
+}
+
+func TestApplyPushFileIsDir(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	if err := os.Mkdir(filepath.Join(host, "d"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	err := applyPushFile(context.Background(), syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs,
+		State: newSyncState("l", "v", host, "/work"),
+	}, syncPlanItem{RelPath: "d", Action: syncActCreate, Source: &syncInvEntry{Type: "file", Size: 0}})
+	if err == nil || !strings.Contains(err.Error(), "directory") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestApplyPullFileStatFail(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	fs := newMemGuestFS()
+	err := applyPullFile(context.Background(), syncApplyOpts{
+		Verb: syncPull, HostRoot: host, GuestRoot: "/work", FS: fs,
+		State: newSyncState("l", "v", host, "/work"),
+	}, syncPlanItem{RelPath: "missing.txt", Action: syncActCreate, Source: inv(1, 1, "0644")})
+	if err == nil {
+		t.Fatal("expected guest stat fail")
+	}
+}
+
+func TestApplyReplacePush(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	if err := os.WriteFile(filepath.Join(host, "f"), []byte("now-file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	// Dest was a dir conceptually; replace still does file transfer.
+	st := newSyncState("local", "vm", host, "/work")
+	plan := &syncPlan{Items: []syncPlanItem{{
+		RelPath: "f", Action: syncActReplace, Source: inv(8, 1, "0644"),
+	}}}
+	res, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs, State: st,
+	})
+	if err != nil || res.Applied != 1 {
+		t.Fatalf("%+v %v", res, err)
+	}
+}
+
+func TestDepthKeyAndHelpers(t *testing.T) {
+	t.Parallel()
+	if depthKey("") != 0 || depthKey("/") != 0 {
+		t.Fatalf("empty depth")
+	}
+	if depthKey("a") != 1 || depthKey("a/b/c") != 3 {
+		t.Fatalf("depth a=%d a/b/c=%d", depthKey("a"), depthKey("a/b/c"))
+	}
+	if parseOctalMode("", 0o644) != 0o644 {
+		t.Fatal("empty mode def")
+	}
+	if parseOctalMode("not-octal", 0o755) != 0o755 {
+		t.Fatal("invalid mode def")
+	}
+	if parseOctalMode("0o644", 0) != 0o644 {
+		t.Fatal("0o prefix")
+	}
+	if fsInfoToFingerprint(nil) != nil {
+		t.Fatal("nil fs info")
+	}
+	fp := fsInfoToFingerprint(&agent.FSInfo{Type: "file", Size: 3, Mtime: 9, Mode: "0644"})
+	if fp.Size != 3 || fp.Mtime != 9 {
+		t.Fatalf("%+v", fp)
+	}
+	n, err := (discardWriter{}).Write([]byte("hi"))
+	if err != nil || n != 2 {
+		t.Fatalf("discard %d %v", n, err)
+	}
+}
+
+func TestLstatToFingerprintTypes(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fp := lstatToFingerprint(fi)
+	if fp.Type != "directory" {
+		t.Fatalf("dir type %s", fp.Type)
+	}
+	f := filepath.Join(dir, "f")
+	if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fi, _ = os.Lstat(f)
+	fp = lstatToFingerprint(fi)
+	if fp.Type != "file" || fp.Size != 1 {
+		t.Fatalf("%+v", fp)
+	}
+	link := filepath.Join(dir, "l")
+	if err := os.Symlink("f", link); err != nil {
+		t.Fatal(err)
+	}
+	fi, _ = os.Lstat(link)
+	fp = lstatToFingerprint(fi)
+	if fp.Type != "symlink" {
+		t.Fatalf("symlink type %s", fp.Type)
+	}
+}
+
+func TestSafeJoinEdgeCases(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	got, err := safeRelJoin(root, "")
+	if err != nil || got != filepath.Clean(root) {
+		t.Fatalf("empty rel: %q %v", got, err)
+	}
+	got, err = safeRelJoin(root, ".")
+	if err != nil || got != filepath.Clean(root) {
+		t.Fatalf("dot: %q %v", got, err)
+	}
+	got, err = safeGuestJoin("/work", "")
+	if err != nil || got != "/work" {
+		t.Fatalf("guest empty: %q %v", got, err)
+	}
+	got, err = safeGuestJoin("/", "a")
+	if err != nil || got != "/a" {
+		t.Fatalf("guest root: %q %v", got, err)
+	}
+}
+
+func TestRefreshBaselineBothPull(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	sub := filepath.Join(host, "d")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	fs.dirs["/work/d"] = true
+	st := newSyncState("l", "v", host, "/work")
+	opts := syncApplyOpts{Verb: syncPull, HostRoot: host, GuestRoot: "/work", FS: fs, State: st}
+	err := refreshBaselineBoth(context.Background(), opts, "d", syncPlanItem{
+		Source: &syncInvEntry{Type: "directory", Mode: "0755"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, ok := st.entry("d")
+	if !ok || e.Host == nil || e.Guest == nil {
+		t.Fatalf("%+v", e)
+	}
+}
+
+func TestApplyDirCreatePushStatFallback(t *testing.T) {
+	t.Parallel()
+	// FS.Mkdir succeeds but Stat fails → refreshBaselineBoth push fallback.
+	host := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(host, "sub"), 0o755)
+	fs := &statFailAfterMkdirFS{memGuestFS: *newMemGuestFS()}
+	st := newSyncState("local", "vm", host, "/work")
+	plan := &syncPlan{Items: []syncPlanItem{{
+		RelPath: "sub", Action: syncActCreate,
+		Source: &syncInvEntry{Type: "directory", Mode: "0755"},
+	}}}
+	_, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs, State: st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st.entry("sub"); !ok {
+		t.Fatal("expected baseline from fallback")
+	}
+}
+
+// statFailAfterMkdirFS Mkdirs OK but Stat always fails (covers refresh fallback).
+type statFailAfterMkdirFS struct {
+	memGuestFS
+}
+
+func (s *statFailAfterMkdirFS) Stat(ctx context.Context, path string) (*agent.FSInfo, error) {
+	return nil, fmt.Errorf("stat always fails")
+}
+
+func (s *statFailAfterMkdirFS) Mkdir(ctx context.Context, path string, recursive bool, mode string) error {
+	return s.memGuestFS.Mkdir(ctx, path, recursive, mode)
+}
+
+func TestApplyStateSaveError(t *testing.T) {
+	t.Parallel()
+	host := t.TempDir()
+	if err := os.WriteFile(filepath.Join(host, "a.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	st := newSyncState("local", "vm", host, "/work")
+	// StatePath is a directory → rename/create fails.
+	badPath := t.TempDir()
+	plan := &syncPlan{Items: []syncPlanItem{
+		{RelPath: "a.txt", Action: syncActCreate, Source: inv(2, 1, "0644")},
+	}}
+	res, err := applySyncPlan(context.Background(), plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs, State: st, StatePath: badPath,
+	})
+	if err == nil {
+		t.Fatal("expected state save error")
+	}
+	if res.ExitCode != syncExitApply {
+		t.Fatalf("exit %d", res.ExitCode)
+	}
+}

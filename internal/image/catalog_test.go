@@ -81,6 +81,42 @@ func TestCatalogArchVariants(t *testing.T) {
 	}
 }
 
+func TestCatalogForBothArches(t *testing.T) {
+	t.Parallel()
+	for _, arch := range []string{"amd64", "arm64"} {
+		c := catalogFor(arch)
+		u, ok := c[IDUbuntuCloud]
+		if !ok || u.URL == "" || !strings.Contains(u.URL, arch) {
+			t.Fatalf("%s ubuntu-cloud: %+v", arch, u)
+		}
+		al, ok := c[IDAlpineCloud]
+		if !ok || al.URL == "" {
+			t.Fatalf("%s alpine: %+v", arch, al)
+		}
+		if arch == "amd64" && !strings.Contains(al.URL, "x86_64") {
+			t.Fatalf("amd alpine url %s", al.URL)
+		}
+		if arch == "arm64" && !strings.Contains(al.URL, "aarch64") {
+			t.Fatalf("arm alpine url %s", al.URL)
+		}
+		gu := c[IDGrainUbuntu]
+		if gu.LocalOnly || !strings.Contains(gu.URL, arch) {
+			t.Fatalf("grain-ubuntu %s: %+v", arch, gu)
+		}
+	}
+	// unknown arch: no ubuntu/alpine, grain-ubuntu local-only
+	c := catalogFor("riscv64")
+	if _, ok := c[IDUbuntuCloud]; ok {
+		t.Fatal("unexpected ubuntu on riscv")
+	}
+	if _, ok := c[IDAlpineCloud]; ok {
+		t.Fatal("unexpected alpine on riscv")
+	}
+	if !c[IDGrainUbuntu].LocalOnly || c[IDGrainUbuntu].URL != "" {
+		t.Fatalf("riscv grain: %+v", c[IDGrainUbuntu])
+	}
+}
+
 func TestGetUnknownAndEmpty(t *testing.T) {
 	t.Parallel()
 	if _, err := Get(""); err == nil {

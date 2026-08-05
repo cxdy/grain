@@ -614,6 +614,175 @@ func TestPutGetTar(t *testing.T) {
 	}
 }
 
+// syncDaemon returns a daemon with FS ops suitable for grain_sync_push/pull dry-run.
+func syncDaemon(t *testing.T) (*httptest.Server, *client.Client) {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+	mux.HandleFunc("/info", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"name": "grain", "version": "test"})
+	})
+	mux.HandleFunc("/vms", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]*client.Instance{{Name: "sync1", Status: client.StatusRunning}})
+	})
+	mux.HandleFunc("/vms/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/vms/")
+		parts := strings.Split(path, "/")
+		if len(parts) < 2 {
+			_ = json.NewEncoder(w).Encode(&client.Instance{Name: parts[0], Status: client.StatusRunning})
+			return
+		}
+		switch {
+		case parts[1] == "fs" && len(parts) >= 3 && parts[2] == "stat":
+			// Guest root and parents are directories; missing paths 404.
+			p := r.URL.Query().Get("path")
+			if p == "/work" || p == "/work/proj" || p == "/" {
+				_ = json.NewEncoder(w).Encode(client.FSInfo{Name: filepath.Base(p), Type: "directory", Mode: "0755"})
+				return
+			}
+			http.Error(w, `{"error":"not found"}`, 404)
+		case parts[1] == "fs" && len(parts) >= 3 && parts[2] == "readdir":
+			_ = json.NewEncoder(w).Encode([]client.FSInfo{})
+		case parts[1] == "fs" && len(parts) >= 3 && (parts[2] == "mkdir" || parts[2] == "remove"):
+			w.WriteHeader(http.StatusNoContent)
+		case parts[1] == "cp":
+			if r.Method == http.MethodPut {
+				_, _ = io.Copy(io.Discard, r.Body)
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			http.Error(w, `{"error":"not found"}`, 404)
+		default:
+			_ = json.NewEncoder(w).Encode(&client.Instance{Name: parts[0], Status: client.StatusRunning})
+		}
+	})
+	hs := httptest.NewServer(mux)
+	c, err := client.DialHTTP(hs.URL, "")
+	if err != nil {
+		hs.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(hs.Close)
+	return hs, c
+}
+
+func sessionWithClient(t *testing.T, c *client.Client, host grainmcp.HostOps) *mcp.ClientSession {
+	t.Helper()
+	if host == nil {
+		host = &fakeHost{dir: t.TempDir(), logs: map[string]string{}}
+	}
+	srv := grainmcp.NewMCPServerOpts(grainmcp.ServerOptions{
+		Version: "test",
+		Client:  c,
+		Host:    host,
+	})
+	cli := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0"}, nil)
+	t1, t2 := mcp.NewInMemoryTransports()
+	if _, err := srv.Connect(t.Context(), t1, nil); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := cli.Connect(t.Context(), t2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sess.Close() })
+	return sess
+}
+
+func TestSyncPushPullDryRun(t *testing.T) {
+	_, c := syncDaemon(t)
+	host := &fakeHost{dir: t.TempDir(), logs: map[string]string{}}
+	sess := sessionWithClient(t, c, host)
+	ctx := t.Context()
+
+	hostDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(hostDir, "hello.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// validation errors
+	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolSyncPush, Arguments: map[string]any{"name": "", "host_dir": hostDir, "guest_dir": "/work"},
+	})
+	if err == nil && res != nil && !res.IsError {
+		t.Fatal("expected missing name error")
+	}
+	res, err = sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolSyncPush, Arguments: map[string]any{
+			"name": "sync1", "host_dir": hostDir, "guest_dir": "relative",
+		},
+	})
+	if err == nil && res != nil && !res.IsError {
+		t.Fatal("expected relative guest_dir error")
+	}
+
+	// dry-run push
+	res, err = sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolSyncPush,
+		Arguments: map[string]any{
+			"name": "sync1", "host_dir": hostDir, "guest_dir": "/work/proj",
+			"dry_run": true, "no_defaults": true, "no_gitignore": true, "no_grainignore": true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txt := textOf(t, res)
+	if !strings.Contains(txt, "push") || !strings.Contains(txt, "ok") {
+		t.Fatalf("push dry-run: %s", txt)
+	}
+
+	// dry-run pull (guest empty inventory)
+	res, err = sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolSyncPull,
+		Arguments: map[string]any{
+			"name": "sync1", "host_dir": hostDir, "guest_dir": "/work",
+			"dry_run": true, "no_defaults": true, "no_gitignore": true, "no_grainignore": true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txt = textOf(t, res)
+	if !strings.Contains(txt, "pull") {
+		t.Fatalf("pull dry-run: %s", txt)
+	}
+}
+
+func TestForwardRemoveSuccess(t *testing.T) {
+	vms := map[string]*client.Instance{"s1": {Name: "s1", Status: client.StatusRunning}}
+	sess, _ := sessionWithMock(t, vms)
+	ctx := t.Context()
+	// add then remove with host_port (tool requires host_port, not guest_port)
+	add, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name:      grainmcp.ToolForwardAdd,
+		Arguments: map[string]any{"name": "s1", "guest_port": 8080, "host_port": 19090},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = textOf(t, add)
+	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name:      grainmcp.ToolForwardRemove,
+		Arguments: map[string]any{"name": "s1", "host_port": 19090},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(textOf(t, res), "ok") {
+		t.Fatal(textOf(t, res))
+	}
+	// validation
+	res2, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolForwardRemove, Arguments: map[string]any{"name": "", "host_port": 0},
+	})
+	if err == nil && res2 != nil && !res2.IsError {
+		t.Fatal("expected validation error")
+	}
+}
+
 func TestActAndK3sTools(t *testing.T) {
 	// Act creates then may wait for act binary - mock always returns success on exec so loop exits.
 	vms := map[string]*client.Instance{}

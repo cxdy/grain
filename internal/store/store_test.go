@@ -227,3 +227,80 @@ func TestStoreGetNotFound(t *testing.T) {
 		t.Fatal("expected not found")
 	}
 }
+
+func TestStoreNewFailsWhenDataDirIsFile(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	file := filepath.Join(base, "notadir")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.New(file); err == nil {
+		t.Fatal("expected New error when dataDir is a file")
+	}
+}
+
+func TestStorePutFailsWhenVMsRootIsFile(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	// Create store first (ok), then replace vms/<name> parent path with a file by
+	// making the instance name point under a file path... Put MkdirAll on Dir(name).
+	// Instead: make root/vms a file after New.
+	s, err := store.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vms := filepath.Join(root, "vms")
+	if err := os.RemoveAll(vms); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(vms, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put(&vm.Instance{Name: "x", Status: vm.StatusStopped}); err == nil {
+		t.Fatal("expected Put error")
+	}
+}
+
+func TestStoreListNamesSkipNonDirAndCorrupt(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	s, err := store.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// good
+	if err := s.Put(&vm.Instance{Name: "good", Status: vm.StatusRunning, CPUs: 1, MemoryMB: 256}); err != nil {
+		t.Fatal(err)
+	}
+	// file entry under vms
+	if err := os.WriteFile(filepath.Join(root, "vms", "fileentry"), []byte("z"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// dir without meta
+	if err := os.MkdirAll(filepath.Join(root, "vms", "nometa"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// corrupt meta
+	bad := filepath.Join(root, "vms", "corrupt")
+	if err := os.MkdirAll(bad, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, "meta.json"), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Name != "good" {
+		t.Fatalf("%+v", list)
+	}
+	names, err := s.Names()
+	if err != nil || len(names) != 1 {
+		t.Fatalf("%v %v", names, err)
+	}
+	if _, ok := names["good"]; !ok {
+		t.Fatal(names)
+	}
+}

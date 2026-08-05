@@ -173,3 +173,177 @@ func TestCachePath(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+func TestComparableEdges(t *testing.T) {
+	t.Parallel()
+	if !update.Comparable("1.2.3-rc.1") {
+		t.Fatal("prerelease core still comparable")
+	}
+	if !update.Comparable("1.2.3+build") {
+		t.Fatal("build meta")
+	}
+	if update.Comparable("1") {
+		t.Fatal("single segment")
+	}
+	if update.Comparable("1.2.3.4.5") {
+		t.Fatal("too many segments")
+	}
+	if update.Comparable("1..2") {
+		t.Fatal("empty part")
+	}
+	if update.Comparable("1.2.x") {
+		t.Fatal("non-numeric")
+	}
+	if update.Comparable("") || update.Comparable("  dirty  ") {
+		t.Fatal("empty/dirty")
+	}
+	// Compare pads shorter version parts
+	if update.Compare("1.2", "1.2.0") != 0 {
+		t.Fatal("pad equal")
+	}
+	if update.Compare("1.2.1", "1.2") <= 0 {
+		t.Fatal("1.2.1 > 1.2")
+	}
+	if update.Compare("2.0", "1.9.9") <= 0 {
+		t.Fatal("2.0 > 1.9.9")
+	}
+}
+
+func TestCheckCacheOnlyMissing(t *testing.T) {
+	t.Parallel()
+	_, err := update.Check(update.Options{
+		Current:   "1.0.0",
+		DataDir:   t.TempDir(),
+		CacheOnly: true,
+	})
+	if err == nil {
+		t.Fatal("expected no cache error")
+	}
+}
+
+func TestCheckNetworkErrorNoCache(t *testing.T) {
+	t.Parallel()
+	_, err := update.Check(update.Options{
+		Current:      "1.0.0",
+		DataDir:      t.TempDir(),
+		APIURL:       "http://127.0.0.1:1",
+		HTTPClient:   &http.Client{Timeout: 50 * time.Millisecond},
+		ForceRefresh: true,
+	})
+	if err == nil {
+		t.Fatal("expected network error")
+	}
+}
+
+func TestFetchLatestDefaultsAndErrors(t *testing.T) {
+	t.Parallel()
+	// HTTP error status
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("nope"))
+	}))
+	t.Cleanup(srv.Close)
+	_, err := update.Check(update.Options{
+		Current:      "0.1.0",
+		DataDir:      t.TempDir(),
+		APIURL:       srv.URL,
+		HTTPClient:   srv.Client(),
+		ForceRefresh: true,
+	})
+	if err == nil {
+		t.Fatal("expected HTTP status error")
+	}
+
+	// bad JSON
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("{not-json"))
+	}))
+	t.Cleanup(srv2.Close)
+	_, err = update.Check(update.Options{
+		Current:      "0.1.0",
+		DataDir:      t.TempDir(),
+		APIURL:       srv2.URL,
+		HTTPClient:   srv2.Client(),
+		ForceRefresh: true,
+	})
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+
+	// empty tag_name
+	srv3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"tag_name": "  ", "html_url": "x"})
+	}))
+	t.Cleanup(srv3.Close)
+	_, err = update.Check(update.Options{
+		Current:      "0.1.0",
+		DataDir:      t.TempDir(),
+		APIURL:       srv3.URL,
+		HTTPClient:   srv3.Client(),
+		ForceRefresh: true,
+	})
+	if err == nil {
+		t.Fatal("expected empty tag error")
+	}
+}
+
+func TestCheckDefaultClientAndCorruptCache(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// corrupt cache ignored; live fetch with real client + custom API
+	path := update.CachePath(dir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{bad"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"tag_name": "v9.9.9",
+			"html_url": "https://example.com/r",
+		})
+	}))
+	t.Cleanup(srv.Close)
+	// nil HTTPClient → uses DefaultHTTPTimeout client
+	res, err := update.Check(update.Options{
+		Current:      "1.0.0",
+		DataDir:      dir,
+		APIURL:       srv.URL,
+		ForceRefresh: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Latest != "v9.9.9" || !res.UpdateAvail {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestWriteCacheMkdirFail(t *testing.T) {
+	t.Parallel()
+	// DataDir is a file → cache dir cannot be created
+	base := t.TempDir()
+	file := filepath.Join(base, "notadir")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"tag_name": "v1.0.0"})
+	}))
+	t.Cleanup(srv.Close)
+	// writeCache failure is soft-ignored; Check still succeeds
+	res, err := update.Check(update.Options{
+		Current:      "1.0.0",
+		DataDir:      file,
+		APIURL:       srv.URL,
+		HTTPClient:   srv.Client(),
+		ForceRefresh: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Latest != "v1.0.0" {
+		t.Fatalf("%+v", res)
+	}
+}
