@@ -325,7 +325,7 @@ func (p *transferProgress) line() string {
 				if pct > 100 {
 					pct = 100
 				}
-				b.WriteString(fmt.Sprintf(" %d%%", pct))
+				fmt.Fprintf(&b, " %d%%", pct)
 			}
 		}
 	}
