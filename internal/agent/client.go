@@ -408,10 +408,11 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 	if stdin == nil {
 		stdin = os.Stdin
 	}
-	stdout := opts.Stdout
-	if stdout == nil {
-		stdout = os.Stdout
+	rawOut := opts.Stdout
+	if rawOut == nil {
+		rawOut = os.Stdout
 	}
+	stdout := rawOut
 	// Host-side OSC 52 intercept so tools in the guest (Grok Build, etc.) can
 	// set the *local* clipboard over grain sh / remote API shell. Disable with
 	// GRAIN_OSC52_CLIPBOARD=0.
@@ -480,7 +481,9 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 	// Interactive shells can produce large bursts (e.g. cat of big files).
 	conn.SetReadLimit(8 << 20)
 
-	// Raw mode for local TTY.
+	// Raw mode for local TTY. On exit always restore cooked mode and clear
+	// private modes (alt screen, mouse, etc.) so a daemon restart mid-session
+	// does not leave the remote terminal unusable.
 	wantRaw := true
 	if opts.Raw != nil {
 		wantRaw = *opts.Raw
@@ -493,9 +496,15 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 				return fmt.Errorf("terminal raw mode: %w", err)
 			}
 			restore = func() { _ = term.Restore(int(f.Fd()), old) }
-			defer restore()
 		}
 	}
+	defer func() {
+		if restore != nil {
+			restore()
+		}
+		// After cooked mode: clear modes left by guest TUIs / mid-stream disconnect.
+		resetTerminalAfterShell(rawOut)
+	}()
 
 	// SIGWINCH → resize control frames.
 	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
@@ -585,19 +594,21 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 	}()
 
 	// Wait for first fatal error or context cancel.
+	// defer always restores cooked mode + private terminal modes.
 	select {
 	case <-ctx.Done():
 		_ = conn.Close(websocket.StatusGoingAway, "canceled")
 		return ctx.Err()
 	case err := <-errCh:
-		// Normal WebSocket close after shell exit is success.
+		// Clean guest exit (normal WebSocket close / bare EOF).
 		if isWSNormalClose(err) || err == io.EOF {
 			_ = conn.Close(websocket.StatusNormalClosure, "")
 			return nil
 		}
 		if err != nil {
 			_ = conn.Close(websocket.StatusNormalClosure, "")
-			return err
+			// Daemon restart / network drop: clearer message + TTY reset via defer.
+			return wrapShellSessionError(err)
 		}
 		return nil
 	}
