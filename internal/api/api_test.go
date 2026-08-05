@@ -1591,6 +1591,24 @@ func TestCPModeTarAndInvalid(t *testing.T) {
 	}
 }
 
+func TestPutCPMaxBody(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+	// Agent not required: Content-Length over limit is rejected before proxying.
+	createMockVM(t, h, "putmax")
+	setAgentPort(t, st, "putmax", 1)
+
+	u := "/vms/putmax/cp?path=" + url.QueryEscape("/tmp/out.bin") + "&mode=binary"
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, u, strings.NewReader("x"))
+	req.ContentLength = agent.DefaultMaxPutBytes + 1
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("over limit: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestShellAgentUnavailable(t *testing.T) {
 	t.Parallel()
 	s, st := testServerWithStore(t)

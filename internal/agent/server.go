@@ -445,6 +445,27 @@ func applyCredential(cmd *exec.Cmd, uid, gid *uint32) {
 
 // --- /cp -------------------------------------------------------------------
 
+// MaxPutBytes is the default max request body size for POST /cp when
+// GRAIN_MAX_PUT_BYTES is unset. Tests may lower this (do not run in parallel
+// with other /cp tests that assume the default).
+var MaxPutBytes int64 = DefaultMaxPutBytes
+
+// EffectiveMaxPutBytes returns the max PUT /cp body size: GRAIN_MAX_PUT_BYTES
+// when set to a positive int64, otherwise MaxPutBytes.
+func EffectiveMaxPutBytes() int64 {
+	if v := strings.TrimSpace(os.Getenv("GRAIN_MAX_PUT_BYTES")); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return MaxPutBytes
+}
+
+func isRequestBodyTooLarge(err error) bool {
+	var mbe *http.MaxBytesError
+	return errors.As(err, &mbe)
+}
+
 func (s *Server) handleCPPut(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	path := q.Get("path")
@@ -487,14 +508,31 @@ func (s *Server) handleCPPut(w http.ResponseWriter, r *http.Request) {
 		perm = p
 	}
 
+	limit := EffectiveMaxPutBytes()
+	if r.ContentLength > limit {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+	}
+
 	switch mode {
 	case "binary":
 		if err := putBinary(path, r.Body, perm, uid, gid); err != nil {
+			if isRequestBodyTooLarge(err) {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	case "tar":
 		if err := putTar(path, r.Body, uid, gid); err != nil {
+			if isRequestBodyTooLarge(err) {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

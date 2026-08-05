@@ -1150,6 +1150,86 @@ func TestHandleCPValidation(t *testing.T) {
 	}
 }
 
+func TestCPPutMaxBody(t *testing.T) {
+	// Mutates MaxPutBytes; do not parallelize.
+	old := MaxPutBytes
+	MaxPutBytes = 16
+	t.Cleanup(func() { MaxPutBytes = old })
+
+	s := NewServer("127.0.0.1:0", nil)
+	h := s.Handler()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f.bin")
+	q := "/cp?path=" + url.QueryEscape(path) + "&mode=binary"
+
+	// At limit succeeds.
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, q, strings.NewReader("0123456789abcdef")) // 16 bytes
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("at limit: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// Content-Length over limit → 413 without reading body fully.
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, q, strings.NewReader(strings.Repeat("x", 32)))
+	req.ContentLength = 32
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("content-length over: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// Streamed body over limit (Content-Length unknown) → 413 via MaxBytesReader.
+	rr = httptest.NewRecorder()
+	body := strings.NewReader(strings.Repeat("y", 64))
+	req = httptest.NewRequest(http.MethodPost, q, body)
+	req.ContentLength = -1
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("streamed over: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// Tar mode also capped.
+	var tarBuf bytes.Buffer
+	tw := tar.NewWriter(&tarBuf)
+	payload := strings.Repeat("z", 64)
+	_ = tw.WriteHeader(&tar.Header{Name: "big.txt", Mode: 0o644, Size: int64(len(payload))})
+	_, _ = tw.Write([]byte(payload))
+	_ = tw.Close()
+	dest := filepath.Join(dir, "tree")
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/cp?path="+url.QueryEscape(dest)+"&mode=tar", &tarBuf)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("tar over: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestEffectiveMaxPutBytes(t *testing.T) {
+	old := MaxPutBytes
+	MaxPutBytes = 100
+	t.Cleanup(func() { MaxPutBytes = old })
+
+	if got := EffectiveMaxPutBytes(); got != 100 {
+		t.Fatalf("default var: got %d want 100", got)
+	}
+
+	t.Setenv("GRAIN_MAX_PUT_BYTES", "42")
+	if got := EffectiveMaxPutBytes(); got != 42 {
+		t.Fatalf("env: got %d want 42", got)
+	}
+
+	t.Setenv("GRAIN_MAX_PUT_BYTES", "0")
+	if got := EffectiveMaxPutBytes(); got != 100 {
+		t.Fatalf("invalid 0 env should fall back: got %d", got)
+	}
+
+	t.Setenv("GRAIN_MAX_PUT_BYTES", "nope")
+	if got := EffectiveMaxPutBytes(); got != 100 {
+		t.Fatalf("invalid env should fall back: got %d", got)
+	}
+}
+
 func TestHandleFSValidation(t *testing.T) {
 	s := NewServer("127.0.0.1:0", nil)
 	h := s.Handler()
