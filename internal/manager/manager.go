@@ -511,6 +511,7 @@ func (m *Manager) waitAgentMode(
 
 	// Baked agent still down after full budget: soft-fail to SSH deploy only if
 	// SSH comes up; keep polling the agent in parallel (it often wins).
+	// Firecracker has no hostfwd SSH (SSHPort=0) — skip deploy and surface UDS hint.
 	if inst.SSHPort > 0 {
 		if emit != nil {
 			emit(vm.CreateEvent{
@@ -530,6 +531,20 @@ func (m *Manager) waitAgentMode(
 		return fmt.Errorf("wait agent: guest agent not ready and ssh never came up (initial probe: %v)", probeErr)
 	}
 
+	return wrapAgentWaitErr(inst, probeErr)
+}
+
+// wrapAgentWaitErr annotates agent wait failures. Firecracker guests only reach
+// the agent via host UDS + CONNECT (no TCP hostfwd / SSH deploy fallback).
+func wrapAgentWaitErr(inst *vm.Instance, probeErr error) error {
+	if probeErr == nil {
+		return fmt.Errorf("wait agent: guest agent not ready")
+	}
+	tgt := agentTarget(inst)
+	if tgt.FirecrackerUDS != "" {
+		return fmt.Errorf("wait agent: guest agent not ready over Firecracker vsock UDS %s: %w — run grain doctor; ensure kernel + raw rootfs ship grain-agent (no SSH deploy on FC); see guides/firecracker",
+			tgt.FirecrackerUDS, probeErr)
+	}
 	return fmt.Errorf("wait agent: guest agent not ready: %w", probeErr)
 }
 
@@ -1704,14 +1719,14 @@ func (m *Manager) waitOrDeployAgent(
 	if err != nil {
 		m.log.Warn("guest agent not ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "err", err)
 		if hard {
-			return err
+			return wrapAgentWaitErr(inst, err)
 		}
 		return nil
 	}
 	if err := agent.Wait(waitCtx, client); err != nil {
 		m.log.Warn("guest agent not ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID, "err", err)
 		if hard {
-			return err
+			return wrapAgentWaitErr(inst, err)
 		}
 		return nil
 	}

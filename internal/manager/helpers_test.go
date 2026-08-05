@@ -338,6 +338,30 @@ func TestKillPID(t *testing.T) {
 	_ = killPID(1<<28 - 3)
 }
 
+func TestWrapAgentWaitErr(t *testing.T) {
+	t.Parallel()
+	// TCP/vsock path: generic wrap.
+	err := wrapAgentWaitErr(&vm.Instance{AgentPort: 9}, fmt.Errorf("timeout"))
+	if err == nil || !strings.Contains(err.Error(), "guest agent not ready") {
+		t.Fatalf("%v", err)
+	}
+	if strings.Contains(err.Error(), "Firecracker") {
+		t.Fatalf("unexpected FC hint: %v", err)
+	}
+	// Firecracker UDS path.
+	err = wrapAgentWaitErr(&vm.Instance{
+		AgentCID:  5,
+		AgentPort: 0,
+		DiskPath:  "/data/vms/x/disk.raw",
+	}, fmt.Errorf("connect refused"))
+	if err == nil || !strings.Contains(err.Error(), "Firecracker vsock UDS") {
+		t.Fatalf("%v", err)
+	}
+	if !strings.Contains(err.Error(), "fc-vsock.sock") || !strings.Contains(err.Error(), "grain doctor") {
+		t.Fatalf("%v", err)
+	}
+}
+
 func TestAgentTarget(t *testing.T) {
 	t.Parallel()
 	if agentTarget(nil).HasEndpoint() {
