@@ -32,6 +32,10 @@ c, err = client.DialHTTP("http://127.0.0.1:7474", os.Getenv("GRAIN_TOKEN"))
 | `ssh` | Ready when SSH accepts connections |
 | `agent` | Ready when guest grain-agent `/health` succeeds |
 | `userdata` | Ready when agent reports userdata finished |
+| `bootstrap` | Ready when guest readiness protocol reports `state=ready` |
+
+Sandbox recipes (`kind: Sandbox`) are compiled by the CLI (`grain new --recipe`)
+into create options + userdata; they are not a separate HTTP API resource.
 
 ```go
 inst, err := c.Create(ctx, client.CreateRequest{

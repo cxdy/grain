@@ -73,10 +73,11 @@ type Instance struct {
 
 // Create wait mode values for CreateRequest.Wait (query param, not JSON body).
 const (
-	WaitAuto     = "auto"     // daemon picks (agent for golden images, else ssh)
-	WaitSSH      = "ssh"      // ready when SSH accepts connections
-	WaitAgent    = "agent"    // ready when grain-agent /health succeeds
-	WaitUserdata = "userdata" // ready when agent reports userdata finished
+	WaitAuto      = "auto"      // daemon picks (agent for golden images, else ssh)
+	WaitSSH       = "ssh"       // ready when SSH accepts connections
+	WaitAgent     = "agent"     // ready when grain-agent /health succeeds
+	WaitUserdata  = "userdata"  // ready when agent reports userdata finished
+	WaitBootstrap = "bootstrap" // ready when guest readiness protocol reports state=ready
 )
 
 // CreateRequest is the JSON body for POST /vms.
@@ -96,7 +97,7 @@ type CreateRequest struct {
 	Forwards       []PortForward     `json:"forwards,omitempty"`
 	Mounts         []Mount           `json:"mounts,omitempty"`
 	SocketForwards []SocketForward   `json:"socket_forwards,omitempty"`
-	// Wait is auto|ssh|agent|userdata (empty = daemon default/auto).
+	// Wait is auto|ssh|agent|userdata|bootstrap (empty = daemon default/auto).
 	// Legacy true/1 maps to ssh on the server.
 	Wait string `json:"-"`
 	// Timeout is an optional Go duration string for create readiness (e.g. "3m").

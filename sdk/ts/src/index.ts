@@ -8,7 +8,7 @@
 export { GrainClient } from "./client.js";
 export type { GrainClientOptions } from "./client.js";
 export { GrainAPIError } from "./errors.js";
-export { Phase } from "./types.js";
+export { Phase, Wait } from "./types.js";
 export type {
   AgentHealth,
   APIErrorBody,
@@ -25,4 +25,5 @@ export type {
   SocketForward,
   Stats,
   Status,
+  WaitMode,
 } from "./types.js";

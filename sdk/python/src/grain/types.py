@@ -10,6 +10,7 @@ WAIT_AUTO = "auto"
 WAIT_SSH = "ssh"
 WAIT_AGENT = "agent"
 WAIT_USERDATA = "userdata"
+WAIT_BOOTSTRAP = "bootstrap"
 
 # Create stream phases (NDJSON).
 PHASE_IMAGE = "image"
@@ -18,6 +19,8 @@ PHASE_SEED = "seed"
 PHASE_QEMU = "qemu"
 PHASE_WAIT_SSH = "wait_ssh"
 PHASE_WAIT_AGENT = "wait_agent"
+PHASE_USERDATA = "userdata"
+PHASE_BOOTSTRAP = "bootstrap"
 PHASE_READY = "ready"
 PHASE_ERROR = "error"
 
