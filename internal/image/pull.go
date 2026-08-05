@@ -33,8 +33,26 @@ func (m *Manager) Dir(id string) string {
 	return filepath.Join(m.DataDir, "images", id)
 }
 
+// DefaultKernelRel is the relative path under DataDir for the Firecracker guest kernel.
+const DefaultKernelRel = "kernels/vmlinux"
+
+// KernelPath returns the host path for the Firecracker guest kernel (vmlinux).
+// Import of catalog id fc-kernel installs here; Firecracker Start also looks here
+// when kernel_path is unset.
+func (m *Manager) KernelPath() string {
+	return filepath.Join(m.DataDir, filepath.FromSlash(DefaultKernelRel))
+}
+
 // DiskPath returns the path to the base disk if present.
+// Catalog id fc-kernel is special: it is a vmlinux file under DataDir/kernels/, not a rootfs.
 func (m *Manager) DiskPath(id string) (string, error) {
+	if id == IDFCKernel {
+		p := m.KernelPath()
+		if st, err := os.Stat(p); err == nil && st.Size() > 0 && !st.IsDir() {
+			return p, nil
+		}
+		return "", fmt.Errorf("kernel %q not installed (run: grain image import <vmlinux> --id %s)", id, id)
+	}
 	dir := m.Dir(id)
 	for _, name := range []string{"disk.qcow2", "disk.img", "disk.raw"} {
 		p := filepath.Join(dir, name)
@@ -42,10 +60,13 @@ func (m *Manager) DiskPath(id string) (string, error) {
 			return p, nil
 		}
 	}
+	if id == IDGrainUbuntuFC {
+		return "", fmt.Errorf("image %q not imported (run: grain image import <raw-rootfs> --id %s)", id, id)
+	}
 	return "", fmt.Errorf("image %q not pulled (run: grain image pull %s)", id, id)
 }
 
-// Ready reports whether a usable base disk exists.
+// Ready reports whether a usable base disk (or fc-kernel) exists.
 func (m *Manager) Ready(id string) bool {
 	_, err := m.DiskPath(id)
 	return err == nil
@@ -324,11 +345,13 @@ func ParseSHA256Sidecar(body string) string {
 	return strings.ToLower(field)
 }
 
-// Import registers a local disk image as catalog id under images/<id>/disk.qcow2.
-// srcPath may be qcow2, raw, or img; when qemu-img is available non-qcow2 sources
-// are converted. Overwrites an existing local base for id.
+// Import registers a local artifact as catalog id.
 //
-// For grain-ubuntu (or any Spec.HasAgent), metadata has_agent=true is written.
+//   - fc-kernel: copies src to DataDir/kernels/vmlinux (Firecracker guest kernel).
+//   - Spec.Format "raw" (e.g. grain-ubuntu-fc): stores as images/<id>/disk.raw.
+//   - Otherwise: qcow2 under images/<id>/disk.qcow2 (qemu-img convert when needed).
+//
+// Overwrites an existing local base for id. For HasAgent specs, has_agent=true is written.
 // Unknown ids are rejected; use a catalog entry.
 func (m *Manager) Import(ctx context.Context, id, srcPath string) error {
 	if id == "" {
@@ -352,6 +375,12 @@ func (m *Manager) Import(ctx context.Context, id, srcPath string) error {
 	if st.IsDir() {
 		return fmt.Errorf("import: source is a directory: %s", abs)
 	}
+
+	// Firecracker guest kernel: not a rootfs disk.
+	if id == IDFCKernel {
+		return m.importKernel(abs, st)
+	}
+
 	if st.Size() < 1024*1024 {
 		return fmt.Errorf("import: source too small (%d bytes): %s", st.Size(), abs)
 	}
@@ -359,6 +388,11 @@ func (m *Manager) Import(ctx context.Context, id, srcPath string) error {
 	dir := m.Dir(id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
+	}
+
+	// Raw FC rootfs (and other Format: raw catalog entries).
+	if strings.EqualFold(spec.Format, "raw") {
+		return m.importRawRootfs(id, abs, spec)
 	}
 
 	dest := filepath.Join(dir, "disk.qcow2")
@@ -386,6 +420,63 @@ func (m *Manager) Import(ctx context.Context, id, srcPath string) error {
 	}
 
 	// Record provenance
+	_ = os.WriteFile(filepath.Join(dir, "source.import"), []byte(abs+"\n"), 0o644)
+	m.writeMeta(id, spec, hasAgentForImport(spec, id))
+	return nil
+}
+
+// minKernelBytes is a floor for imported vmlinux (tests use small files; real kernels are multi‑MiB).
+const minKernelBytes = 1024
+
+func (m *Manager) importKernel(abs string, st os.FileInfo) error {
+	if st.Size() < minKernelBytes {
+		return fmt.Errorf("import: kernel too small (%d bytes): %s", st.Size(), abs)
+	}
+	dest := m.KernelPath()
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	if sameFile(abs, dest) {
+		return nil
+	}
+	partial := dest + ".partial"
+	_ = os.Remove(partial)
+	if err := copyFile(abs, partial); err != nil {
+		_ = os.Remove(partial)
+		return err
+	}
+	if err := os.Rename(partial, dest); err != nil {
+		_ = os.Remove(partial)
+		return err
+	}
+	// Provenance next to kernel (not under images/).
+	_ = os.WriteFile(dest+".source", []byte(abs+"\n"), 0o644)
+	return nil
+}
+
+func (m *Manager) importRawRootfs(id, abs string, spec Spec) error {
+	dir := m.Dir(id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	dest := filepath.Join(dir, "disk.raw")
+	if sameFile(abs, dest) {
+		m.writeMeta(id, spec, hasAgentForImport(spec, id))
+		return nil
+	}
+	for _, name := range []string{"disk.qcow2", "disk.img", "disk.raw"} {
+		_ = os.Remove(filepath.Join(dir, name))
+	}
+	partial := dest + ".partial"
+	_ = os.Remove(partial)
+	if err := copyFile(abs, partial); err != nil {
+		_ = os.Remove(partial)
+		return err
+	}
+	if err := os.Rename(partial, dest); err != nil {
+		_ = os.Remove(partial)
+		return err
+	}
 	_ = os.WriteFile(filepath.Join(dir, "source.import"), []byte(abs+"\n"), 0o644)
 	m.writeMeta(id, spec, hasAgentForImport(spec, id))
 	return nil

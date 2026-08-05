@@ -330,6 +330,69 @@ func TestImportTooSmall(t *testing.T) {
 	}
 }
 
+func TestImportFCKernel(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	m := image.NewManager(dir)
+	src := filepath.Join(t.TempDir(), "vmlinux")
+	// Kernel floor is 1KiB (not 1MiB rootfs floor).
+	if err := os.WriteFile(src, make([]byte, 4*1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if m.Ready(image.IDFCKernel) {
+		t.Fatal("not ready before import")
+	}
+	if err := m.Import(context.Background(), image.IDFCKernel, src); err != nil {
+		t.Fatal(err)
+	}
+	if !m.Ready(image.IDFCKernel) {
+		t.Fatal("expected ready")
+	}
+	p, err := m.DiskPath(image.IDFCKernel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "kernels", "vmlinux")
+	if p != want {
+		t.Fatalf("path %s want %s", p, want)
+	}
+	// Too small kernel
+	tiny := filepath.Join(t.TempDir(), "tiny")
+	if err := os.WriteFile(tiny, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Import(context.Background(), image.IDFCKernel, tiny); err == nil {
+		t.Fatal("expected too-small kernel")
+	}
+}
+
+func TestImportGrainUbuntuFCRaw(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	m := image.NewManager(dir)
+	src := filepath.Join(t.TempDir(), "rootfs.ext4")
+	if err := os.WriteFile(src, make([]byte, 2*1024*1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Import(context.Background(), image.IDGrainUbuntuFC, src); err != nil {
+		t.Fatal(err)
+	}
+	if !m.Ready(image.IDGrainUbuntuFC) {
+		t.Fatal("ready")
+	}
+	p, err := m.DiskPath(image.IDGrainUbuntuFC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "images", image.IDGrainUbuntuFC, "disk.raw")
+	if p != want {
+		t.Fatalf("path %s want %s", p, want)
+	}
+	if !m.ImageHasAgent(image.IDGrainUbuntuFC) {
+		t.Fatal("HasAgent")
+	}
+}
+
 func TestPullLocalOnlyMissing(t *testing.T) {
 	t.Parallel()
 	// Local-only path: empty-URL Spec via pullSpec is exercised through
