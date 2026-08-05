@@ -262,3 +262,127 @@ func TestClassifyDeleteEligibleViaIgnore(t *testing.T) {
 		t.Fatalf("ignored orphan should skip not delete: %s", plan.Items[0].Action)
 	}
 }
+
+func TestClassifyColdStartOrphanAndTypeMismatch(t *testing.T) {
+	t.Parallel()
+	// Orphan dest without --delete
+	guest := map[string]*syncInvEntry{"only": inv(1, 1, "0644")}
+	plan := classifyAll(nil, guest, nil, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActSkip {
+		t.Fatalf("orphan no delete: %s", plan.Items[0].Action)
+	}
+	// Type mismatch conflict / force replace
+	host := map[string]*syncInvEntry{"t": {Type: "file", Size: 1, Mtime: 1}}
+	guest = map[string]*syncInvEntry{"t": {Type: "directory", Size: 0, Mtime: 1}}
+	plan = classifyAll(host, guest, nil, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActConflict {
+		t.Fatalf("type mismatch: %s", plan.Items[0].Action)
+	}
+	plan = classifyAll(host, guest, nil, nil, syncClassifyOpts{Verb: syncPush, Force: true})
+	if plan.Items[0].Action != syncActReplace {
+		t.Fatalf("force replace: %s", plan.Items[0].Action)
+	}
+	// Cold-start directory size match → skip+baseline
+	host = map[string]*syncInvEntry{"d": {Type: "directory"}}
+	guest = map[string]*syncInvEntry{"d": {Type: "directory"}}
+	plan = classifyAll(host, guest, nil, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActSkip || !plan.Items[0].BaselineDirty {
+		t.Fatalf("dir match: %+v", plan.Items[0])
+	}
+}
+
+func TestClassifyThreeWayTypeMismatchAndDelete(t *testing.T) {
+	t.Parallel()
+	st := baseState("t",
+		&syncFingerprint{Type: "file", Size: 1, Mtime: 1, Mode: "0644"},
+		&syncFingerprint{Type: "file", Size: 1, Mtime: 2, Mode: "0644"},
+	)
+	host := map[string]*syncInvEntry{"t": {Type: "file", Size: 1, Mtime: 1}}
+	guest := map[string]*syncInvEntry{"t": {Type: "directory", Size: 0, Mtime: 2}}
+	plan := classifyAll(host, guest, st, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActConflict {
+		t.Fatalf("got %s", plan.Items[0].Action)
+	}
+	plan = classifyAll(host, guest, st, nil, syncClassifyOpts{Verb: syncPush, Force: true})
+	if plan.Items[0].Action != syncActReplace {
+		t.Fatalf("force: %s", plan.Items[0].Action)
+	}
+
+	// Three-way orphan dest with/without delete (source missing)
+	st2 := baseState("old",
+		&syncFingerprint{Type: "file", Size: 1, Mtime: 1},
+		&syncFingerprint{Type: "file", Size: 1, Mtime: 2},
+	)
+	guestOnly := map[string]*syncInvEntry{"old": inv(1, 2, "0644")}
+	plan = classifyAll(nil, guestOnly, st2, nil, syncClassifyOpts{Verb: syncPush, Delete: true})
+	if plan.Items[0].Action != syncActDelete {
+		t.Fatalf("delete: %s", plan.Items[0].Action)
+	}
+	plan = classifyAll(nil, guestOnly, st2, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActSkip {
+		t.Fatalf("no delete: %s", plan.Items[0].Action)
+	}
+
+	// Dest missing with baseline → create
+	hostOnly := map[string]*syncInvEntry{"old": inv(1, 1, "0644")}
+	plan = classifyAll(hostOnly, nil, st2, nil, syncClassifyOpts{Verb: syncPush})
+	if plan.Items[0].Action != syncActCreate {
+		t.Fatalf("create: %s", plan.Items[0].Action)
+	}
+}
+
+func TestPlanSummaryLineAndSideChanged(t *testing.T) {
+	t.Parallel()
+	if planSummaryLine(nil) != "empty plan" {
+		t.Fatal(planSummaryLine(nil))
+	}
+	p := &syncPlan{Created: 1, Updated: 2, Deleted: 3, Skipped: 4, KeptDest: 5, Conflicts: 6, BaselineDirty: 7}
+	s := planSummaryLine(p)
+	if s == "" || !containsAll(s, "created=1", "conflicts=6") {
+		t.Fatal(s)
+	}
+	if !sideContentChanged(nil, &syncFingerprint{Type: "file"}) {
+		t.Fatal("missing live with base")
+	}
+	if !sideContentChanged(inv(1, 1, "0644"), nil) {
+		t.Fatal("live without base")
+	}
+	if sideContentChanged(nil, nil) {
+		t.Fatal("both nil")
+	}
+}
+
+func containsAll(s string, parts ...string) bool {
+	for _, p := range parts {
+		if !stringContains(s, p) {
+			return false
+		}
+	}
+	return true
+}
+
+func stringContains(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
+		(func() bool {
+			for i := 0; i+len(sub) <= len(s); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+			return false
+		})())
+}
+
+func TestClassifyIncompleteBaselineTreatedCold(t *testing.T) {
+	t.Parallel()
+	st := newSyncState("local", "vm", "/h", "/g")
+	// Incomplete: only host side.
+	st.Entries["f"] = syncEntry{Host: &syncFingerprint{Type: "file", Size: 1, Mtime: 1}}
+	host := map[string]*syncInvEntry{"f": inv(1, 1, "0644")}
+	guest := map[string]*syncInvEntry{"f": inv(1, 9, "0644")}
+	plan := classifyAll(host, guest, st, nil, syncClassifyOpts{Verb: syncPush})
+	// Cold-start size match.
+	if plan.Items[0].Action != syncActSkip || !plan.Items[0].BaselineDirty {
+		t.Fatalf("%+v", plan.Items[0])
+	}
+}

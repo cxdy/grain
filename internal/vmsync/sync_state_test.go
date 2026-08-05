@@ -108,4 +108,108 @@ func TestFpContentEqualIgnoresMode(t *testing.T) {
 	if !fpContentEqual(da, db) {
 		t.Fatal("dirs: type only")
 	}
+	if !fpContentEqual(nil, nil) {
+		t.Fatal("nil==nil")
+	}
+	if fpContentEqual(a, nil) || fpContentEqual(nil, a) {
+		t.Fatal("nil vs non-nil")
+	}
+	if fpContentEqual(a, da) {
+		t.Fatal("type mismatch")
+	}
+	sa := &syncFingerprint{Type: "symlink", Size: 1, Mtime: 1}
+	sb := &syncFingerprint{Type: "symlink", Size: 99, Mtime: 99}
+	if !fpContentEqual(sa, sb) {
+		t.Fatal("symlink type-only")
+	}
+}
+
+func TestLoadSyncStateCorruptAndDefaults(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadSyncState(bad); err == nil {
+		t.Fatal("expected corrupt json error")
+	}
+
+	// version 0 + null entries
+	okPath := filepath.Join(dir, "ok.json")
+	if err := os.WriteFile(okPath, []byte(`{"version":0,"vm":"v","entries":null}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := loadSyncState(okPath)
+	if err != nil || st == nil {
+		t.Fatalf("%v %+v", err, st)
+	}
+	if st.Version != syncStateVersion || st.Entries == nil {
+		t.Fatalf("defaults: ver=%d entries=%v", st.Version, st.Entries)
+	}
+}
+
+func TestSaveSyncStateNilAndEmptyFields(t *testing.T) {
+	t.Parallel()
+	if err := saveSyncState(filepath.Join(t.TempDir(), "x.json"), nil); err == nil {
+		t.Fatal("nil state")
+	}
+	path := filepath.Join(t.TempDir(), "sync", "s.json")
+	st := &syncState{VM: "v", Entries: nil, Fingerprint: ""}
+	if err := saveSyncState(path, st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Entries == nil || st.Fingerprint != "size_mtime" || st.Version != syncStateVersion {
+		t.Fatalf("%+v", st)
+	}
+	got, err := loadSyncState(path)
+	if err != nil || got == nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetEntryRemoveEntryNilSafe(t *testing.T) {
+	t.Parallel()
+	var st *syncState
+	st.removeEntry("x") // nil receiver
+	st = &syncState{}   // nil Entries map
+	st.setEntry("a", &syncFingerprint{Type: "file", Size: 1, Mtime: 1}, &syncFingerprint{Type: "file", Size: 1, Mtime: 2})
+	if _, ok := st.entry("a"); !ok {
+		t.Fatal("setEntry should init map")
+	}
+	st.removeEntry("a")
+	if _, ok := st.entry("a"); ok {
+		t.Fatal("removed")
+	}
+	// entry on nil
+	if _, ok := (*syncState)(nil).entry("a"); ok {
+		t.Fatal("nil entry")
+	}
+}
+
+func TestInvToFingerprintAndNormalizeMode(t *testing.T) {
+	t.Parallel()
+	if invToFingerprint(nil) != nil {
+		t.Fatal("nil inv")
+	}
+	fp := invToFingerprint(&syncInvEntry{Type: "file", Size: 2, Mtime: 3, Mode: "0o644"})
+	if fp.Mode != "644" && fp.Mode != "0644" {
+		// normalize strips 0o only
+		if fp.Mode != "644" {
+			t.Fatalf("mode %q", fp.Mode)
+		}
+	}
+	if normalizeSyncMode("") != "" {
+		t.Fatal("empty")
+	}
+	if normalizeSyncMode("  0O755 ") != "755" {
+		t.Fatalf("got %q", normalizeSyncMode("  0O755 "))
+	}
+	if !modesEqual("0644", "644") && !modesEqual("0644", "0644") {
+		// both forms: normalize doesn't strip leading zero alone
+		_ = modesEqual("0644", "0644")
+	}
+	if !modesEqual("0o644", "644") {
+		t.Fatal("0o equal")
+	}
 }

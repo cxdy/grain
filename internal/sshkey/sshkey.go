@@ -5,10 +5,20 @@ import (
 	"crypto/rand"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
 	"golang.org/x/crypto/ssh"
+)
+
+// Test hooks (package-level) so unit tests can exercise rare crypto / IO failures.
+var (
+	generateKey       = ed25519.GenerateKey
+	marshalPrivateKey = ssh.MarshalPrivateKey
+	newPublicKey      = ssh.NewPublicKey
+	writeFile         = os.WriteFile
+	randReader        io.Reader = rand.Reader
 )
 
 // Ensure generates an ed25519 keypair under dataDir/ssh if missing.
@@ -29,25 +39,25 @@ func Ensure(dataDir string) (privPath, pubLine string, err error) {
 		return privPath, bytesTrim(b), nil
 	}
 
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	_, priv, err := generateKey(randReader)
 	if err != nil {
 		return "", "", err
 	}
 	// OpenSSH private key format
-	block, err := ssh.MarshalPrivateKey(priv, "")
+	block, err := marshalPrivateKey(priv, "")
 	if err != nil {
 		// fallback: put raw PKCS8-ish via ssh
 		return "", "", fmt.Errorf("marshal private key: %w", err)
 	}
-	if err := os.WriteFile(privPath, pem.EncodeToMemory(block), 0o600); err != nil {
+	if err := writeFile(privPath, pem.EncodeToMemory(block), 0o600); err != nil {
 		return "", "", err
 	}
-	pub, err := ssh.NewPublicKey(priv.Public())
+	pub, err := newPublicKey(priv.Public())
 	if err != nil {
 		return "", "", err
 	}
 	line := string(ssh.MarshalAuthorizedKey(pub))
-	if err := os.WriteFile(pubPath, []byte(line), 0o644); err != nil {
+	if err := writeFile(pubPath, []byte(line), 0o644); err != nil {
 		return "", "", err
 	}
 	return privPath, bytesTrim([]byte(line)), nil

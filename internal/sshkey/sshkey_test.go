@@ -1,18 +1,23 @@
-package sshkey_test
+package sshkey
 
 import (
+	"crypto"
+	"crypto/ed25519"
+	"encoding/pem"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/cxdy/grain/internal/sshkey"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestEnsureIdempotent(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	p1, pub1, err := sshkey.Ensure(dir)
+	p1, pub1, err := Ensure(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +27,7 @@ func TestEnsureIdempotent(t *testing.T) {
 	if _, err := os.Stat(p1); err != nil {
 		t.Fatal(err)
 	}
-	p2, pub2, err := sshkey.Ensure(dir)
+	p2, pub2, err := Ensure(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +46,7 @@ func TestEnsureMissingPubError(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sshDir, "id_grain"), []byte("fake-priv"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := sshkey.Ensure(dir); err == nil {
+	if _, _, err := Ensure(dir); err == nil {
 		t.Fatal("expected error when .pub missing")
 	}
 }
@@ -49,7 +54,7 @@ func TestEnsureMissingPubError(t *testing.T) {
 func TestEnsureFreshAndTrim(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	priv, pub, err := sshkey.Ensure(dir)
+	priv, pub, err := Ensure(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +79,7 @@ func TestEnsureFreshAndTrim(t *testing.T) {
 func TestEnsureNestedDataDir(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "a", "b", "c")
-	_, pub, err := sshkey.Ensure(dir)
+	_, pub, err := Ensure(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +96,7 @@ func TestEnsureMkdirFails(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := sshkey.Ensure(file); err == nil {
+	if _, _, err := Ensure(file); err == nil {
 		t.Fatal("expected mkdir error")
 	}
 }
@@ -110,7 +115,96 @@ func TestEnsureWritePrivFails(t *testing.T) {
 		_ = os.Remove(filepath.Join(sshDir, "probe"))
 		t.Skip("filesystem allows write despite 0555")
 	}
-	if _, _, err := sshkey.Ensure(dir); err == nil {
+	if _, _, err := Ensure(dir); err == nil {
 		t.Fatal("expected write error")
+	}
+}
+
+func TestEnsureReuseAfterGenerate(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	priv1, pub1, err := Ensure(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// pub has trailing newline in file; Ensure trims
+	raw, err := os.ReadFile(priv1 + ".pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(raw), "\n") {
+		// still ok if no newline
+		t.Logf("pub file: %q", raw)
+	}
+	priv2, pub2, err := Ensure(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if priv1 != priv2 || pub1 != pub2 {
+		t.Fatalf("reuse mismatch %q %q vs %q %q", priv1, pub1, priv2, pub2)
+	}
+	// missing pub while priv exists
+	if err := os.Remove(priv1 + ".pub"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Ensure(dir); err == nil {
+		t.Fatal("expected missing pub error")
+	}
+}
+
+func TestEnsureGenerateKeyFails(t *testing.T) {
+	old := generateKey
+	generateKey = func(io.Reader) (ed25519.PublicKey, ed25519.PrivateKey, error) {
+		return nil, nil, errors.New("rng fail")
+	}
+	t.Cleanup(func() { generateKey = old })
+	if _, _, err := Ensure(t.TempDir()); err == nil {
+		t.Fatal("expected generate error")
+	}
+}
+
+func TestEnsureMarshalFails(t *testing.T) {
+	old := marshalPrivateKey
+	marshalPrivateKey = func(crypto.PrivateKey, string) (*pem.Block, error) {
+		return nil, errors.New("marshal fail")
+	}
+	t.Cleanup(func() { marshalPrivateKey = old })
+	if _, _, err := Ensure(t.TempDir()); err == nil || !strings.Contains(err.Error(), "marshal private key") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestEnsureNewPublicKeyFails(t *testing.T) {
+	old := newPublicKey
+	newPublicKey = func(interface{}) (ssh.PublicKey, error) {
+		return nil, errors.New("pub fail")
+	}
+	t.Cleanup(func() { newPublicKey = old })
+	if _, _, err := Ensure(t.TempDir()); err == nil {
+		t.Fatal("expected NewPublicKey error")
+	}
+}
+
+func TestEnsureWritePubFails(t *testing.T) {
+	old := writeFile
+	writeFile = func(name string, data []byte, perm os.FileMode) error {
+		if strings.HasSuffix(name, ".pub") {
+			return errors.New("pub write fail")
+		}
+		return os.WriteFile(name, data, perm)
+	}
+	t.Cleanup(func() { writeFile = old })
+	if _, _, err := Ensure(t.TempDir()); err == nil {
+		t.Fatal("expected pub write error")
+	}
+}
+
+func TestBytesTrimCRLF(t *testing.T) {
+	t.Parallel()
+	if got := bytesTrim([]byte("hi\r\n")); got != "hi" {
+		t.Fatalf("%q", got)
+	}
+	if got := bytesTrim([]byte("ok")); got != "ok" {
+		t.Fatalf("%q", got)
 	}
 }

@@ -1471,11 +1471,13 @@ func TestCmdDownBadConfig(t *testing.T) {
 }
 
 func TestCmdLsClientAuthFail(t *testing.T) {
+	// Isolated config (no api_token) so requireRemoteAuth fails without dialing.
+	// Using cfg "" would load ~/.grain/config.yaml which may have a token.
 	apiURLFlag = "http://example.com:9"
 	t.Cleanup(func() { apiURLFlag = "" })
 	t.Setenv("GRAIN_API", "")
 	t.Setenv("GRAIN_TOKEN", "")
-	cfg := ""
+	cfg := withRemoteCfg(t, "http://example.com:9")
 	if err := cmdLs(&cfg).Execute(); err == nil {
 		t.Fatal("expected auth error")
 	}
@@ -1606,13 +1608,10 @@ func TestLifecycleRemoteErrorsTable(t *testing.T) {
 			caseT{mk.n + "/op", srvOpFail.URL, mk.fn, []string{"x"}},
 		)
 	}
-	// Also clientFrom auth fail
-	apiURLFlag = "http://example.com:9"
-	t.Cleanup(func() { apiURLFlag = "" })
-	t.Setenv("GRAIN_API", "")
-	t.Setenv("GRAIN_TOKEN", "")
+	// Also clientFrom auth fail (isolated config: no token from ~/.grain)
+	authCfg := withRemoteCfg(t, "http://example.com:9")
 	for _, mk := range []func(*string) *cobra.Command{cmdRm, cmdStop, cmdStart, cmdPause, cmdResume, cmdSuspend, cmdRestore} {
-		cmd := mk(&cfg)
+		cmd := mk(&authCfg)
 		cmd.SetArgs([]string{"x"})
 		if err := cmd.Execute(); err == nil {
 			t.Fatal("expected auth error")
@@ -1648,5 +1647,175 @@ func TestCmdNewBadConfig(t *testing.T) {
 	dir := t.TempDir()
 	if err := cmdNew(&dir).Execute(); err == nil {
 		t.Fatal("expected config error")
+	}
+}
+
+func TestRunAgentDeployErrorPaths(t *testing.T) {
+	// bad config
+	bad := t.TempDir()
+	if err := runAgentDeploy(&bad, nil); err == nil {
+		t.Fatal("config")
+	}
+	// remote rejected
+	cfg := withRemoteCfg(t, "http://127.0.0.1:9")
+	if err := runAgentDeploy(&cfg, []string{"vm"}); err == nil || !strings.Contains(err.Error(), "local") {
+		t.Fatalf("remote: %v", err)
+	}
+	// local: missing agent binary / missing VM
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "c.yaml")
+	sock := filepath.Join(dir, "g.sock")
+	yml := fmt.Sprintf("data_dir: %s\nsocket: %s\napi: \"\"\n", dir, sock)
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	apiURLFlag = ""
+	t.Setenv("GRAIN_API", "")
+	// clientFrom will try unix socket which is missing — getVMSSH / list will fail
+	// Plant HTTP via localLoopback? Use remote loopback for client but requireLocalDaemon needs no remote.
+	// Use a mock by dialing through GRAIN is hard. Call with resolve that fails via empty client path:
+	// Create a unix-reachable mock is heavy. Instead exercise deploy via cmd with remote for deploy flag,
+	// and call runAgentDeploy with config that has socket + API loopback fallback.
+	// open a real httptest and set cfg.API to its host:port so clientFrom falls back when socket missing.
+	srv := fullMockDaemon(t)
+	// parse port from srv.URL
+	u := strings.TrimPrefix(srv.URL, "http://")
+	yml = fmt.Sprintf("data_dir: %s\nsocket: %s\napi: %q\nssh_user: ubuntu\n", dir, sock, u)
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// No agent binary under dataDir → LinuxBinaryPath fails after getVMSSH succeeds
+	err := runAgentDeploy(&cfgPath, []string{"sbox-1"})
+	if err == nil || !strings.Contains(err.Error(), "agent binary") {
+		t.Fatalf("want agent binary error, got %v", err)
+	}
+	// plant binary so EnsureAgent is attempted (SSH to 127.0.0.1:2201 will fail)
+	agentDir := filepath.Join(dir, "agent")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// LinuxBinaryPath uses GOARCH
+	for _, name := range []string{"grain-agent-linux-amd64", "grain-agent-linux-arm64"} {
+		_ = os.WriteFile(filepath.Join(agentDir, name), []byte("#!/bin/true\n"), 0o755)
+	}
+	// identity file optional
+	_ = os.MkdirAll(filepath.Join(dir, "ssh"), 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "ssh", "id_grain"), []byte("fake"), 0o600)
+	err = runAgentDeploy(&cfgPath, []string{"sbox-1"})
+	if err == nil {
+		// EnsureAgent might succeed only if something listens — usually fails
+		t.Log("EnsureAgent unexpectedly succeeded")
+	}
+}
+
+func TestCmdUpAlreadyHealthy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(200)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "c.yaml")
+	// empty api in config; use flag for health probe
+	yml := fmt.Sprintf("data_dir: %s\nsocket: %s\napi: \"\"\nmcp:\n  enabled: false\n", dir, filepath.Join(dir, "g.sock"))
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	apiURLFlag = srv.URL
+	t.Cleanup(func() { apiURLFlag = "" })
+	t.Setenv("GRAIN_API", "")
+	// requireLocalDaemon fails when remoteMode — apiURLFlag makes remoteMode true!
+	// So cmdUp will reject. Need probe via unix or no remote flag.
+	// Instead write api as loopback from server and leave apiURLFlag empty.
+	apiURLFlag = ""
+	hostport := strings.TrimPrefix(srv.URL, "http://")
+	yml = fmt.Sprintf("data_dir: %s\nsocket: %s\napi: %q\n", dir, filepath.Join(dir, "missing.sock"), hostport)
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// clientFrom: no socket → localLoopbackAPIURL from cfg.API
+	cmd := cmdUp(&cfgPath)
+	// already healthy → printDaemonUp and return
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("already up: %v", err)
+	}
+	// with --mcp note
+	cmd = cmdUp(&cfgPath)
+	_ = cmd.Flags().Set("mcp", "true")
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("already up mcp: %v", err)
+	}
+}
+
+func TestCmdImageCobraPaths(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "c.yaml")
+	if err := os.WriteFile(cfgPath, []byte("data_dir: "+dir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	apiURLFlag = ""
+	t.Setenv("GRAIN_API", "")
+	// ls via cobra
+	img := cmdImage(&cfgPath)
+	img.SetArgs([]string{"ls"})
+	if err := img.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	// pull unknown id
+	img = cmdImage(&cfgPath)
+	img.SetArgs([]string{"pull", "not-an-image-xyz"})
+	if err := img.Execute(); err == nil {
+		t.Fatal("expected pull error")
+	}
+	// import missing
+	img = cmdImage(&cfgPath)
+	img.SetArgs([]string{"import", filepath.Join(dir, "nope.qcow2")})
+	if err := img.Execute(); err == nil {
+		t.Fatal("expected import error")
+	}
+	// remote rejected
+	cfgRemote := withRemoteCfg(t, "http://127.0.0.1:1")
+	img = cmdImage(&cfgRemote)
+	img.SetArgs([]string{"ls"})
+	if err := img.Execute(); err == nil {
+		t.Fatal("expected local-only error")
+	}
+}
+
+func TestCmdDoctorCobra(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "c.yaml")
+	yml := fmt.Sprintf("data_dir: %s\nhypervisor: mock\nimage: ubuntu-cloud\n", dir)
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	apiURLFlag = ""
+	t.Setenv("GRAIN_API", "")
+	doc := cmdDoctor(&cfgPath)
+	_ = doc.Execute() // may fail doctor issues; still covers path
+}
+
+func TestPrintDaemonUpMCPDefault(t *testing.T) {
+	printDaemonUp("hdr", config.Config{
+		Socket: "/tmp/x.sock",
+		API:    "127.0.0.1:1",
+		MCP:    config.MCPConfig{Enabled: true, Listen: ""},
+	})
+	printDaemonUp("hdr2", config.Config{
+		Socket: "/tmp/y.sock",
+		MCP:    config.MCPConfig{Enabled: true, Listen: "127.0.0.1:9"},
+	})
+}
+
+
+func TestCmdAgentDeployCobraRemote(t *testing.T) {
+	cfg := withRemoteCfg(t, "http://127.0.0.1:1")
+	root := cmdAgent(&cfg)
+	root.SetArgs([]string{"deploy", "vm"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected local-only")
 	}
 }

@@ -289,10 +289,17 @@ func checkDevKVM() error {
 	return nil
 }
 
+// cpuinfoPath is read by kvmNestedVirtHint. Overridable in tests.
+var cpuinfoPath = "/proc/cpuinfo"
+
 // kvmNestedVirtHint returns a soft advisory when CPU flags look incompatible
 // with nested KVM (empty string = no note). Linux-only; reads /proc/cpuinfo.
 func kvmNestedVirtHint() string {
-	b, err := os.ReadFile("/proc/cpuinfo")
+	path := cpuinfoPath
+	if path == "" {
+		path = "/proc/cpuinfo"
+	}
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}

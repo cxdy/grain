@@ -60,7 +60,12 @@ const grainUbuntuReleaseBase = "https://github.com/cxdy/grain/releases/download/
 
 // Catalog of built-in images. Prefer cloud images with cloud-init.
 func Catalog() map[string]Spec {
-	arch := runtime.GOARCH
+	return catalogFor(runtime.GOARCH)
+}
+
+// catalogFor builds the image catalog for arch (amd64/arm64/…). Extracted so
+// tests can exercise both arch branches without GOARCH tricks.
+func catalogFor(arch string) map[string]Spec {
 	c := map[string]Spec{}
 
 	// Ubuntu 24.04 minimal cloud — cloud-init, works with UEFI+QEMU.

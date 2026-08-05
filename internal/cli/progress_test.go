@@ -169,3 +169,94 @@ func TestIsTerminal(t *testing.T) {
 		t.Fatal("regular file should not be a terminal")
 	}
 }
+
+func TestTransferProgressNilReceivers(t *testing.T) {
+	var p *transferProgress
+	p.SetDetail("x")
+	p.SetBytes(1, 2)
+	p.AddBytes(3)
+	p.Finish("done")
+}
+
+func TestTransferProgressLineAndBytes(t *testing.T) {
+	p := newTransferProgress("")
+	t.Cleanup(func() { p.Finish("") })
+	p.SetDetail("put file")
+	p.SetBytes(512, 1024)
+	p.AddBytes(0) // no-op
+	line := p.line()
+	if !strings.Contains(line, "put file") || !strings.Contains(line, "50%") {
+		t.Fatalf("line %q", line)
+	}
+	// over 100% clamps
+	p.SetBytes(2000, 1000)
+	line = p.line()
+	if !strings.Contains(line, "100%") {
+		t.Fatalf("clamp %q", line)
+	}
+	// done only, no total
+	p.SetBytes(100, 0)
+	_ = p.line()
+	// negative formatByteCount
+	if formatByteCount(-1) != "0B" {
+		t.Fatal(formatByteCount(-1))
+	}
+	if formatByteCount(1024*1024) != "1.0MiB" {
+		t.Fatal(formatByteCount(1024 * 1024))
+	}
+}
+
+func TestCreateProgressEventsStageChangeNonTTY(t *testing.T) {
+	// Force non-TTY path by running long enough for tick + stage change.
+	onEvent, stop := createProgressEvents("lab")
+	onEvent(vm.CreateEvent{Phase: vm.PhaseImage})
+	onEvent(vm.CreateEvent{Phase: vm.PhaseBootstrap, Message: "custom-boot"})
+	onEvent(vm.CreateEvent{Phase: vm.PhaseWaitSSH, Message: "waiting for ssh (agent deploy)"})
+	// phaseLabel bootstrap with message, userdata, error already covered elsewhere
+	time.Sleep(600 * time.Millisecond) // non-TTY interval 400ms so at least one tick prints
+	stop()
+}
+
+func TestHostTreeSizeMissingAndSymlink(t *testing.T) {
+	t.Parallel()
+	if _, err := hostTreeSize(filepath.Join(t.TempDir(), "nope")); err == nil {
+		t.Fatal("expected missing")
+	}
+	dir := t.TempDir()
+	// symlink (non-regular) → 0 size for file path
+	target := filepath.Join(dir, "t")
+	if err := os.WriteFile(target, []byte("xx"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "l")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	n, err := hostTreeSize(link)
+	if err != nil || n != 0 {
+		t.Fatalf("symlink size=%d err=%v", n, err)
+	}
+}
+
+func TestCountingReaderWriterNilCallbacks(t *testing.T) {
+	t.Parallel()
+	r := &countingReader{r: strings.NewReader("ab"), onRead: nil}
+	buf := make([]byte, 4)
+	if n, err := r.Read(buf); err != nil || n != 2 {
+		t.Fatalf("%d %v", n, err)
+	}
+	w := &countingWriter{w: &strings.Builder{}, onWrite: nil}
+	if n, err := w.Write([]byte("z")); err != nil || n != 1 {
+		t.Fatalf("%d %v", n, err)
+	}
+}
+
+func TestPhaseLabelBootstrapAndEmpty(t *testing.T) {
+	t.Parallel()
+	if got := phaseLabel(vm.PhaseBootstrap, "installing"); got != "installing" {
+		t.Fatalf("%q", got)
+	}
+	if got := phaseLabel(vm.PhaseBootstrap, ""); got != "waiting bootstrap" {
+		t.Fatalf("%q", got)
+	}
+}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/api"
+	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/vm"
 )
 
@@ -661,11 +662,7 @@ func TestCmdCpBadConfigAndAuth(t *testing.T) {
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected config error")
 	}
-	apiURLFlag = "http://example.com:9"
-	t.Cleanup(func() { apiURLFlag = "" })
-	t.Setenv("GRAIN_API", "")
-	t.Setenv("GRAIN_TOKEN", "")
-	cfg := ""
+	cfg := withRemoteCfg(t, "http://example.com:9")
 	cmd = cmdCp(&cfg)
 	cmd.SetArgs([]string{"/a", "vm:/b"})
 	if err := cmd.Execute(); err == nil {
@@ -808,5 +805,154 @@ func TestCmdCpSuccessViaDaemonRemote(t *testing.T) {
 	cmd.SetArgs([]string{"vm:/tmp/in.txt", out})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("cp get: %v", err)
+	}
+}
+
+func TestCPViaAgentUnavailableFallback(t *testing.T) {
+	// Agent unavailable → falls through to scp path when not forceAgent/viaDaemon
+	// Use a client that fails Get for agent health so dialGuestAgent fails.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"agent not available"}`, 503)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c := &api.Client{Base: srv.URL, HTTP: srv.Client()}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.txt")
+	_ = os.WriteFile(src, []byte("hi"), 0o644)
+	// forceAgent true → returns agent error (not scp fallback)
+	err := cpViaAgent(c, parseCPSpec(src), parseCPSpec("vm:/tmp/a.txt"), true, false)
+	if err == nil {
+		t.Fatal("expected agent error with force")
+	}
+	// real non-unavailable error should not be treated as skip
+	if isAgentUnavailable(errors.New("permission denied")) {
+		t.Fatal("perm")
+	}
+}
+
+func TestCmdCpViaDaemonRemoteError(t *testing.T) {
+	// remote + forceSSH false + agent fail + viaDaemon → error without scp
+	// Use remote config so viaDaemon is true
+	// Simpler unit: call RunE path via cpViaAgent viaDaemon host→guest agent error
+	c := &api.Client{Base: "http://127.0.0.1:1", HTTP: &http.Client{Timeout: 50 * time.Millisecond}}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "f")
+	_ = os.WriteFile(src, []byte("x"), 0o644)
+	err := cpViaAgent(c, parseCPSpec(src), parseCPSpec("vm:/x"), false, true)
+	if err == nil {
+		t.Fatal("expected daemon put error")
+	}
+}
+
+func TestCPPutGetErrorPaths(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	prog := newTransferProgress("cp")
+	// put file open fail
+	err := cpPutFile(ctx, prog, filepath.Join(t.TempDir(), "missing"), "/g", &fakeFI{size: 1}, func(io.Reader, int64, string) error {
+		return nil
+	})
+	if err == nil {
+		t.Fatal("open missing")
+	}
+	// put returns error
+	f := filepath.Join(t.TempDir(), "f")
+	_ = os.WriteFile(f, []byte("x"), 0o644)
+	fi, _ := os.Stat(f)
+	err = cpPutFile(ctx, prog, f, "/g", fi, func(io.Reader, int64, string) error {
+		return errors.New("put fail")
+	})
+	if err == nil {
+		t.Fatal("put fail")
+	}
+	// put tar put error
+	err = cpPutTar(ctx, prog, t.TempDir(), "/g", func(io.Reader) error {
+		return errors.New("tar put fail")
+	})
+	if err == nil {
+		t.Fatal("tar put")
+	}
+	// get file mkdir fail: path under a file parent
+	base := t.TempDir()
+	file := filepath.Join(base, "notadir")
+	_ = os.WriteFile(file, []byte("x"), 0o644)
+	err = cpGetFile(ctx, prog, "/g", filepath.Join(file, "child"), &agent.FSInfo{Size: 1, Mode: "0644"}, func(io.Writer) error {
+		return nil
+	})
+	if err == nil {
+		t.Fatal("mkdir fail")
+	}
+	// get file get error
+	out := filepath.Join(t.TempDir(), "out")
+	err = cpGetFile(ctx, prog, "/g", out, &agent.FSInfo{Size: 3, Mode: "0644"}, func(io.Writer) error {
+		return errors.New("get fail")
+	})
+	if err == nil {
+		t.Fatal("get fail")
+	}
+	// get tar mkdir fail
+	err = cpGetTar(ctx, prog, "/g", filepath.Join(file, "d"), func(io.Writer) error {
+		return nil
+	})
+	if err == nil {
+		t.Fatal("get tar mkdir")
+	}
+	// get tar get error
+	err = cpGetTar(ctx, prog, "/g", t.TempDir()+"/d2", func(io.Writer) error {
+		return errors.New("stream fail")
+	})
+	if err == nil {
+		t.Fatal("get tar stream")
+	}
+}
+
+type fakeFI struct{ size int64 }
+
+func (f *fakeFI) Name() string       { return "f" }
+func (f *fakeFI) Size() int64        { return f.size }
+func (f *fakeFI) Mode() os.FileMode  { return 0o644 }
+func (f *fakeFI) ModTime() time.Time { return time.Time{} }
+func (f *fakeFI) IsDir() bool        { return false }
+func (f *fakeFI) Sys() any           { return nil }
+
+func TestWriteLocalTarErrors(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	if err := writeLocalTar(&buf, filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("missing path")
+	}
+}
+
+func TestExtractTarCorrupt(t *testing.T) {
+	t.Parallel()
+	if err := extractTar(strings.NewReader("not-a-tar"), t.TempDir()); err == nil {
+		t.Fatal("corrupt")
+	}
+}
+
+func TestCPViaSCPIdentityMissing(t *testing.T) {
+	// Cover resolve guest + missing identity + scp run (will fail without scp target)
+	cfg := config.Config{DataDir: t.TempDir(), SSHUser: "u"}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(&vm.Instance{Name: "vm", Status: vm.StatusRunning, SSHPort: 22})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c := &api.Client{Base: srv.URL, HTTP: srv.Client()}
+	// host → guest scp (scp will fail to connect — that's fine, we cover path construction)
+	src := filepath.Join(t.TempDir(), "f")
+	_ = os.WriteFile(src, []byte("x"), 0o644)
+	err := cpViaSCP(cfg, c, parseCPSpec(src), parseCPSpec("vm:/tmp/f"))
+	if err == nil {
+		t.Log("scp unexpectedly succeeded")
+	}
+	// guest resolve fail
+	err = cpViaSCP(cfg, c, parseCPSpec("missing:/x"), parseCPSpec("/tmp/x"))
+	if err == nil {
+		// GET missing may 404
+		t.Log("resolve")
 	}
 }

@@ -78,6 +78,124 @@ func TestInventoryGuestBFS(t *testing.T) {
 	}
 }
 
+func TestInventoryHostSymlinkAndIgnoreFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "keep.txt"), []byte("k"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "skip.me"), []byte("s"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("keep.txt", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	// Directory symlink should be recorded and not descended.
+	if err := os.Mkdir(filepath.Join(dir, "realdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "realdir", "inside"), []byte("i"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("realdir", filepath.Join(dir, "dlink")); err != nil {
+		t.Fatal(err)
+	}
+
+	ign, err := buildSyncIgnore(syncIgnoreOpts{NoDefaults: true, ExtraLines: []string{"skip.me"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, err := InventoryHost(dir, ign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv["skip.me"] != nil {
+		t.Fatal("skip.me should be ignored")
+	}
+	if inv["link"] == nil || inv["link"].Type != "symlink" {
+		t.Fatalf("link: %+v", inv["link"])
+	}
+	if inv["dlink"] == nil || inv["dlink"].Type != "symlink" {
+		t.Fatalf("dlink: %+v", inv["dlink"])
+	}
+	// Must not walk through dir symlink.
+	if inv["dlink/inside"] != nil {
+		t.Fatal("should not descend dir symlink")
+	}
+	if inv["realdir/inside"] == nil {
+		t.Fatal("realdir/inside missing")
+	}
+}
+
+func TestInventoryGuestMissingAndNotDir(t *testing.T) {
+	m := newMemGuestFS()
+	ctx := context.Background()
+	inv, err := InventoryGuest(ctx, m, "/missing", nil)
+	if err != nil || len(inv) != 0 {
+		t.Fatalf("missing root: %v %v", inv, err)
+	}
+	_ = m.PutFile(ctx, "/file", stringReader("x"), 1, agentCP("0644"))
+	_, err = InventoryGuest(ctx, m, "/file", nil)
+	if err == nil {
+		t.Fatal("expected not-directory error")
+	}
+}
+
+func TestInventoryGuestIgnoreAndCancel(t *testing.T) {
+	m := newMemGuestFS()
+	ctx := context.Background()
+	_ = m.Mkdir(ctx, "/work", true, "0755")
+	_ = m.Mkdir(ctx, "/work/build", true, "0755")
+	_ = m.PutFile(ctx, "/work/build/out.o", stringReader("o"), 1, agentCP("0644"))
+	_ = m.PutFile(ctx, "/work/skip.me", stringReader("s"), 1, agentCP("0644"))
+	_ = m.PutFile(ctx, "/work/keep.txt", stringReader("k"), 1, agentCP("0644"))
+	// Empty type treated as file.
+	m.files["/work/emptytype"] = []byte("e")
+
+	ign, err := buildSyncIgnore(syncIgnoreOpts{NoDefaults: true, ExtraLines: []string{"build/", "skip.me"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Force empty Type on one ReadDir entry by using mem FS which sets type file — covered by default.
+	inv, err := InventoryGuest(ctx, m, "/work", ign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv["keep.txt"] == nil {
+		t.Fatal("keep missing")
+	}
+	if inv["skip.me"] != nil || inv["build"] != nil || inv["build/out.o"] != nil {
+		t.Fatalf("ignored still present: %v", inv)
+	}
+
+	cctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = InventoryGuest(cctx, m, "/work", nil)
+	if err == nil {
+		t.Fatal("expected cancel")
+	}
+}
+
+func TestInventoryGuestReadDirError(t *testing.T) {
+	fs := &readDirFailFS{memGuestFS: *newMemGuestFS()}
+	_ = fs.Mkdir(context.Background(), "/work", true, "0755")
+	_, err := InventoryGuest(context.Background(), fs, "/work", nil)
+	if err == nil {
+		t.Fatal("expected readdir error")
+	}
+}
+
+type readDirFailFS struct {
+	memGuestFS
+}
+
+func (r *readDirFailFS) ReadDir(ctx context.Context, path string) ([]agent.FSInfo, error) {
+	return nil, os.ErrPermission
+}
+
+func (r *readDirFailFS) Stat(ctx context.Context, path string) (*agent.FSInfo, error) {
+	return r.memGuestFS.Stat(ctx, path)
+}
+
 func TestParseArgsPushPull(t *testing.T) {
 	parse := func(s string) (bool, string, string) {
 		// Mirror parseCPSpec: NAME:path when name has no /

@@ -223,12 +223,8 @@ func TestCmdSecretErrorPaths(t *testing.T) {
 		}
 	}
 
-	// remote auth
-	apiURLFlag = "http://example.com:9"
-	t.Cleanup(func() { apiURLFlag = "" })
-	t.Setenv("GRAIN_API", "")
-	t.Setenv("GRAIN_TOKEN", "")
-	cfg := ""
+	// remote auth (isolated config so ~/.grain api_token cannot satisfy auth)
+	cfg := withRemoteCfg(t, "http://example.com:9")
 	if err := cmdSecretLs(&cfg).Execute(); err == nil {
 		t.Fatal("expected auth error")
 	}
@@ -321,11 +317,7 @@ func TestCmdSecretHealthDown(t *testing.T) {
 }
 
 func TestCmdSecretClientFromAndInjectResolve(t *testing.T) {
-	apiURLFlag = "http://example.com:9"
-	t.Cleanup(func() { apiURLFlag = "" })
-	t.Setenv("GRAIN_API", "")
-	t.Setenv("GRAIN_TOKEN", "")
-	cfg := ""
+	cfg := withRemoteCfg(t, "http://example.com:9")
 	// clientFrom auth fail for set/rm/inject
 	cmd := cmdSecretSet(&cfg)
 	cmd.SetArgs([]string{"n", "--value", "v"})

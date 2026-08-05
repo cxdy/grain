@@ -395,3 +395,153 @@ func TestRunEnsureDirsFail(t *testing.T) {
 		t.Fatal("expected EnsureDirs error")
 	}
 }
+
+func shortDaemonDir(t *testing.T) string {
+	t.Helper()
+	// macOS unix socket path length is limited (~104); t.TempDir() can be too long.
+	dir, err := os.MkdirTemp("/tmp", "g-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+func TestRunSeedsRunningGaugeAndMCP(t *testing.T) {
+	dir := shortDaemonDir(t)
+	// Pre-seed a "running" VM so metrics VMsRunning is non-zero at start.
+	vmDir := filepath.Join(dir, "vms", "pre")
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	meta := `{"name":"pre","status":"running","cpus":1,"memory_mb":256}`
+	if err := os.WriteFile(filepath.Join(vmDir, "meta.json"), []byte(meta), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Free port for MCP HTTP
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpAddr := ln.Addr().String()
+	_ = ln.Close()
+
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Socket = filepath.Join(dir, "g.sock")
+	cfg.API = ""
+	cfg.Hypervisor = "mock"
+	cfg.MCP.Enabled = true
+	cfg.MCP.Listen = mcpAddr
+	cfg.LogLevel = "error"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- daemon.Run(ctx, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(cfg.Socket); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if _, err := os.Stat(cfg.Socket); err != nil {
+		cancel()
+		select {
+		case err := <-errCh:
+			t.Fatalf("socket not up: %v", err)
+		default:
+			t.Fatal("socket not up")
+		}
+	}
+	// give MCP goroutine a moment to dial + start (or log dial error)
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout")
+	}
+}
+
+func TestRunPIDWriteWarn(t *testing.T) {
+	// Pre-create grain.pid as a directory so WriteFile fails (covers warn path).
+	dir := shortDaemonDir(t)
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Socket = filepath.Join(dir, "g.sock")
+	cfg.API = ""
+	cfg.Hypervisor = "mock"
+	cfg.LogLevel = "error"
+
+	if err := os.MkdirAll(filepath.Join(dir, "grain.pid"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- daemon.Run(ctx, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(cfg.Socket); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout")
+	}
+}
+
+func TestRemovePIDFileIfOwnedWithLog(t *testing.T) {
+	// Overwrite pid with foreign so removePIDFileIfOwned logs skip on shutdown.
+	dir := shortDaemonDir(t)
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Socket = filepath.Join(dir, "g.sock")
+	cfg.API = ""
+	cfg.Hypervisor = "mock"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	go func() { errCh <- daemon.Run(ctx, cfg, log) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(cfg.Socket); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "grain.pid"), []byte("1\n"), 0o644); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "grain.pid")); err != nil {
+		t.Fatal("foreign pid should remain")
+	}
+}

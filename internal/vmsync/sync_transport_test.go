@@ -159,7 +159,8 @@ func TestAgentSyncFS(t *testing.T) {
 	defer srv.Close()
 
 	ac := &agent.Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	fs := newAgentSyncFS(ac)
+	// Cover exported constructor as well as package constructor.
+	fs := NewAgentFS(ac)
 	ctx := context.Background()
 
 	info, err := fs.Stat(ctx, "/g/x")
@@ -180,5 +181,45 @@ func TestAgentSyncFS(t *testing.T) {
 	b := []byte("new")
 	if err := fs.PutFile(ctx, "/g/y", bytes.NewReader(b), 3, agent.CPOpts{}); err != nil {
 		t.Fatal(err)
+	}
+	if err := fs.Mkdir(ctx, "/g/d", true, "0755"); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := fs.Remove(ctx, "/g/y", false); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+}
+
+func TestNewAPIFSAndReadDir(t *testing.T) {
+	store := map[string][]byte{"/work/a.txt": []byte("z")}
+	meta := map[string]agent.FSInfo{
+		"/work":       {Name: "work", Type: "directory", Mode: "0755"},
+		"/work/a.txt": {Name: "a.txt", Type: "file", Size: 1, Mode: "0644"},
+	}
+	srv := fakeFSServer(t, store, meta)
+	defer srv.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/vms/lab/") {
+			http.Error(w, "wrong vm", http.StatusNotFound)
+			return
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = strings.TrimPrefix(r.URL.Path, "/vms/lab")
+		srv.Config.Handler.ServeHTTP(w, r2)
+	})
+	apiSrv := httptest.NewServer(mux)
+	defer apiSrv.Close()
+
+	c := &api.Client{Base: apiSrv.URL, HTTP: apiSrv.Client()}
+	fs := NewAPIFS(c, "lab")
+	ctx := context.Background()
+	entries, err := fs.ReadDir(ctx, "/work")
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected entries")
 	}
 }
