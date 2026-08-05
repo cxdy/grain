@@ -38,11 +38,17 @@ grain’s local microVM product surface as of the v0.2 line.
 | Guest arch selection (`--arch`, incl. x86_64 on Apple Silicon via QEMU) | Done |
 | Virtio GPU (`--gpu` / `gpu: virtio`) | Done |
 | Shared overlay network between VMs (`network: overlay`) | Done |
-| Firecracker backend | Experimental (Linux) — operator path documented; not production networking |
+| Firecracker backend | **Agent production (vFC-1)** on Linux+KVM; **net/mounts still QEMU-only** (vFC-2 later) |
 
-**Firecracker (experimental):** Linux + KVM only, separate `vmlinux` (`kernel_path`), raw rootfs, agent via Firecracker vsock UDS (no SLIRP/hostfwd; host side is `CONNECT` protocol, not AF_VSOCK). See [Firecracker on Linux](../../guides/firecracker/) for config, doctor checks, and limits vs QEMU.
+**Firecracker support policy**
 
-**Production track is multi-phase** (docs-first; no VMM work in the matrix ticket): **vFC-1** = host agent path over FC vsock UDS, **vFC-2** = net/mounts. Full capability table: [Hypervisor matrix (QEMU vs Firecracker)](../hypervisor-matrix/). Jailer, CNI/TAP production networking, and catalog FC images remain deferred beyond those phases.
+| Tier | What you get |
+|------|----------------|
+| **FC agent production (vFC-1)** | Linux+KVM; pull `fc-kernel` + `grain-ubuntu-fc`; doctor; create `--wait agent`; `grain x` / agent `sh` / cp / sync / MCP guest tools over vsock UDS + `CONNECT` |
+| **Not on FC today (use QEMU)** | SSH hostfwd, `grain new -P` / `grain fwd`, overlay, egress proxy hostfwd, 9p/virtiofs mounts, virtio GPU |
+| **Later (vFC-2)** | Guest networking / mounts parity path |
+
+See [Firecracker on Linux](../../guides/firecracker/) and [Hypervisor matrix](../hypervisor-matrix/). Jailer and multi-host CNI stay deferred; single-tenant only.
 
 **Platforms:** macOS and Linux hosts with hardware virtualization. Native Windows is not a host (use the remote API/SDKs against a supported host). WSL is Linux from grain’s point of view; virt must be available to that environment.
 
