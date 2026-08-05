@@ -459,3 +459,31 @@ esac
 		t.Fatalf("expected -F raw in create args: %s", s)
 	}
 }
+
+func TestCopyDiskFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.qcow2")
+	payload := []byte("fake-qcow2-disk-content")
+	if err := os.WriteFile(src, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(dir, "dst", "disk.qcow2")
+	if err := CopyDiskFile(context.Background(), src, dst, false); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(payload) {
+		t.Fatalf("content mismatch: %q", got)
+	}
+	// refuse overwrite
+	if err := CopyDiskFile(context.Background(), src, dst, false); err == nil {
+		t.Fatal("expected error for existing dest")
+	}
+	if err := CopyDiskFile(context.Background(), "", dst+"2", false); err == nil {
+		t.Fatal("expected empty path error")
+	}
+}

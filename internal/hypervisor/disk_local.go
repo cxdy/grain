@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/cxdy/grain/internal/hostbin"
 	"github.com/cxdy/grain/internal/image"
@@ -119,6 +120,75 @@ func clonefile(src, dst string) error {
 	cmd := exec.Command("cp", "-c", src, dst)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("cp -c: %w (%s)", err, string(out))
+	}
+	return nil
+}
+
+// CopyDiskFile copies a VM root disk (qcow2 overlay or raw) to destPath.
+// Prefer APFS clonefile (cp -c) on macOS, then qemu-img convert when available
+// (independent image; good for overlays that should not share a writable chain),
+// then plain file copy. Does not resize.
+//
+// For qcow2 overlays that should keep their backing file (small, fast), pass
+// preferConvert=false; convert is still used as a fallback only when copy fails
+// is not applicable — callers that want a bit-identical overlay should use
+// preferConvert=false (default for grain clone).
+func CopyDiskFile(ctx context.Context, srcPath, destPath string, preferConvert bool) error {
+	if srcPath == "" || destPath == "" {
+		return fmt.Errorf("copy disk: empty path")
+	}
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return err
+	}
+	// Never overwrite an existing dest in place without caller cleanup.
+	if _, err := os.Stat(destPath); err == nil {
+		return fmt.Errorf("destination disk already exists: %s", destPath)
+	}
+
+	if !preferConvert {
+		if runtime.GOOS == "darwin" {
+			if err := clonefile(srcPath, destPath); err == nil {
+				return nil
+			}
+		}
+		if err := copyFile(srcPath, destPath); err == nil {
+			return nil
+		} else if qemuImg, lookErr := hostbin.LookPath("qemu-img"); lookErr == nil {
+			return qemuImgConvert(ctx, qemuImg, srcPath, destPath)
+		} else {
+			return err
+		}
+	}
+
+	if qemuImg, err := hostbin.LookPath("qemu-img"); err == nil {
+		if err := qemuImgConvert(ctx, qemuImg, srcPath, destPath); err == nil {
+			return nil
+		}
+	}
+	if runtime.GOOS == "darwin" {
+		if err := clonefile(srcPath, destPath); err == nil {
+			return nil
+		}
+	}
+	return copyFile(srcPath, destPath)
+}
+
+func qemuImgConvert(ctx context.Context, qemuImg, src, dest string) error {
+	format := "raw"
+	if strings.HasSuffix(strings.ToLower(src), ".qcow2") || strings.HasSuffix(strings.ToLower(dest), ".qcow2") {
+		format = "qcow2"
+	}
+	// Output format follows dest extension; default qcow2 when dest ends in .qcow2.
+	outFmt := "raw"
+	if strings.HasSuffix(strings.ToLower(dest), ".qcow2") {
+		outFmt = "qcow2"
+	} else if format == "qcow2" {
+		// Keep qcow2 content even if dest name lacks suffix (caller chose name).
+		outFmt = "qcow2"
+	}
+	cmd := exec.CommandContext(ctx, qemuImg, "convert", "-f", format, "-O", outFmt, src, dest)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("qemu-img convert: %w (%s)", err, string(out))
 	}
 	return nil
 }

@@ -2314,3 +2314,143 @@ func TestCreateRejectsBadNetworkAndGPUFromConfig(t *testing.T) {
 		t.Fatal("network")
 	}
 }
+
+func TestClonePersistentStopped(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	ctx := context.Background()
+	src, err := m.Create(ctx, vm.CreateOpts{
+		Name:       "lab",
+		Persistent: true,
+		Forwards:   []vm.PortForward{{HostPort: 0, GuestPort: 8080}},
+		Tags:       map[string]string{"env": "test"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Shutdown(ctx, src.Name); err != nil {
+		t.Fatal(err)
+	}
+	// Ensure source disk content is detectable after clone.
+	if err := os.WriteFile(src.DiskPath, []byte("disk-payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dst, err := m.Clone(ctx, "lab", "lab-copy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dst.Name != "lab-copy" {
+		t.Fatalf("name %s", dst.Name)
+	}
+	if dst.Status != vm.StatusStopped {
+		t.Fatalf("status %s", dst.Status)
+	}
+	if !dst.Persistent {
+		t.Fatal("clone should be persistent")
+	}
+	if dst.SSHPort != 0 || dst.AgentPort != 0 {
+		t.Fatalf("ports should be cleared: ssh=%d agent=%d", dst.SSHPort, dst.AgentPort)
+	}
+	if dst.DiskPath == src.DiskPath {
+		t.Fatal("disk paths should differ")
+	}
+	if !manager.DiskExists(dst.DiskPath) {
+		t.Fatal("dest disk missing")
+	}
+	got, err := os.ReadFile(dst.DiskPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "disk-payload" {
+		t.Fatalf("disk content %q", got)
+	}
+	if len(dst.Forwards) != 1 || dst.Forwards[0].GuestPort != 8080 || dst.Forwards[0].HostPort != 0 {
+		t.Fatalf("forwards %+v", dst.Forwards)
+	}
+	if dst.Tags["env"] != "test" {
+		t.Fatalf("tags %+v", dst.Tags)
+	}
+	// source still present
+	if _, err := m.Get("lab"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCloneRefusesRunningAndEphemeral(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := mockCfg(t)
+	cfg.DataDir = dir
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := hypervisor.NewMockRuntime()
+	disk := hypervisor.NewMockDisk()
+	m := manager.New(cfg, st, rt, disk, nil)
+	ctx := context.Background()
+
+	run, err := m.Create(ctx, vm.CreateOpts{Name: "run", Persistent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Clone(ctx, run.Name, "x"); err == nil || !strings.Contains(err.Error(), "stop") {
+		t.Fatalf("running: %v", err)
+	}
+
+	// Running ephemeral is refused (running or non-persistent).
+	eph, err := m.Create(ctx, vm.CreateOpts{Name: "eph", Persistent: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Clone(ctx, eph.Name, "x"); err == nil {
+		t.Fatal("expected refuse for running ephemeral")
+	}
+
+	// Stopped ephemeral meta: refuse with ephemeral message.
+	diskPath := filepath.Join(st.Dir("eph-stop"), "disk.img")
+	if err := os.MkdirAll(filepath.Dir(diskPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(diskPath, []byte("d"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Put(&vm.Instance{
+		Name: "eph-stop", Status: vm.StatusStopped, Persistent: false, DiskPath: diskPath,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Clone(ctx, "eph-stop", "y"); err == nil || !strings.Contains(err.Error(), "ephemeral") {
+		t.Fatalf("ephemeral: %v", err)
+	}
+}
+
+func TestCloneAutoNameAndConflict(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	ctx := context.Background()
+	src, err := m.Create(ctx, vm.CreateOpts{Name: "base", Persistent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Shutdown(ctx, src.Name); err != nil {
+		t.Fatal(err)
+	}
+	dst, err := m.Clone(ctx, "base", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dst.Name == "" || dst.Name == "base" {
+		t.Fatalf("auto name %q", dst.Name)
+	}
+	if _, err := m.Clone(ctx, "base", dst.Name); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("conflict: %v", err)
+	}
+	if _, err := m.Clone(ctx, "missing", "z"); err == nil {
+		t.Fatal("expected not found")
+	}
+	if _, err := m.Clone(ctx, "", "z"); err == nil {
+		t.Fatal("expected empty source error")
+	}
+}

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -485,4 +486,78 @@ func TestResolveLogsVMName(t *testing.T) {
 func configDataDir(t *testing.T) config.Config {
 	t.Helper()
 	return config.Config{DataDir: t.TempDir(), Socket: filepath.Join(t.TempDir(), "x.sock")}
+}
+
+func TestCmdClone(t *testing.T) {
+	var gotPath, gotBody string
+	srv := mockDaemon(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/clone") {
+			gotPath = r.URL.Path
+			b, _ := io.ReadAll(r.Body)
+			gotBody = string(b)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(&vm.Instance{
+				Name: "lab2", Status: vm.StatusStopped, Persistent: true, Image: "grain-ubuntu",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	})
+	t.Setenv("GRAIN_API", "")
+	t.Setenv("GRAIN_TOKEN", "")
+	cfgPath := filepath.Join(t.TempDir(), "c.yaml")
+	if err := os.WriteFile(cfgPath, []byte("hypervisor: mock\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := Root("test")
+	// Pass --api explicitly: Root flag parse resets package apiURLFlag to default "".
+	root.SetArgs([]string{"--config", cfgPath, "--api", srv.URL, "clone", "lab", "lab2"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/vms/lab/clone" {
+		t.Fatalf("path %s", gotPath)
+	}
+	if !strings.Contains(gotBody, "lab2") {
+		t.Fatalf("body %s", gotBody)
+	}
+}
+
+func TestCmdNewCloneFlag(t *testing.T) {
+	var gotPath string
+	srv := mockDaemon(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/clone") {
+			gotPath = r.URL.Path
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(&vm.Instance{
+				Name: "copy1", Status: vm.StatusStopped, Persistent: true, Image: "img",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	})
+	t.Setenv("GRAIN_API", "")
+	t.Setenv("GRAIN_TOKEN", "")
+	cfgPath := filepath.Join(t.TempDir(), "c.yaml")
+	if err := os.WriteFile(cfgPath, []byte("hypervisor: mock\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := Root("test")
+	root.SetArgs([]string{"--config", cfgPath, "--api", srv.URL, "new", "--clone", "srcvm", "-n", "copy1"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/vms/srcvm/clone" {
+		t.Fatalf("path %s", gotPath)
+	}
 }

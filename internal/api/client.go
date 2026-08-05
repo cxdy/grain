@@ -205,6 +205,39 @@ func (c *Client) Start(ctx context.Context, name string) (*vm.Instance, error) {
 	return &inst, nil
 }
 
+// CloneRequest is the JSON body for POST /vms/{name}/clone.
+type CloneRequest struct {
+	// Name is the destination VM name (empty = daemon auto sbox-N).
+	Name string `json:"name,omitempty"`
+}
+
+// Clone copies a stopped persistent VM disk to a new name (offline clone).
+// Returns the new instance with status=stopped.
+func (c *Client) Clone(ctx context.Context, src string, req CloneRequest) (*vm.Instance, error) {
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+url.PathEscape(src)+"/clone", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	res, err := c.http().Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var inst vm.Instance
+	if err := json.NewDecoder(res.Body).Decode(&inst); err != nil {
+		return nil, err
+	}
+	return &inst, nil
+}
+
 // Shutdown stops a VM (ephemeral is deleted; persistent is left stopped).
 func (c *Client) Shutdown(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/vms/"+name+"/shutdown", nil)
