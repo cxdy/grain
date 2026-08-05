@@ -45,6 +45,8 @@ type syncApplyOpts struct {
 	// StatePath is where to persist after full success when Dirty.
 	// Empty disables disk write (tests).
 	StatePath string
+	// OnProgress reports per-op apply progress (optional).
+	OnProgress func(ProgressEvent)
 }
 
 // syncApplyResult summarizes apply outcomes for the CLI.
@@ -170,6 +172,21 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 		}
 	}
 
+	totalOps := len(deletes) + len(dirCreates) + len(fileOps)
+	opIndex := 0
+	report := func(phase string, it syncPlanItem) {
+		if opts.OnProgress == nil {
+			return
+		}
+		opts.OnProgress(ProgressEvent{
+			Phase:   phase,
+			Index:   opIndex,
+			Total:   totalOps,
+			RelPath: it.RelPath,
+			Action:  string(it.Action),
+		})
+	}
+
 	// 1. Deletes deepest first.
 	sort.Slice(deletes, func(i, j int) bool {
 		return depthKey(deletes[i].RelPath) > depthKey(deletes[j].RelPath)
@@ -179,6 +196,8 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 			res.ExitCode = syncExitApply
 			return res, err
 		}
+		opIndex++
+		report("delete", it)
 		if err := applyDelete(ctx, opts, it); err != nil {
 			res.ExitCode = syncExitApply
 			return res, err
@@ -197,6 +216,8 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 			res.ExitCode = syncExitApply
 			return res, err
 		}
+		opIndex++
+		report("mkdir", it)
 		if err := applyDirCreate(ctx, opts, it); err != nil {
 			res.ExitCode = syncExitApply
 			return res, err
@@ -218,6 +239,15 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 			res.ExitCode = syncExitApply
 			return res, err
 		}
+		opIndex++
+		phase := "put"
+		if opts.Verb == syncPull {
+			phase = "get"
+		}
+		if it.Action == syncActUpdateMode {
+			phase = "chmod"
+		}
+		report(phase, it)
 		if err := applyFileOp(ctx, opts, it); err != nil {
 			res.ExitCode = syncExitApply
 			return res, err

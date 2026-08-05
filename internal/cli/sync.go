@@ -127,6 +127,11 @@ func runSyncCmd(cfgPath *string, verb vmsync.Verb, arg0, arg1 string, f syncFlag
 	}
 
 	apiID := syncAPIIdentity(cfg)
+	label := "sync push"
+	if verb == vmsync.Pull {
+		label = "sync pull"
+	}
+	prog := newTransferProgress(label)
 	res, err := vmsync.Run(ctx, vmsync.Options{
 		Verb:          verb,
 		VM:            vm,
@@ -137,6 +142,7 @@ func runSyncCmd(cfgPath *string, verb vmsync.Verb, arg0, arg1 string, f syncFlag
 		FS:            fs,
 		Out:           os.Stdout,
 		ErrOut:        os.Stderr,
+		OnProgress:    syncProgressHook(prog),
 		Delete:        f.delete,
 		DryRun:        f.dryRun,
 		Force:         f.force,
@@ -149,19 +155,49 @@ func runSyncCmd(cfgPath *string, verb vmsync.Verb, arg0, arg1 string, f syncFlag
 		MaxFileSize:   f.maxFileSize,
 	})
 	if res != nil && res.ExitCode != vmsync.ExitOK {
+		prog.Finish("")
 		if err != nil {
 			return exitCodeError(res.ExitCode).with(err)
 		}
 		return exitCodeError(res.ExitCode)
 	}
 	if err != nil {
+		prog.Finish("")
 		code := vmsync.ExitApply
 		if errors.Is(err, vmsync.ErrConflicts) {
 			code = vmsync.ExitConflict
 		}
 		return exitCodeError(code).with(err)
 	}
+	applied := 0
+	if res != nil {
+		applied = res.Applied
+	}
+	if f.dryRun {
+		prog.Finish(label + ": dry-run complete")
+	} else {
+		prog.Finish(fmt.Sprintf("%s: applied %d change(s)", label, applied))
+	}
 	return nil
+}
+
+func syncProgressHook(prog *transferProgress) func(vmsync.ProgressEvent) {
+	if prog == nil {
+		return nil
+	}
+	return func(ev vmsync.ProgressEvent) {
+		detail := ev.Phase
+		if ev.Total > 0 && ev.Index > 0 {
+			detail = fmt.Sprintf("%s %d/%d", ev.Phase, ev.Index, ev.Total)
+		}
+		if ev.Action != "" && ev.Action != ev.Phase {
+			detail += " " + ev.Action
+		}
+		if ev.RelPath != "" {
+			detail += " " + ev.RelPath
+		}
+		prog.SetDetail(detail)
+	}
 }
 
 // exitWith wraps an error with an exit code.

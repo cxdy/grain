@@ -2,6 +2,8 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +90,64 @@ func TestCreateProgressEvents(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	stop()
 	stop() // idempotent
+}
+
+func TestFormatByteCount(t *testing.T) {
+	t.Parallel()
+	cases := map[int64]string{
+		0:    "0B",
+		512:  "512B",
+		1024: "1.0KiB",
+	}
+	for n, want := range cases {
+		if got := formatByteCount(n); got != want {
+			t.Errorf("formatByteCount(%d)=%q want %q", n, got, want)
+		}
+	}
+}
+
+func TestCountingReaderWriter(t *testing.T) {
+	t.Parallel()
+	var got int
+	r := &countingReader{r: strings.NewReader("hello"), onRead: func(n int) { got += n }}
+	buf := make([]byte, 8)
+	n, err := r.Read(buf)
+	if err != nil || n != 5 || got != 5 {
+		t.Fatalf("read n=%d err=%v got=%d", n, err, got)
+	}
+	var wgot int
+	var out strings.Builder
+	w := &countingWriter{w: &out, onWrite: func(n int) { wgot += n }}
+	n, err = w.Write([]byte("ab"))
+	if err != nil || n != 2 || wgot != 2 || out.String() != "ab" {
+		t.Fatalf("write n=%d err=%v wgot=%d out=%q", n, err, wgot, out.String())
+	}
+}
+
+func TestTransferProgressFinish(t *testing.T) {
+	p := newTransferProgress("cp")
+	p.SetDetail("put file")
+	p.SetBytes(10, 100)
+	p.AddBytes(5)
+	p.Finish("cp: done")
+	// second Finish is a no-op
+	p.Finish("again")
+}
+
+func TestHostTreeSize(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a"), []byte("12345"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	n, err := hostTreeSize(dir)
+	if err != nil || n != 5 {
+		t.Fatalf("size=%d err=%v", n, err)
+	}
+	n, err = hostTreeSize(filepath.Join(dir, "a"))
+	if err != nil || n != 5 {
+		t.Fatalf("file size=%d err=%v", n, err)
+	}
 }
 
 func TestCreateProgressEventsDefaultLabel(t *testing.T) {
