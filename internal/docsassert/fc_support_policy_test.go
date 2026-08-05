@@ -90,12 +90,9 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 	if !strings.Contains(matrix, "SSH + hostfwd") {
 		t.Error("matrix missing SSH+hostfwd row")
 	}
-	// Agent path done language
-	if !strings.Contains(matrix, "vFC-1 agent (done)") && !strings.Contains(matrix, "vFC-1 agent (done)") {
-		// allow either "done" marker in agent row
-		if !strings.Contains(matrix, "vFC-1 agent") {
-			t.Error("matrix missing vFC-1 agent status")
-		}
+	// Agent path done language (matrix table cell)
+	if !strings.Contains(matrix, "vFC-1 agent") {
+		t.Error("matrix missing vFC-1 agent status")
 	}
 }
 
