@@ -17,11 +17,13 @@ Default path: `~/.grain/config.yaml`. Override with `grain --config path …`.
 ```yaml
 data_dir: ~/.grain           # created 0700 (owner-only); see SECURITY.md
 socket: ~/.grain/grain.sock
-api: 127.0.0.1:7474          # daemon TCP listen (empty = unix only)
-api_url: ""                  # CLI-only: remote daemon base URL (or env GRAIN_API / --api)
+api: 127.0.0.1:7474          # daemon TCP listen (empty = unix only); cleartext HTTP
+api_url: ""                  # CLI-only: remote base URL (http:// or https://; env GRAIN_API / --api)
 api_token: ""                # or auth_token — Bearer when set; required for non-loopback api bind
 # env GRAIN_TOKEN also accepted by CLI
-# Remote team host: prefer api: 127.0.0.1:7474 + token + SSH tunnel; see guides/remote-host
+# Remote team host: prefer api: 127.0.0.1:7474 + token + SSH tunnel (or TLS reverse proxy);
+#   cleartext non-loopback http:// sniffs Bearer — CLI warns unless GRAIN_INSECURE_HTTP=1
+# see guides/remote-lab and guides/remote-host
 cpus: 2
 memory_mb: 2048
 disk_gb: 8
@@ -54,11 +56,12 @@ Use `grain update --check` anytime; `grain update` installs the latest release v
 
 | Field / env | Who uses it | Meaning |
 |-------------|-------------|---------|
-| `api` | **Daemon** | TCP **listen** address (`127.0.0.1:7474`, `0.0.0.0:7474`, …) |
-| `api_url` / `GRAIN_API` / `--api` | **CLI client** | Base URL to dial (`http://host:7474`) |
-| `api_token` / `GRAIN_TOKEN` | Both | Shared Bearer secret |
+| `api` | **Daemon** | TCP **listen** address (`127.0.0.1:7474`, `0.0.0.0:7474`, …); cleartext HTTP |
+| `api_url` / `GRAIN_API` / `--api` | **CLI client** | Base URL to dial (`http://127.0.0.1:7474` via tunnel, or `https://…` behind TLS proxy) |
+| `api_token` / `GRAIN_TOKEN` | Both | Shared Bearer secret (sniffable on cleartext HTTP) |
+| `GRAIN_INSECURE_HTTP=1` | **CLI client** | Silence one-time warning for non-loopback `http://` |
 
-Non-loopback `api` without `api_token` → daemon **refuses to start**. Non-loopback `api_url` without a token → CLI errors.
+Non-loopback `api` without `api_token` → daemon **refuses to start**. Non-loopback `api_url` without a token → CLI errors. Prefer loopback + tunnel or HTTPS terminator for remote LAN use.
 
 ## Images & mounts
 

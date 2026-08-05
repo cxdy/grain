@@ -103,6 +103,7 @@ Shows the built-in SSH row plus any `--publish` entries.
 - No bridged/TAP networking and no guest-visible LAN IP on the host interface.
 - No inbound connections from other machines on your network (loopback hostfwd only).
 - Guest outbound internet works through SLIRP (typical QEMU user-net behavior).
+- No guest↔guest connectivity between VMs (each SLIRP net is private). For a shared L2 lab fabric, see [Overlay network](../networking-overlay/) — and read its **security note** (peers can reach each other’s unauthenticated guest agent).
 
 ## Egress proxy (optional)
 
@@ -113,6 +114,8 @@ secret injection. Details: [Egress proxy](../proxy/).
 
 ## Related
 
+- [Overlay network](../networking-overlay/) — guest↔guest L2 (isolation tradeoffs)
 - [Mounts](../mounts/) — share host directories into the guest
 - [Egress proxy](../proxy/) — allowlist + secret injection
+- [Security model](../../explain/security/) — agent trust, hostfwd loopback, remote API
 - [Troubleshooting](../troubleshooting/) — SSH wait, serial logs, resource caps

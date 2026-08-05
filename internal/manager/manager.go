@@ -49,6 +49,11 @@ type Manager struct {
 	// creates cannot both pass the store check (TOCTOU).
 	createMu sync.Mutex
 	creating map[string]struct{}
+
+  // overlayWarnOnce emits a single multi-tenant isolation warning per Manager
+	// when any VM is created with network: overlay.
+	overlayWarnOnce sync.Once
+
 }
 
 func New(cfg config.Config, st *store.Store, rt hypervisor.Runtime, disk hypervisor.Disk, log *slog.Logger) *Manager {
@@ -204,6 +209,13 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	network = strings.ToLower(network)
 	if network != "slirp" && network != "overlay" {
 		return nil, fmt.Errorf("unsupported network %q (want slirp or overlay)", network)
+	}
+	if network == "overlay" {
+		// Guest agent on :7475 is unauthenticated; overlay peers share L2 and can dial it.
+		m.overlayWarnOnce.Do(func() {
+			m.log.Warn("network overlay: VMs share an L2 segment; guest agent on :7475 is unauthenticated — peers can control each other; use only among mutually trusted guests",
+				"network", "overlay")
+		})
 	}
 
 	inst := &vm.Instance{
