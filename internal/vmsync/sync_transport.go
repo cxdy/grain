@@ -17,6 +17,8 @@ type FS interface {
 	Remove(ctx context.Context, path string, recursive bool) error
 	PutFile(ctx context.Context, path string, r io.Reader, size int64, opts agent.CPOpts) error
 	GetFile(ctx context.Context, path string, w io.Writer) error
+	// Symlink creates/replaces a symbolic link at path pointing to target.
+	Symlink(ctx context.Context, path, target string) error
 }
 
 // syncFS is an alias for FS (legacy name used in apply).
@@ -60,6 +62,10 @@ func (a *agentSyncFS) GetFile(ctx context.Context, path string, w io.Writer) err
 	return a.c.GetFile(ctx, path, w)
 }
 
+func (a *agentSyncFS) Symlink(ctx context.Context, path, target string) error {
+	return a.c.Symlink(ctx, path, target)
+}
+
 // apiSyncFS binds vmName into every api.Client call (remoteMode / GRAIN_API).
 type apiSyncFS struct {
 	c      *api.Client
@@ -97,4 +103,8 @@ func (a *apiSyncFS) PutFile(ctx context.Context, path string, r io.Reader, size 
 
 func (a *apiSyncFS) GetFile(ctx context.Context, path string, w io.Writer) error {
 	return a.c.GetFile(ctx, a.vmName, path, w)
+}
+
+func (a *apiSyncFS) Symlink(ctx context.Context, path, target string) error {
+	return a.c.Symlink(ctx, a.vmName, path, target)
 }

@@ -59,15 +59,20 @@ func (a *clientSyncFS) GetFile(ctx context.Context, path string, w io.Writer) er
 	return a.c.GetFile(ctx, a.vmName, path, w)
 }
 
+func (a *clientSyncFS) Symlink(ctx context.Context, path, target string) error {
+	return a.c.Symlink(ctx, a.vmName, path, target)
+}
+
 func clientFSInfoToAgent(info *client.FSInfo) *agent.FSInfo {
 	if info == nil {
 		return nil
 	}
 	return &agent.FSInfo{
-		Name:  info.Name,
-		Type:  info.Type,
-		Size:  info.Size,
-		Mtime: info.Mtime,
-		Mode:  info.Mode,
+		Name:   info.Name,
+		Type:   info.Type,
+		Size:   info.Size,
+		Mtime:  info.Mtime,
+		Mode:   info.Mode,
+		Target: info.Target,
 	}
 }

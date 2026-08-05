@@ -117,10 +117,14 @@ func TestFpContentEqualIgnoresMode(t *testing.T) {
 	if fpContentEqual(a, da) {
 		t.Fatal("type mismatch")
 	}
-	sa := &syncFingerprint{Type: "symlink", Size: 1, Mtime: 1}
-	sb := &syncFingerprint{Type: "symlink", Size: 99, Mtime: 99}
+	sa := &syncFingerprint{Type: "symlink", Target: "a"}
+	sb := &syncFingerprint{Type: "symlink", Target: "a"}
 	if !fpContentEqual(sa, sb) {
-		t.Fatal("symlink type-only")
+		t.Fatal("symlink same target")
+	}
+	sc := &syncFingerprint{Type: "symlink", Target: "b"}
+	if fpContentEqual(sa, sc) {
+		t.Fatal("symlink different target should differ")
 	}
 }
 

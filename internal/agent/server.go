@@ -64,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /fs/readdir", s.handleFSReaddir)
 	mux.HandleFunc("GET /fs/stat", s.handleFSStat)
 	mux.HandleFunc("POST /fs/mkdir", s.handleFSMkdir)
+	mux.HandleFunc("POST /fs/symlink", s.handleFSSymlink)
 	mux.HandleFunc("DELETE /fs/remove", s.handleFSRemove)
 	mux.HandleFunc("POST /secrets/materialize", s.handleMaterializeSecret)
 	mux.HandleFunc("GET /shell", s.handleShell)
@@ -831,7 +832,7 @@ func (s *Server) handleFSReaddir(w http.ResponseWriter, r *http.Request) {
 		if li, err := os.Lstat(full); err == nil {
 			info = li
 		}
-		out = append(out, fsInfoFrom(e.Name(), info))
+		out = append(out, fsInfoFrom(e.Name(), full, info))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -851,7 +852,7 @@ func (s *Server) handleFSStat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, fsInfoFrom(filepath.Base(path), info))
+	writeJSON(w, http.StatusOK, fsInfoFrom(filepath.Base(path), path, info))
 }
 
 func (s *Server) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
@@ -892,6 +893,33 @@ func (s *Server) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleFSSymlink(w http.ResponseWriter, r *http.Request) {
+	var req SymlinkRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if req.Path == "" {
+		http.Error(w, "path is required", http.StatusBadRequest)
+		return
+	}
+	if req.Target == "" {
+		http.Error(w, "target is required", http.StatusBadRequest)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(req.Path), DefaultDirMode); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Replace existing path (file, dir, or prior link) so sync can update.
+	_ = os.RemoveAll(req.Path)
+	if err := os.Symlink(req.Target, req.Path); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleFSRemove(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	path := q.Get("path")
@@ -917,23 +945,32 @@ func (s *Server) handleFSRemove(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func fsInfoFrom(name string, info os.FileInfo) FSInfo {
+// fsInfoFrom builds FSInfo from Lstat results. fullPath is used to resolve
+// symlink targets via Readlink (empty path skips target lookup).
+func fsInfoFrom(name, fullPath string, info os.FileInfo) FSInfo {
 	mode := info.Mode()
 	var typ string
+	var target string
 	switch {
 	case mode&os.ModeSymlink != 0:
 		typ = "symlink"
+		if fullPath != "" {
+			if t, err := os.Readlink(fullPath); err == nil {
+				target = t
+			}
+		}
 	case mode.IsDir():
 		typ = "directory"
 	default:
 		typ = "file"
 	}
 	return FSInfo{
-		Name:  name,
-		Type:  typ,
-		Size:  info.Size(),
-		Mtime: info.ModTime().Unix(),
-		Mode:  fmt.Sprintf("%04o", mode.Perm()),
+		Name:   name,
+		Type:   typ,
+		Size:   info.Size(),
+		Mtime:  info.ModTime().Unix(),
+		Mode:   fmt.Sprintf("%04o", mode.Perm()),
+		Target: target,
 	}
 }
 

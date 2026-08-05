@@ -978,7 +978,7 @@ func TestFSInfoFromTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info := fsInfoFrom("f", fi)
+	info := fsInfoFrom("f", f, fi)
 	if info.Type != "file" || info.Name != "f" {
 		t.Fatalf("%+v", info)
 	}
@@ -986,7 +986,7 @@ func TestFSInfoFromTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dinfo := fsInfoFrom(filepath.Base(dir), di)
+	dinfo := fsInfoFrom(filepath.Base(dir), dir, di)
 	if dinfo.Type != "directory" {
 		t.Fatalf("%+v", dinfo)
 	}
@@ -998,9 +998,44 @@ func TestFSInfoFromTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	linfo := fsInfoFrom("l", li)
-	if linfo.Type != "symlink" {
+	linfo := fsInfoFrom("l", link, li)
+	if linfo.Type != "symlink" || linfo.Target != "f" {
 		t.Fatalf("%+v", linfo)
+	}
+}
+
+func TestFSSymlinkEndpoint(t *testing.T) {
+	c := startTestServer(t)
+	dir := t.TempDir()
+	ctx := context.Background()
+	link := filepath.Join(dir, "l")
+	if err := c.Symlink(ctx, link, "target.txt"); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+	got, err := os.Readlink(link)
+	if err != nil || got != "target.txt" {
+		t.Fatalf("readlink %q %v", got, err)
+	}
+	st, err := c.Stat(ctx, link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Type != "symlink" || st.Target != "target.txt" {
+		t.Fatalf("stat %+v", st)
+	}
+	// replace existing
+	if err := c.Symlink(ctx, link, "other"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.Readlink(link)
+	if got != "other" {
+		t.Fatalf("replace %q", got)
+	}
+	if err := c.Symlink(ctx, "", "x"); err == nil {
+		t.Fatal("expected empty path error")
+	}
+	if err := c.Symlink(ctx, link, ""); err == nil {
+		t.Fatal("expected empty target error")
 	}
 }
 

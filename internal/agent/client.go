@@ -793,6 +793,39 @@ func (c *Client) Mkdir(ctx context.Context, guestPath string, recursive bool, mo
 	return nil
 }
 
+// Symlink creates a symbolic link at guestPath pointing to target via POST /fs/symlink.
+// Existing paths at guestPath are replaced.
+func (c *Client) Symlink(ctx context.Context, guestPath, target string) error {
+	if guestPath == "" {
+		return fmt.Errorf("path is required")
+	}
+	if target == "" {
+		return fmt.Errorf("target is required")
+	}
+	body, err := json.Marshal(SymlinkRequest{
+		Path:   guestPath,
+		Target: target,
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base()+"/fs/symlink", strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+		return fmt.Errorf("symlink: status %d: %s", res.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
 // Remove deletes guestPath via DELETE /fs/remove. If recursive, uses RemoveAll.
 func (c *Client) Remove(ctx context.Context, guestPath string, recursive bool) error {
 	if guestPath == "" {

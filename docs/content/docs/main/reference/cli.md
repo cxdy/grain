@@ -138,7 +138,7 @@ Remote CLI (`GRAIN_API`) uses the daemon’s agent proxy for `cp` — no scp fro
 
 ### `grain sync push | pull`
 
-Incremental **directory** sync with a host-side baseline under `~/.grain/sync/` (or `data_dir/sync/`). Requires the guest agent (no scp fallback). Directory roots only — use `cp` for single files.
+Incremental **directory** sync with a host-side baseline under `~/.grain/sync/` (or `data_dir/sync/`). Requires the guest agent (no scp fallback). Directory roots only — use `cp` for single files. Regular **symlinks** are transferred as links (target string; not followed); directory symlinks are not descended.
 
 ```bash
 grain sync push  ~/proj  lab:/work/proj

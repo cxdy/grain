@@ -3,6 +3,7 @@ package vmsync
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // syncVerb is push (host→guest) or pull (guest→host).
@@ -29,10 +30,11 @@ const (
 
 // syncInvEntry is one inventoried path on host or guest.
 type syncInvEntry struct {
-	Type  string // file | directory | symlink
-	Size  int64
-	Mtime int64  // unix seconds
-	Mode  string // e.g. "0644"
+	Type   string // file | directory | symlink
+	Size   int64
+	Mtime  int64  // unix seconds
+	Mode   string // e.g. "0644"
+	Target string // symlink target when Type is symlink
 }
 
 // syncClassifyOpts controls classification (flags subset for the planner).
@@ -130,7 +132,7 @@ func tallyPlanItem(plan *syncPlan, item syncPlanItem) {
 	case syncActConflict:
 		plan.Conflicts++
 	}
-	if item.Action == syncActSkip && item.Reason == "symlink" {
+	if item.Action == syncActSkip && (item.Reason == "symlink" || strings.HasPrefix(item.Reason, "symlink:")) {
 		plan.SkippedLink++
 	}
 }
@@ -162,10 +164,10 @@ func classifyPath(
 		return item
 	}
 
-	// Symlinks: skip (K17).
-	if (s != nil && s.Type == "symlink") || (d != nil && d.Type == "symlink") {
+	// Symlink with unreadable/missing target cannot be transferred safely.
+	if s != nil && s.Type == "symlink" && s.Target == "" {
 		item.Action = syncActSkip
-		item.Reason = "symlink"
+		item.Reason = "symlink: empty target"
 		return item
 	}
 
@@ -206,14 +208,22 @@ func classifyColdStart(item syncPlanItem, s, d *syncInvEntry, opts syncClassifyO
 			return item
 		}
 		// Equal types.
-		if s.Type == "directory" || invSizeEqual(s, d) {
+		if s.Type == "directory" || invContentEqual(s, d) {
 			// skip + baseline dirty (no transfer)
 			item.Action = syncActSkip
-			item.Reason = "cold-start: size match"
+			if s.Type == "symlink" {
+				item.Reason = "cold-start: target match"
+			} else {
+				item.Reason = "cold-start: size match"
+			}
 			item.BaselineDirty = true
 		} else {
 			item.Action = syncActUpdate
-			item.Reason = "cold-start: size differ"
+			if s.Type == "symlink" {
+				item.Reason = "cold-start: target differ"
+			} else {
+				item.Reason = "cold-start: size differ"
+			}
 		}
 	default:
 		// both nil — should not appear in union
@@ -228,6 +238,24 @@ func invSizeEqual(a, b *syncInvEntry) bool {
 		return false
 	}
 	return a.Size == b.Size
+}
+
+// invContentEqual reports cold-start content equality (size for files, target for symlinks).
+func invContentEqual(a, b *syncInvEntry) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	if a.Type != b.Type {
+		return false
+	}
+	switch a.Type {
+	case "directory":
+		return true
+	case "symlink":
+		return a.Target == b.Target
+	default:
+		return a.Size == b.Size
+	}
 }
 
 func classifyThreeWay(item syncPlanItem, s, d *syncInvEntry, base syncEntry, opts syncClassifyOpts) syncPlanItem {

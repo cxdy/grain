@@ -97,11 +97,12 @@ type CPOpts struct {
 
 // FSInfo describes a filesystem entry for /fs/readdir and /fs/stat.
 type FSInfo struct {
-	Name  string `json:"name"`
-	Type  string `json:"type"` // file|directory|symlink
-	Size  int64  `json:"size"`
-	Mtime int64  `json:"mtime"` // unix sec
-	Mode  string `json:"mode"`  // octal e.g. "0644"
+	Name   string `json:"name"`
+	Type   string `json:"type"` // file|directory|symlink
+	Size   int64  `json:"size"`
+	Mtime  int64  `json:"mtime"`            // unix sec
+	Mode   string `json:"mode"`             // octal e.g. "0644"
+	Target string `json:"target,omitempty"` // symlink target (not followed)
 }
 
 // MkdirRequest is the JSON body for POST /fs/mkdir.
@@ -109,6 +110,12 @@ type MkdirRequest struct {
 	Path      string `json:"path"`
 	Recursive bool   `json:"recursive"`
 	Mode      string `json:"mode"` // optional octal, default 0755
+}
+
+// SymlinkRequest is the JSON body for POST /fs/symlink.
+type SymlinkRequest struct {
+	Path   string `json:"path"`   // absolute guest path of the link to create
+	Target string `json:"target"` // link target (may be relative; not required to exist)
 }
 
 // Stats is the response body for GET /stats (guest resource basics).

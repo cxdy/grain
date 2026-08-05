@@ -775,6 +775,33 @@ paths:
         "503":
           $ref: "#/components/responses/Error"
 
+  /vms/{name}/fs/symlink:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [agent]
+      summary: Create or replace a symbolic link in the guest
+      operationId: fsSymlink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SymlinkRequest"
+      responses:
+        "204":
+          description: Created
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+
   /vms/{name}/fs/remove:
     parameters:
       - $ref: "#/components/parameters/VMName"
@@ -1063,6 +1090,9 @@ components:
         mode:
           type: string
           example: "0644"
+        target:
+          type: string
+          description: Symlink target when type is symlink
 
     MkdirRequest:
       type: object
@@ -1075,3 +1105,14 @@ components:
         mode:
           type: string
           example: "0755"
+
+    SymlinkRequest:
+      type: object
+      required: [path, target]
+      properties:
+        path:
+          type: string
+          description: Absolute guest path of the link to create
+        target:
+          type: string
+          description: Link target (relative or absolute; not required to exist)

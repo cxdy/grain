@@ -19,24 +19,30 @@ type memGuestFS struct {
 	mu    sync.Mutex
 	files map[string][]byte
 	dirs  map[string]bool
+	links map[string]string // path -> symlink target
 	// failPutPath triggers error on PutFile for that path
 	failPutPath string
 	puts        int
 	gets        int
 	rms         int
 	mkdirs      int
+	symlinks    int
 }
 
 func newMemGuestFS() *memGuestFS {
 	return &memGuestFS{
 		files: map[string][]byte{},
 		dirs:  map[string]bool{"/": true},
+		links: map[string]string{},
 	}
 }
 
 func (m *memGuestFS) Stat(_ context.Context, path string) (*agent.FSInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if t, ok := m.links[path]; ok {
+		return &agent.FSInfo{Name: path, Type: "symlink", Size: int64(len(t)), Mode: "0777", Mtime: 100, Target: t}, nil
+	}
 	if b, ok := m.files[path]; ok {
 		return &agent.FSInfo{Name: path, Type: "file", Size: int64(len(b)), Mode: "0644", Mtime: 100}, nil
 	}
@@ -60,6 +66,16 @@ func (m *memGuestFS) ReadDir(_ context.Context, path string) ([]agent.FSInfo, er
 			continue
 		}
 		out = append(out, agent.FSInfo{Name: rest, Type: "file", Size: int64(len(b)), Mode: "0644"})
+	}
+	for k, t := range m.links {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(k, prefix)
+		if strings.Contains(rest, "/") {
+			continue
+		}
+		out = append(out, agent.FSInfo{Name: rest, Type: "symlink", Size: int64(len(t)), Mode: "0777", Target: t})
 	}
 	for d := range m.dirs {
 		if !strings.HasPrefix(d, prefix) || d == path {
@@ -101,6 +117,7 @@ func (m *memGuestFS) Remove(_ context.Context, path string, recursive bool) erro
 	_ = recursive
 	delete(m.files, path)
 	delete(m.dirs, path)
+	delete(m.links, path)
 	return nil
 }
 
@@ -117,6 +134,7 @@ func (m *memGuestFS) PutFile(_ context.Context, path string, r io.Reader, size i
 	}
 	_ = size
 	_ = opts
+	delete(m.links, path)
 	m.files[path] = b
 	// ensure parent dir
 	m.dirs[filepath.ToSlash(filepath.Dir(path))] = true
@@ -133,6 +151,20 @@ func (m *memGuestFS) GetFile(_ context.Context, path string, w io.Writer) error 
 	}
 	_, err := w.Write(b)
 	return err
+}
+
+func (m *memGuestFS) Symlink(_ context.Context, path, target string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.symlinks++
+	if target == "" {
+		return fmt.Errorf("symlink: empty target")
+	}
+	delete(m.files, path)
+	delete(m.dirs, path)
+	m.links[path] = target
+	m.dirs[filepath.ToSlash(filepath.Dir(path))] = true
+	return nil
 }
 
 func TestSafeRelJoin(t *testing.T) {
@@ -817,7 +849,7 @@ func TestLstatToFingerprintTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fp := lstatToFingerprint(fi)
+	fp := lstatToFingerprint(dir, fi)
 	if fp.Type != "directory" {
 		t.Fatalf("dir type %s", fp.Type)
 	}
@@ -826,7 +858,7 @@ func TestLstatToFingerprintTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	fi, _ = os.Lstat(f)
-	fp = lstatToFingerprint(fi)
+	fp = lstatToFingerprint(f, fi)
 	if fp.Type != "file" || fp.Size != 1 {
 		t.Fatalf("%+v", fp)
 	}
@@ -835,9 +867,9 @@ func TestLstatToFingerprintTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	fi, _ = os.Lstat(link)
-	fp = lstatToFingerprint(fi)
-	if fp.Type != "symlink" {
-		t.Fatalf("symlink type %s", fp.Type)
+	fp = lstatToFingerprint(link, fi)
+	if fp.Type != "symlink" || fp.Target != "f" {
+		t.Fatalf("symlink fp %+v", fp)
 	}
 }
 
@@ -941,5 +973,98 @@ func TestApplyStateSaveError(t *testing.T) {
 	}
 	if res.ExitCode != syncExitApply {
 		t.Fatalf("exit %d", res.ExitCode)
+	}
+}
+
+func TestApplyPushPullSymlink(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// Push host symlink → guest
+	host := t.TempDir()
+	if err := os.WriteFile(filepath.Join(host, "a.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("a.txt", filepath.Join(host, "link")); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	_ = fs.Mkdir(ctx, "/work", true, "0755")
+	st := newSyncState("local", "vm", host, "/work")
+	plan := &syncPlan{Items: []syncPlanItem{
+		{RelPath: "a.txt", Action: syncActCreate, Source: &syncInvEntry{Type: "file", Size: 2, Mode: "0644"}},
+		{RelPath: "link", Action: syncActCreate, Source: &syncInvEntry{Type: "symlink", Target: "a.txt", Mode: "0777"}},
+	}}
+	res, err := applySyncPlan(ctx, plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs, State: st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Applied < 2 {
+		t.Fatalf("applied=%d", res.Applied)
+	}
+	if fs.links["/work/link"] != "a.txt" {
+		t.Fatalf("guest link=%q", fs.links["/work/link"])
+	}
+	if string(fs.files["/work/a.txt"]) != "hi" {
+		t.Fatalf("guest file %q", fs.files["/work/a.txt"])
+	}
+	e, ok := st.entry("link")
+	if !ok || e.Host == nil || e.Host.Target != "a.txt" || e.Guest == nil || e.Guest.Target != "a.txt" {
+		t.Fatalf("baseline link: %+v ok=%v", e, ok)
+	}
+
+	// Pull guest symlink → host
+	host2 := t.TempDir()
+	fs2 := newMemGuestFS()
+	_ = fs2.Mkdir(ctx, "/work", true, "0755")
+	_ = fs2.PutFile(ctx, "/work/b.txt", strings.NewReader("x"), 1, agentCP())
+	_ = fs2.Symlink(ctx, "/work/l2", "b.txt")
+	st2 := newSyncState("local", "vm", host2, "/work")
+	plan2 := &syncPlan{Items: []syncPlanItem{
+		{RelPath: "b.txt", Action: syncActCreate, Source: &syncInvEntry{Type: "file", Size: 1, Mode: "0644"}},
+		{RelPath: "l2", Action: syncActCreate, Source: &syncInvEntry{Type: "symlink", Target: "b.txt"}},
+	}}
+	_, err = applySyncPlan(ctx, plan2, syncApplyOpts{
+		Verb: syncPull, HostRoot: host2, GuestRoot: "/work", FS: fs2, State: st2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.Readlink(filepath.Join(host2, "l2"))
+	if err != nil || got != "b.txt" {
+		t.Fatalf("host link %q err=%v", got, err)
+	}
+}
+
+func TestApplySymlinkUpdateTarget(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	host := t.TempDir()
+	if err := os.Symlink("old", filepath.Join(host, "l")); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(filepath.Join(host, "l"))
+	if err := os.Symlink("new", filepath.Join(host, "l")); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	_ = fs.Mkdir(ctx, "/work", true, "0755")
+	_ = fs.Symlink(ctx, "/work/l", "old")
+	st := newSyncState("local", "vm", host, "/work")
+	plan := &syncPlan{Items: []syncPlanItem{{
+		RelPath: "l", Action: syncActUpdate,
+		Source: &syncInvEntry{Type: "symlink", Target: "new"},
+		Dest:   &syncInvEntry{Type: "symlink", Target: "old"},
+	}}}
+	_, err := applySyncPlan(ctx, plan, syncApplyOpts{
+		Verb: syncPush, HostRoot: host, GuestRoot: "/work", FS: fs, State: st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fs.links["/work/l"] != "new" {
+		t.Fatalf("got %q", fs.links["/work/l"])
 	}
 }

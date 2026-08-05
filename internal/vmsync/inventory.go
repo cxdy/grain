@@ -43,14 +43,18 @@ func InventoryHost(hostRoot string, ign *syncIgnore) (map[string]*syncInvEntry, 
 			}
 			return err
 		}
-		// Do not follow directory symlinks.
+		// Do not follow directory symlinks; record target for content compare.
 		if info.Mode()&os.ModeSymlink != 0 {
-			out[relSlash] = &syncInvEntry{
+			entry := &syncInvEntry{
 				Type:  "symlink",
 				Size:  info.Size(),
 				Mtime: info.ModTime().Unix(),
 				Mode:  formatMode(info.Mode()),
 			}
+			if t, err := os.Readlink(p); err == nil {
+				entry.Target = t
+			}
+			out[relSlash] = entry
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -130,10 +134,11 @@ func InventoryGuest(ctx context.Context, gfs FS, guestRoot string, ign *syncIgno
 			}
 
 			entry := &syncInvEntry{
-				Type:  e.Type,
-				Size:  e.Size,
-				Mtime: e.Mtime,
-				Mode:  e.Mode,
+				Type:   e.Type,
+				Size:   e.Size,
+				Mtime:  e.Mtime,
+				Mode:   e.Mode,
+				Target: e.Target,
 			}
 			if entry.Type == "directory" {
 				entry.Size = 0
