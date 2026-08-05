@@ -1784,11 +1784,12 @@ func (m *Manager) DeployAgent(ctx context.Context, name string) (*AgentDeployRes
 }
 
 // agentTarget builds an agent.Dial target from instance metadata.
+// Firecracker guests use host UDS + CONNECT (see agent.TargetForInstance).
 func agentTarget(inst *vm.Instance) agent.Target {
 	if inst == nil {
 		return agent.Target{}
 	}
-	return agent.Target{CID: inst.AgentCID, Port: inst.AgentPort}
+	return agent.TargetForInstance(inst.AgentCID, inst.AgentPort, inst.DiskPath)
 }
 
 // imageHasAgent reports whether the base image ships grain-agent (catalog or local meta).

@@ -354,6 +354,18 @@ func TestAgentTarget(t *testing.T) {
 	if !tgt.HasEndpoint() {
 		t.Fatal("cid")
 	}
+	// Firecracker pattern: AgentPort=0, AgentCID set, disk path → UDS, no AF_VSOCK.
+	tgt = agentTarget(&vm.Instance{
+		AgentCID:  12,
+		AgentPort: 0,
+		DiskPath:  "/data/vms/fc1/disk.raw",
+	})
+	if tgt.FirecrackerUDS == "" || tgt.CID != 0 {
+		t.Fatalf("fc target: %+v", tgt)
+	}
+	if !strings.HasSuffix(tgt.FirecrackerUDS, "/fc-vsock.sock") {
+		t.Fatalf("uds path: %q", tgt.FirecrackerUDS)
+	}
 }
 
 func TestEmitCreate(t *testing.T) {

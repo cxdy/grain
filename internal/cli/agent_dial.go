@@ -16,11 +16,13 @@ import (
 // errAgentSkip means the agent path was not usable (no port / unhealthy); fall back to SSH.
 var errAgentSkip = fmt.Errorf("agent skip")
 
-// dialGuestAgent builds an agent.Client via agent.Dial (vsock when AgentCID > 0,
-// else TCP hostfwd). When force is false and the agent is unavailable, returns errAgentSkip.
+// dialGuestAgent builds an agent.Client via agent.Dial (Firecracker UDS,
+// AF_VSOCK, or TCP hostfwd). When force is false and the agent is unavailable,
+// returns errAgentSkip.
 //
-// When remote is true, the CLI cannot reach hostfwd ports on the daemon host;
-// callers must use daemon-proxied API paths instead (see execViaDaemonAPI, etc.).
+// When remote is true, the CLI cannot reach hostfwd ports or host UDS on the
+// daemon host; callers must use daemon-proxied API paths instead
+// (see execViaDaemonAPI, etc.).
 func dialGuestAgent(c *api.Client, name string, force bool) (*agent.Client, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -32,7 +34,7 @@ func dialGuestAgent(c *api.Client, name string, force bool) (*agent.Client, erro
 		}
 		return nil, errAgentSkip
 	}
-	target := agent.Target{CID: inst.AgentCID, Port: inst.AgentPort}
+	target := agent.TargetForInstance(inst.AgentCID, inst.AgentPort, inst.DiskPath)
 	if !target.HasEndpoint() {
 		if force {
 			return nil, fmt.Errorf("agent not available (no agent endpoint for %s)", name)
