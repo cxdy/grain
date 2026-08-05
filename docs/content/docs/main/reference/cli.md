@@ -28,7 +28,7 @@ grain ls
 grain --api http://sandbox:7474 ls
 ```
 
-See [Remote sandbox host](../../guides/remote-host/) for firewall and systemd.
+See [Remote lab happy path](../../guides/remote-lab/) for the host + laptop workflow, and [Remote sandbox host](../../guides/remote-host/) for firewall and systemd.
 
 ## Daemon
 

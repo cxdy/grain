@@ -42,8 +42,9 @@ grain new --preset k3s -n lab -p --wait userdata
 
 | Guide | Audience |
 |-------|----------|
+| [Remote lab happy path](./remote-lab/) | Host + laptop CLI: token, tunnel, `remote-coding`, sync, ports |
+| [Remote sandbox host](./remote-host/) | Team box: systemd, firewall, reverse proxy, SDKs |
 | [Egress proxy](./proxy/) | Admins locking down outbound HTTP(S) |
-| [Remote sandbox host](./remote-host/) | Team box: systemd, API token, SSH tunnels, SDKs |
 | [MCP server](../mcp/) | Claude Code / Codex / OpenCode / Grok Build tool host |
 | [Secrets](./secrets/) | Host secrets and inject into VMs |
 | [Firecracker](./firecracker/) | Linux experimental backend |

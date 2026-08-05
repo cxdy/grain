@@ -14,7 +14,11 @@ keywords:
 Run everything on your laptop first — remote host is optional.
 {{< /only-need >}}
 
-grain is local-first, but a single **beefy host** can serve a team: one daemon, many sandboxes, developers connect over **SSH**, the **remote CLI** (`GRAIN_API` / `--api`), or **SDKs**. This guide covers a practical setup and the security controls you must not skip.
+{{< only-need href="guides/remote-lab/" >}}
+Day-to-day host + laptop coding lab (token, tunnel, `remote-coding`, sync, port tunnels).
+{{< /only-need >}}
+
+grain is local-first, but a single **beefy host** can serve a team: one daemon, many sandboxes, developers connect over **SSH**, the **remote CLI** (`GRAIN_API` / `--api`), or **SDKs**. This guide is the **ops** companion (systemd, firewall, reverse proxy, SDK patterns). For the shortest coding-lab path, start with [Remote lab happy path](../remote-lab/).
 
 ## What this is (and is not)
 
@@ -350,6 +354,7 @@ Use `grain sync` (or reverse `grain cp`) to move trees between **laptop** and gu
 
 ## See also
 
+- [Remote lab happy path](../remote-lab/) — host + laptop coding workflow  
 - [Configuration](../../reference/config/) — `api`, `api_url`, `api_token`, caps  
 - [Security model](../../explain/security/)  
 - [CLI reference](../../reference/cli/)  
