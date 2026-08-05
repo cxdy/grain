@@ -1076,7 +1076,7 @@ func authMiddleware(token string, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !bearerAuthorized(r.Header.Get("Authorization"), token) {
+		if !BearerAuthorized(r.Header.Get("Authorization"), token) {
 			writeErr(w, http.StatusUnauthorized, errors.New("unauthorized"))
 			return
 		}
@@ -1084,8 +1084,9 @@ func authMiddleware(token string, next http.Handler) http.Handler {
 	})
 }
 
-// bearerAuthorized checks Authorization: Bearer <token> in constant time when lengths match.
-func bearerAuthorized(header, token string) bool {
+// BearerAuthorized checks Authorization: Bearer <token> in constant time when lengths match.
+// Shared by the daemon API and MCP Streamable HTTP auth middleware.
+func BearerAuthorized(header, token string) bool {
 	const prefix = "Bearer "
 	if !strings.HasPrefix(header, prefix) {
 		return false

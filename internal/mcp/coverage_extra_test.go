@@ -42,7 +42,7 @@ func TestRunHTTPAndStdioCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- grainmcp.RunHTTP(ctx, addr, "t", c, t.TempDir(), slog.Default())
+		errCh <- grainmcp.RunHTTP(ctx, addr, "t", c, t.TempDir(), slog.Default(), "")
 	}()
 	// wait ready
 	deadline := time.Now().Add(3 * time.Second)
@@ -84,12 +84,12 @@ func TestRunHTTPAndStdioCancel(t *testing.T) {
 	_ = ln2.Close()
 	// can't use empty listen (defaults 7476) if port busy — use explicit
 	ctx2, cancel2 := context.WithCancel(context.Background())
-	go func() { _ = grainmcp.RunHTTP(ctx2, addr2, "", c, "", nil) }()
+	go func() { _ = grainmcp.RunHTTP(ctx2, addr2, "", c, "", nil, "") }()
 	time.Sleep(50 * time.Millisecond)
 	cancel2()
 
-	// listen fail
-	if err := grainmcp.RunHTTP(context.Background(), "256.0.0.1:1", "t", c, "", slog.Default()); err == nil {
+	// listen fail (token set so non-loopback guard does not short-circuit)
+	if err := grainmcp.RunHTTP(context.Background(), "256.0.0.1:1", "t", c, "", slog.Default(), "tok"); err == nil {
 		t.Fatal("expected listen error")
 	}
 
