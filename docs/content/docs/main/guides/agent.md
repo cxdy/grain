@@ -21,6 +21,8 @@ Block create until custom setup finishes (readiness / `--wait bootstrap`).
 
 The guest agent is a small HTTP server that runs **inside** each Linux VM. The host CLI and daemon talk to it over either **virtio-vsock** (when the host supports it) or a QEMU SLIRP hostfwd to guest port **7475**, so common operations work without opening an interactive SSH session.
 
+On the experimental **Firecracker** backend there is no SLIRP hostfwd: the guest still listens on AF_VSOCK port **7475**, and the host side is Firecracker’s vsock UDS (`fc-vsock.sock` + `CONNECT`). See [Firecracker on Linux](../firecracker/#networking-and-agent).
+
 ## What it provides
 
 | Capability | Guest HTTP | Host CLI / API |

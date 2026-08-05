@@ -38,7 +38,9 @@ grain’s local microVM product surface as of the v0.2 line.
 | Guest arch selection (`--arch`, incl. x86_64 on Apple Silicon via QEMU) | Done |
 | Virtio GPU (`--gpu` / `gpu: virtio`) | Done |
 | Shared overlay network between VMs (`network: overlay`) | Done |
-| Firecracker backend | Experimental (Linux) |
+| Firecracker backend | Experimental (Linux) — operator path documented; not production networking |
+
+**Firecracker (experimental):** Linux + KVM only, separate `vmlinux` (`kernel_path`), raw rootfs, agent via Firecracker vsock (no SLIRP/hostfwd). See [Firecracker on Linux](../../guides/firecracker/) for config, doctor checks, and limits vs QEMU. Production-hardened Firecracker (CNI/TAP, jailer, catalog images) remains deferred.
 
 **Platforms:** macOS and Linux hosts with hardware virtualization. Native Windows is not a host (use the remote API/SDKs against a supported host). WSL is Linux from grain’s point of view; virt must be available to that environment.
 

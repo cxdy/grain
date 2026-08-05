@@ -65,7 +65,9 @@ For a **shared remote machine** (daemon as a service, teammates over SSH or SDKs
 |-------|------|
 | `qemu` (default) | Production path on macOS and Linux |
 | `mock` | Tests / CI without QEMU |
-| `firecracker` | Experimental Linux-only backend |
+| `firecracker` | Experimental Linux-only backend (KVM + raw rootfs + vsock; no SLIRP/hostfwd) |
+
+Firecracker is **not** the default product path. Operators who need it should follow the experimental guide: [Firecracker on Linux](../../guides/firecracker/) (`kernel_path`, `firecracker_binary`, doctor checks, limits vs QEMU).
 
 ## Where data lives
 

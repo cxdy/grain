@@ -18,6 +18,8 @@ Publish a port on create with `-P` and open a shell — no deep networking yet.
 
 grain VMs use QEMU **user networking (SLIRP)**. Each VM gets a private guest network; the host reaches guest services only through **hostfwd** port mappings bound to `127.0.0.1`.
 
+This page describes the **QEMU** path. The experimental **Firecracker** backend does not configure SLIRP or hostfwd (agent via vsock only) — see [Firecracker on Linux](../firecracker/).
+
 ## Built-in SSH forward
 
 On every start, grain allocates a free host TCP port and maps it to guest port **22**:
@@ -115,6 +117,7 @@ secret injection. Details: [Egress proxy](../proxy/).
 ## Related
 
 - [Overlay network](../networking-overlay/) — guest↔guest L2 (isolation tradeoffs)
+- [Firecracker](../firecracker/) — experimental backend without SLIRP/hostfwd
 - [Mounts](../mounts/) — share host directories into the guest
 - [Egress proxy](../proxy/) — allowlist + secret injection
 - [Security model](../../explain/security/) — agent trust, hostfwd loopback, remote API

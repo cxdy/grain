@@ -31,13 +31,24 @@ Checks:
 |-------|--------|
 | data dir | `~/.grain` (or `data_dir`) and subdirs |
 | ssh key | creates/loads key under data dir |
-| `qemu-system-*` | arch-specific binary; install with `brew install qemu` |
-| `qemu-img` | same QEMU package |
+| `qemu-system-*` | arch-specific binary; install with `brew install qemu` (hard when `hypervisor: qemu`) |
+| `qemu-img` | same QEMU package; also required for Firecracker qcow2→raw conversion |
 | `hdiutil` | macOS only — builds cloud-init seed ISO |
 | base image | default `image` from config; pull if missing |
 | guest agent binary | soft warning if `grain-agent-linux-$arch` missing (`just agent-linux`); SSH-only still works |
 | qmp | soft check that QEMU documents `-qmp` (needed for pause/resume/graceful stop) |
 | daemon socket | optional; prints if not running |
+
+When **`hypervisor: firecracker`** (experimental), doctor also checks:
+
+| Check | Notes |
+|-------|--------|
+| firecracker binary | hard fail if missing or host is not Linux |
+| `/dev/kvm` | hard fail if missing or not RDWR (no TCG fallback) |
+| nested virt hint | soft note when CPU looks like a VM without `vmx`/`svm` |
+| guest kernel | soft note if `kernel_path` / default `vmlinux` is missing (Start will hard-fail) |
+
+See [Firecracker on Linux](../firecracker/) for the full experimental operator path.
 
 Hard failures print `✗` and cause a non-zero exit. Soft items print `·` and do not fail doctor.
 
@@ -166,8 +177,27 @@ host port 80 is privileged (< 1024)
 
 Use `-P 8080:80` or `-P 80` (auto high host port). See [Networking](../networking/).
 
+## Firecracker create fails immediately
+
+Typical errors when `hypervisor: firecracker`:
+
+```text
+firecracker requires linux
+firecracker … not found — install firecracker …
+firecracker kernel not found — set kernel_path …
+firecracker exited immediately (KVM unavailable …)
+firecracker requires a raw rootfs (got qcow2 …)
+```
+
+1. Confirm Linux + `grain doctor` (binary, `/dev/kvm`, kernel soft check, `qemu-img`).
+2. Read `~/.grain/logs/<name>.log` (also `grain logs --qemu <name>`).
+3. Prefer a raw rootfs import; catalog qcow2 images are not drop-in FC guests.
+
+Full limits and layout: [Firecracker on Linux](../firecracker/).
+
 ## Related
 
 - [Networking](../networking/)
 - [Mounts](../mounts/)
 - [Images](../images/)
+- [Firecracker](../firecracker/) — experimental Linux backend
