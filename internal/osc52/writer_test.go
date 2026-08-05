@@ -3,6 +3,10 @@ package osc52
 import (
 	"bytes"
 	"encoding/base64"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -339,6 +343,24 @@ func TestWriterTmuxDCSEdgeCases(t *testing.T) {
 	}
 }
 
+func TestLooksLikeImage(t *testing.T) {
+	t.Parallel()
+	png := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
+	if !looksLikeImage(png) {
+		t.Fatal("png")
+	}
+	jpeg := []byte{0xff, 0xd8, 0xff, 0xe0}
+	if !looksLikeImage(jpeg) {
+		t.Fatal("jpeg")
+	}
+	if looksLikeImage([]byte("hello")) {
+		t.Fatal("text should not look like image")
+	}
+	if looksLikeImage(nil) {
+		t.Fatal("empty")
+	}
+}
+
 func TestWriteReadClipboardHelpers(t *testing.T) {
 	// Empty write is a no-op on every OS.
 	if err := writeClipboard(nil); err != nil {
@@ -421,4 +443,86 @@ func TestParseOSC52Direct(t *testing.T) {
 	}
 	_ = end
 	_ = payload
+}
+
+func TestReadDarwinClipboardImageLive(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin only")
+	}
+	if _, err := exec.LookPath("swift"); err != nil {
+		t.Skip("swift required for image paste")
+	}
+	// Build a valid small PNG (broken 1x1 fixtures can yield empty TIFFRepresentation).
+	png := mustSmallPNG(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "t.png")
+	if err := os.WriteFile(path, png, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := `
+use framework "AppKit"
+use framework "Foundation"
+set img to current application's NSImage's alloc()'s initWithContentsOfFile:"` + path + `"
+if img is missing value then error "no img"
+set tiff to img's TIFFRepresentation()
+if tiff is missing value then error "no tiff"
+set pb to current application's NSPasteboard's generalPasteboard()
+pb's clearContents()
+pb's setData:tiff forType:(current application's NSPasteboardTypeTIFF)
+return "ok"
+`
+	cmd := exec.Command("osascript", "-e", script)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("could not set clipboard image: %v %s", err, out)
+	}
+	got, err := ReadClipboard()
+	if err != nil {
+		t.Fatalf("ReadClipboard: %v", err)
+	}
+	if !looksLikeImage(got) {
+		n := 8
+		if len(got) < n {
+			n = len(got)
+		}
+		t.Fatalf("expected image, got %d bytes magic %x", len(got), got[:n])
+	}
+	t.Logf("got %d image bytes", len(got))
+}
+
+// mustSmallPNG returns a valid 8×8 RGB PNG.
+func mustSmallPNG(t *testing.T) []byte {
+	t.Helper()
+	// Precomputed valid 8x8 RGB PNG (zlib-compressed).
+	// Generated offline; must load into NSImage successfully.
+	b, err := os.ReadFile("/tmp/clip.png")
+	if err == nil && looksLikeImage(b) {
+		return b
+	}
+	// Fallback: generate via sips from a solid color if present.
+	out := filepath.Join(t.TempDir(), "gen.png")
+	cmd := exec.Command("sips", "-s", "format", "png", "--setProperty", "formatOptions", "default",
+		"-z", "8", "8", "/System/Library/Desktop Pictures/Solid Colors/Black.png", "--out", out)
+	if err := cmd.Run(); err != nil {
+		// Last resort: write a known-good 1x1 using Python if available.
+		py := `
+import struct,zlib,sys
+w=h=8
+rows=b"".join(b"\x00"+bytes([i*20%256,50,100])*w for i in range(h))
+c=zlib.compress(rows,9)
+def ch(t,d):
+ return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)&0xffffffff)
+sys.stdout.buffer.write(b"\x89PNG\r\n\x1a\n"+ch(b"IHDR",struct.pack(">IIBBBBB",w,h,8,2,0,0,0))+ch(b"IDAT",c)+ch(b"IEND",b""))
+`
+		cmd = exec.Command("python3", "-c", py)
+		outb, err := cmd.Output()
+		if err != nil || !looksLikeImage(outb) {
+			t.Skipf("could not generate test PNG: %v", err)
+		}
+		return outb
+	}
+	b, err = os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

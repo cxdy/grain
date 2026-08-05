@@ -80,7 +80,8 @@ func (b *clipboardBridge) request(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 
-	timeout := 5 * time.Second
+	// Screenshots are larger (base64 over WS); allow more than text paste.
+	timeout := 15 * time.Second
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
@@ -117,7 +118,16 @@ func (s *Server) handleClipboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	// Detect image pastes so guest tools can branch; default text for UTF-8 copy.
+	ct := "text/plain; charset=utf-8"
+	if len(data) >= 4 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G' {
+		ct = "image/png"
+	} else if len(data) >= 2 && data[0] == 0xff && data[1] == 0xd8 {
+		ct = "image/jpeg"
+	} else if len(data) >= 6 && string(data[:3]) == "GIF" {
+		ct = "image/gif"
+	}
+	w.Header().Set("Content-Type", ct)
 	_, _ = w.Write(data)
 }
 

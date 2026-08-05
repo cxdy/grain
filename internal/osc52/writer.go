@@ -369,25 +369,151 @@ func writeClipboard(data []byte) error {
 }
 
 // ReadClipboard returns the host system clipboard as bytes (for paste into guest).
+// Prefers image data (PNG) when the clipboard holds a screenshot/image — plain
+// pbpaste/wl-paste text helpers return empty for image-only clipboards, which
+// breaks tools like Grok Build pasting screenshots into grain sh.
 func ReadClipboard() ([]byte, error) {
 	switch runtime.GOOS {
 	case "darwin":
-		return runClipboardOut("pbpaste")
+		return readClipboardDarwin()
 	case "windows":
-		// PowerShell Get-Clipboard is more reliable than clip.exe (write-only).
+		// Prefer image when present (PowerShell), then text.
+		if img, err := readClipboardWindowsImage(); err == nil && len(img) > 0 {
+			return img, nil
+		}
 		return runClipboardOut("powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw")
 	default:
-		if _, err := exec.LookPath("wl-paste"); err == nil {
-			return runClipboardOut("wl-paste")
-		}
-		if _, err := exec.LookPath("xclip"); err == nil {
-			return runClipboardOut("xclip", "-selection", "clipboard", "-o")
-		}
-		if _, err := exec.LookPath("xsel"); err == nil {
-			return runClipboardOut("xsel", "--clipboard", "--output")
-		}
-		return nil, errNoClipboard
+		return readClipboardLinux()
 	}
+}
+
+// readClipboardDarwin prefers PNG (converting TIFF/JPEG when needed), then text.
+func readClipboardDarwin() ([]byte, error) {
+	if img, err := readDarwinClipboardImage(); err == nil && len(img) > 0 {
+		return img, nil
+	}
+	text, err := runClipboardOut("pbpaste")
+	if err != nil {
+		return nil, err
+	}
+	if len(text) == 0 {
+		// Common when clipboard has only an image and image read failed.
+		return nil, errString("clipboard empty or image type unsupported (try copying again)")
+	}
+	return text, nil
+}
+
+// readDarwinClipboardImage returns PNG (or JPEG) bytes from the macOS pasteboard.
+// Screenshots often land as TIFF; we convert TIFF → PNG via AppKit (Swift).
+// AppleScriptObjC is awkward with binary/NSData; /usr/bin/swift is always present
+// on macOS developer-capable hosts and ships with the OS.
+func readDarwinClipboardImage() ([]byte, error) {
+	if _, err := exec.LookPath("swift"); err != nil {
+		return nil, errString("swift not found for image clipboard")
+	}
+	// Prefer PNG; convert TIFF (typical for screenshots); then public.jpeg.
+	const swiftSrc = `
+import AppKit
+import Foundation
+let pb = NSPasteboard.general
+if let png = pb.data(forType: .png), !png.isEmpty {
+  FileHandle.standardOutput.write(png)
+  exit(0)
+}
+if let tiff = pb.data(forType: .tiff),
+   let rep = NSBitmapImageRep(data: tiff),
+   let png = rep.representation(using: .png, properties: [:]), !png.isEmpty {
+  FileHandle.standardOutput.write(png)
+  exit(0)
+}
+if let jpeg = pb.data(forType: NSPasteboard.PasteboardType("public.jpeg")), !jpeg.isEmpty {
+  FileHandle.standardOutput.write(jpeg)
+  exit(0)
+}
+exit(1)
+`
+	cmd := exec.Command("swift", "-e", swiftSrc)
+	cmd.Stderr = io.Discard
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		return nil, errString("no image on clipboard")
+	}
+	return out, nil
+}
+
+func readClipboardLinux() ([]byte, error) {
+	// Prefer image/png (and common fallbacks) before plain text.
+	if _, err := exec.LookPath("wl-paste"); err == nil {
+		if img, err := runClipboardOut("wl-paste", "-t", "image/png"); err == nil && looksLikeImage(img) {
+			return img, nil
+		}
+		if img, err := runClipboardOut("wl-paste", "-t", "image/jpeg"); err == nil && looksLikeImage(img) {
+			return img, nil
+		}
+		if text, err := runClipboardOut("wl-paste"); err == nil && len(text) > 0 {
+			return text, nil
+		}
+	}
+	if _, err := exec.LookPath("xclip"); err == nil {
+		if img, err := runClipboardOut("xclip", "-selection", "clipboard", "-t", "image/png", "-o"); err == nil && looksLikeImage(img) {
+			return img, nil
+		}
+		if img, err := runClipboardOut("xclip", "-selection", "clipboard", "-t", "image/jpeg", "-o"); err == nil && looksLikeImage(img) {
+			return img, nil
+		}
+		if text, err := runClipboardOut("xclip", "-selection", "clipboard", "-o"); err == nil && len(text) > 0 {
+			return text, nil
+		}
+	}
+	if _, err := exec.LookPath("xsel"); err == nil {
+		// xsel is text-oriented; still try.
+		if text, err := runClipboardOut("xsel", "--clipboard", "--output"); err == nil && len(text) > 0 {
+			return text, nil
+		}
+	}
+	return nil, errNoClipboard
+}
+
+func readClipboardWindowsImage() ([]byte, error) {
+	// PowerShell: export PNG from clipboard if present.
+	const ps = `
+Add-Type -AssemblyName System.Windows.Forms
+$img = [System.Windows.Forms.Clipboard]::GetImage()
+if ($null -eq $img) { exit 2 }
+$ms = New-Object System.IO.MemoryStream
+$img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+[Console]::OpenStandardOutput().Write($ms.ToArray(), 0, $ms.Length)
+`
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
+	cmd.Stderr = io.Discard
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		return nil, errString("no image on clipboard")
+	}
+	return out, nil
+}
+
+func looksLikeImage(b []byte) bool {
+	if len(b) < 4 {
+		return false
+	}
+	// PNG
+	if b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G' {
+		return true
+	}
+	// JPEG
+	if b[0] == 0xff && b[1] == 0xd8 {
+		return true
+	}
+	// GIF
+	if len(b) >= 6 && string(b[:3]) == "GIF" {
+		return true
+	}
+	// WebP
+	if len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP" {
+		return true
+	}
+	return false
 }
 
 var errNoClipboard = errString("no host clipboard helper (pbcopy/wl-copy/xclip/xsel)")
