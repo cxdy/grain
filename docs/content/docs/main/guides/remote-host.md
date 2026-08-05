@@ -29,7 +29,7 @@ grain is local-first, but a single **beefy host** can serve a team: one daemon, 
 | Developers using **SSH + CLI**, **remote CLI**, or **SDKs** | A drop-in Kubernetes cluster |
 | Guest isolation via microVMs | A substitute for your VPN, firewall, and OS patching |
 
-If you need true multi-tenant SaaS isolation, put grain behind stronger controls (or separate hosts per trust domain). See [Security model](../../explain/security/).
+Grain is **single-tenant / single-operator per `data_dir`**: one OS owner (**0700** tree, **0600** socket), one shared `api_token` (not per-user roles). Hostile co-tenants need **separate OS users** (each with its own `data_dir`/daemon) or **separate hosts** — not multi-user RBAC inside one grain. See [Security model — single-tenant](../../explain/security/#single-tenant--single-operator-model).
 
 ## Architecture
 
@@ -348,7 +348,7 @@ Use `grain sync` (or reverse `grain cp`) to move trees between **laptop** and gu
 
 ## 8. Limitations
 
-- Single shared Bearer token (not per-user OAuth)
+- Single shared Bearer token (not per-user OAuth / RBAC) — intentional single-tenant model; split by OS user `data_dir` or host for separate trust domains
 - No full bridge/VLAN networking (SLIRP hostfwd)
 - Density bound by host RAM/CPU
 - Ephemeral VMs vanish on daemon restart — use `-p` for durable labs

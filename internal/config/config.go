@@ -16,9 +16,12 @@ import (
 // Config is daemon + CLI shared configuration.
 // Keep fields short and obvious — this is the whole knobs surface for v0.1.
 type Config struct {
-	// DataDir holds disks, keys, state. Default: ~/.grain
+	// DataDir holds disks, keys, state. Default: ~/.grain.
+	// Single-operator model: one OS owner per data_dir (created 0700); do not
+	// share one tree across untrusted accounts. Multi-user RBAC is out of scope —
+	// use separate OS users (each with its own data_dir) or separate hosts.
 	DataDir string `yaml:"data_dir"`
-	// Socket is the daemon unix socket path.
+	// Socket is the daemon unix socket path (chmod 0600 when the daemon binds it).
 	Socket string `yaml:"socket"`
 	// API is the daemon TCP listen address for the HTTP API (empty = unix only).
 	// Example: "127.0.0.1:7474". Not the same as APIURL (client dial target).
@@ -38,6 +41,7 @@ type Config struct {
 	// localhost / unix socket. CLI also reads env GRAIN_TOKEN.
 	// Required when API binds a non-loopback address (daemon refuses to start
 	// without a token) and when the CLI targets a non-loopback APIURL.
+	// Shared secret for the whole daemon (not per-user RBAC / multi-token roles).
 	// Tokens on cleartext HTTP are sniffable — pair with tunnel or TLS.
 	APIToken string `yaml:"api_token"`
 	// AuthToken is an alias for APIToken (either field may be set).

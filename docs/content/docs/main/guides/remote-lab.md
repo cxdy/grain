@@ -180,7 +180,7 @@ The **agent binary must exist on the daemon host** (`just agent-linux` or `~/.gr
 - **Cleartext Bearer is sniffable** on non-loopback `http://` — token ≠ encryption. Tunnel or terminate TLS.
 - CLI warns once on non-loopback cleartext `http://`; silence only with `GRAIN_INSECURE_HTTP=1` when you accept the risk.
 - Keep MCP on **`127.0.0.1`** unless you know how you will authenticate and firewall it.
-- One Bearer token ≈ one trust domain; this is a team lab pattern, not multi-tenant SaaS.
+- One Bearer token ≈ one trust domain; this is a team lab pattern, not multi-tenant SaaS and not multi-user RBAC. Hostile co-tenants need separate OS users/`data_dir` or separate hosts ([single-tenant model](../../explain/security/#single-tenant--single-operator-model)).
 - Guest agent ops go through the **authenticated daemon proxy**; agent hostfwd stays loopback-only — do not tunnel raw `:7475` agent ports as a substitute for API auth.
 - Default networking is isolated SLIRP. **`network: overlay`** is a shared L2: peers can control each other’s unauthenticated agents — only for cooperative labs ([overlay security note](../networking-overlay/#security-note)).
 

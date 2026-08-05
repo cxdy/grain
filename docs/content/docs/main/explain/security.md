@@ -10,6 +10,8 @@ keywords:
   - secrets
   - proxy
   - multi-tenant
+  - single-tenant
+  - RBAC
 ---
 
 {{< only-need href="guides/remote-host/" >}}
@@ -26,8 +28,23 @@ Team/shared host setup (token, bind, firewall) is covered in Remote sandbox host
 ## What grain does not claim
 
 - Multi-tenant hard isolation between untrusted co-tenants on one host without additional hardening  
+- **Multi-user RBAC or per-user API tokens** — intentionally out of scope (see [Single-tenant model](#single-tenant--single-operator-model))  
 - A substitute for your OS firewall and disk encryption  
 - Perfect secrecy if you inject secrets **into** the guest filesystem — the guest process can read them  
+
+## Single-tenant / single-operator model
+
+Grain is **one operator (or one cooperating team) per `data_dir` / daemon**. That is the product model, not a temporary gap waiting for RBAC.
+
+| Control | Meaning |
+|---------|---------|
+| **One `data_dir` owner** | Default `~/.grain` is created **0700** for a single OS user. Disks, keys, images, and state under that tree belong to that owner. |
+| **Unix socket `0600`** | `grain.sock` is owner-only. Any local process running as that user can drive the full control plane without a Bearer token. |
+| **`api_token` is a shared secret** | One Bearer value authenticates the whole daemon. It is **not** per-user identity, roles, or multi-token RBAC. Put SSO/mTLS at a reverse proxy if you need user identity in front. |
+| **Shared physical host** | For untrusted co-tenants: run **separate OS users** (each with its own `data_dir` and daemon) **or separate hosts**. Do not share one grain control plane across hostile tenants. |
+| **Trusted team lab** | One daemon + one token for peers who already trust each other is fine — everyone with the token is equivalent. Ops: [Remote sandbox host](../guides/remote-host/); happy path: [Remote lab](../guides/remote-lab/). |
+
+Anyone who holds the token (or the socket) can create VMs, exec in guests, and read host-injected secrets. Treat the API like **root on that lab**.
 
 ## Trust boundaries
 
@@ -48,6 +65,7 @@ You (operator)
 ## Host data directory
 
 - `data_dir` (default `~/.grain`), plus `vms/`, `images/`, and `logs/`, are created with mode **0700**
+- Unix socket (`grain.sock`) is **0600**
 - Per-VM `meta.json` is written **0600** (host paths, ports, tags)
 - Secrets already use `0700`/`0600` under `data_dir/secrets/`
 - Grain does not rewrite modes of pre-existing directories; tighten manually on shared hosts if an older install used `0755`
@@ -85,7 +103,7 @@ Use overlay only among workloads that may fully trust one another. Untrusted mul
 
 ### Shared / remote hosts
 
-Running grain on a team machine so developers create sandboxes remotely is a supported **ops pattern**, not multi-tenant SaaS.
+Running grain on a team machine so developers create sandboxes remotely is a supported **ops pattern**, not multi-tenant SaaS and **not** multi-user RBAC. One token ≈ one trust domain; see [Single-tenant model](#single-tenant--single-operator-model).
 
 - Set `api_token`; daemon **will not** bind a non-loopback `api` without one  
 - Prefer `api: 127.0.0.1:7474` + SSH tunnel or TLS reverse proxy  
@@ -94,6 +112,7 @@ Running grain on a team machine so developers create sandboxes remotely is a sup
 - **Firewall** port 7474 (and egress proxy 3128) — do not leave control plane open to the internet  
 - Resource caps; published ports stay on host loopback  
 - Avoid `network: overlay` across different users’ sandboxes on a shared host  
+- Keep **MCP** on loopback (or behind the same token/firewall story) — MCP tools inherit control-plane power  
 
 Happy path: [Remote lab](../guides/remote-lab/). Ops: [Remote sandbox host](../guides/remote-host/).
 
