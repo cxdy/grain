@@ -76,7 +76,9 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 			return fmt.Errorf("api listen %q is not loopback but api_token is empty — set api_token (or bind 127.0.0.1) before exposing the control plane; see https://grainvm.com/guides/remote-host/", cfg.API)
 		}
 		if !config.ListenAddrIsLoopback(cfg.API) {
-			log.Warn("api listen is not loopback — ensure host firewall and api_token; prefer 127.0.0.1 + SSH tunnel or TLS reverse proxy",
+			// Daemon serves cleartext HTTP only; non-loopback binds expose Bearer
+			// tokens on the path unless operators terminate TLS or tunnel.
+			log.Warn("api listen is not loopback — control plane is cleartext HTTP so Bearer tokens are sniffable on the network path; prefer 127.0.0.1 + SSH tunnel or terminate TLS with a reverse proxy; keep host firewall tight and api_token set",
 				"addr", cfg.API)
 		}
 		// Bind before claiming success so "port in use" fails the daemon start.

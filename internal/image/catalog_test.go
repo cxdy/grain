@@ -69,12 +69,28 @@ func TestCatalogArchVariants(t *testing.T) {
 		if al.SSHUser != "alpine" || al.URL == "" {
 			t.Fatalf("%+v", al)
 		}
+		if al.SHA256 == "" || len(al.SHA256) != 64 {
+			t.Fatalf("alpine-cloud must pin SHA256: %+v", al)
+		}
+		if al.AllowUnverified {
+			t.Fatal("catalog alpine-cloud must not AllowUnverified")
+		}
 		// Alpine uses aarch64 / x86_64 in filenames
 		if arch == "arm64" && !strings.Contains(al.URL, "aarch64") {
 			t.Fatalf("alpine arm url %s", al.URL)
 		}
 		if arch == "amd64" && !strings.Contains(al.URL, "x86_64") {
 			t.Fatalf("alpine amd url %s", al.URL)
+		}
+		// grain-ubuntu: empty pin (sidecar at pull), fail-closed default
+		if gu.AllowUnverified {
+			t.Fatal("catalog grain-ubuntu must not AllowUnverified")
+		}
+		if gu.SHA256 != "" {
+			t.Fatalf("grain-ubuntu pin should stay empty (sidecar): %q", gu.SHA256)
+		}
+		if u.AllowUnverified {
+			t.Fatal("catalog ubuntu-cloud must not AllowUnverified")
 		}
 	default:
 		t.Logf("GOARCH %s: ubuntu/alpine may be absent", arch)
@@ -93,11 +109,24 @@ func TestCatalogForBothArches(t *testing.T) {
 		if !ok || al.URL == "" {
 			t.Fatalf("%s alpine: %+v", arch, al)
 		}
-		if arch == "amd64" && !strings.Contains(al.URL, "x86_64") {
-			t.Fatalf("amd alpine url %s", al.URL)
+		if al.SHA256 == "" || len(al.SHA256) != 64 {
+			t.Fatalf("%s alpine SHA256: %+v", arch, al)
 		}
-		if arch == "arm64" && !strings.Contains(al.URL, "aarch64") {
-			t.Fatalf("arm alpine url %s", al.URL)
+		if arch == "amd64" {
+			if !strings.Contains(al.URL, "x86_64") {
+				t.Fatalf("amd alpine url %s", al.URL)
+			}
+			if al.SHA256 != alpineCloudAmd64SHA256 {
+				t.Fatalf("amd alpine digest %s", al.SHA256)
+			}
+		}
+		if arch == "arm64" {
+			if !strings.Contains(al.URL, "aarch64") {
+				t.Fatalf("arm alpine url %s", al.URL)
+			}
+			if al.SHA256 != alpineCloudArm64SHA256 {
+				t.Fatalf("arm alpine digest %s", al.SHA256)
+			}
 		}
 		gu := c[IDGrainUbuntu]
 		if gu.LocalOnly || !strings.Contains(gu.URL, arch) {

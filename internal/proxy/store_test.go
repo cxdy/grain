@@ -385,3 +385,70 @@ func TestStoreReplaceAndNotFound(t *testing.T) {
 		t.Fatalf("%+v %v", c, err)
 	}
 }
+
+// TestValidTokenConstantTimePath exercises equal-length match/mismatch and
+// unequal-length tokens (dummy ConstantTimeCompare branch) with multiple clients.
+func TestValidTokenConstantTimePath(t *testing.T) {
+	t.Parallel()
+	st, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Open when no clients.
+	ok, err := st.ValidToken("anything")
+	if err != nil || !ok {
+		t.Fatalf("open mode: ok=%v err=%v", ok, err)
+	}
+
+	c1, err := st.CreateClient("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2, err := st.CreateClient("b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c1.Token == "" || c2.Token == "" || c1.Token == c2.Token {
+		t.Fatalf("unexpected tokens %+v %+v", c1, c2)
+	}
+
+	// Exact match (first client).
+	ok, err = st.ValidToken(c1.Token)
+	if err != nil || !ok {
+		t.Fatalf("c1 match: ok=%v err=%v", ok, err)
+	}
+	// Exact match (second client).
+	ok, err = st.ValidToken(c2.Token)
+	if err != nil || !ok {
+		t.Fatalf("c2 match: ok=%v err=%v", ok, err)
+	}
+
+	// Equal length, wrong value → reject (ConstantTimeCompare path).
+	wrong := []byte(c1.Token)
+	if wrong[0] == 'a' {
+		wrong[0] = 'b'
+	} else {
+		wrong[0] = 'a'
+	}
+	ok, err = st.ValidToken(string(wrong))
+	if err != nil || ok {
+		t.Fatalf("equal-len mismatch: ok=%v err=%v", ok, err)
+	}
+
+	// Unequal length (shorter) → dummy compare branch, reject.
+	ok, err = st.ValidToken("short")
+	if err != nil || ok {
+		t.Fatalf("short token: ok=%v err=%v", ok, err)
+	}
+	// Unequal length (longer).
+	ok, err = st.ValidToken(c1.Token + "extra")
+	if err != nil || ok {
+		t.Fatalf("long token: ok=%v err=%v", ok, err)
+	}
+	// Empty token when clients exist.
+	ok, err = st.ValidToken("")
+	if err != nil || ok {
+		t.Fatalf("empty token: ok=%v err=%v", ok, err)
+	}
+}

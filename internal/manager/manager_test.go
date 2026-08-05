@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -205,6 +206,89 @@ func TestDuplicateName(t *testing.T) {
 	}
 	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "a"}); err == nil {
 		t.Fatal("expected duplicate error")
+	}
+}
+
+// TestConcurrentSameNameCreate ensures only one of N concurrent Creates with the
+// same name succeeds (no double clone / store corruption).
+func TestConcurrentSameNameCreate(t *testing.T) {
+	t.Parallel()
+	m, _, disk := testManager(t)
+	const n = 16
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := m.Create(context.Background(), vm.CreateOpts{Name: "race"})
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	var ok, fail int
+	for err := range errs {
+		if err == nil {
+			ok++
+		} else {
+			fail++
+			if !strings.Contains(err.Error(), "already exists") {
+				t.Errorf("unexpected error: %v", err)
+			}
+		}
+	}
+	if ok != 1 || fail != n-1 {
+		t.Fatalf("successes=%d failures=%d want 1 and %d", ok, fail, n-1)
+	}
+	if disk.CloneCount() != 1 {
+		t.Fatalf("clones %d want 1", disk.CloneCount())
+	}
+	list, err := m.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Name != "race" {
+		t.Fatalf("list %+v", list)
+	}
+}
+
+// TestConcurrentAutoNames allocates distinct names under concurrent Create.
+func TestConcurrentAutoNames(t *testing.T) {
+	t.Parallel()
+	m, _, _ := testManager(t)
+	const n = 8
+	var wg sync.WaitGroup
+	namesCh := make(chan string, n)
+	errCh := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			inst, err := m.Create(context.Background(), vm.CreateOpts{})
+			if err != nil {
+				errCh <- err
+				return
+			}
+			namesCh <- inst.Name
+		}()
+	}
+	wg.Wait()
+	close(namesCh)
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
+	}
+	seen := map[string]struct{}{}
+	for name := range namesCh {
+		if _, dup := seen[name]; dup {
+			t.Fatalf("duplicate auto name %q", name)
+		}
+		seen[name] = struct{}{}
+	}
+	if len(seen) != n {
+		t.Fatalf("got %d unique names want %d", len(seen), n)
 	}
 }
 

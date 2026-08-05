@@ -92,7 +92,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 		SilenceUsage: true,
 	}
 	root.PersistentFlags().StringVar(&cfgPath, "config", "", "config file (default ~/.grain/config.yaml)")
-	root.PersistentFlags().StringVar(&apiURLFlag, "api", "", "remote daemon API URL (e.g. http://host:7474); overrides GRAIN_API and config api_url")
+	root.PersistentFlags().StringVar(&apiURLFlag, "api", "", "remote daemon API URL (e.g. http://127.0.0.1:7474 via SSH -L, or https://host); overrides GRAIN_API and config api_url")
 
 	// Soft upgrade notices (disabled via check_updates / GRAIN_CHECK_UPDATES).
 	// With EnableTraverseRunHooks, this still runs for nested commands that define

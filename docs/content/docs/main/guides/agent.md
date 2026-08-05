@@ -225,6 +225,18 @@ Every VM gets a host-forwarded agent port (metadata `agent_port` → guest `7475
 grain fwd ls
 ```
 
+### Trust model
+
+The guest agent has **no auth token**. Security depends on reachability:
+
+| Who | How they reach the agent | Protected by |
+|-----|--------------------------|--------------|
+| Local CLI on the grain host | `http://127.0.0.1:<agent_port>` hostfwd (or vsock) | Hostfwd binds **loopback only** |
+| Remote CLI / SDKs | HTTP(S) to the **daemon** (`GRAIN_API` + `GRAIN_TOKEN`); daemon proxies exec/shell/cp/fs | Daemon API auth — not agent auth |
+| Other VMs on `network: overlay` | Guest→guest TCP to peer `:7475` on the shared L2 | **Nothing** — peers can control each other |
+
+Do not publish guest **7475** with `-P`, and do not expose hostfwd agent ports off loopback. On a shared host, prefer remote API access over tunneling raw agent ports. Overlay details: [Overlay network](../networking-overlay/#security-note). Broader model: [Security model](../../explain/security/#guest-agent-trust-model).
+
 ### Agent transport (vsock vs TCP)
 
 | Mode | When | How the host dials |

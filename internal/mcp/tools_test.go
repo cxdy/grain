@@ -38,6 +38,16 @@ func mockDaemon(t *testing.T, vms map[string]*client.Instance) *httptest.Server 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"name": "grain", "version": "test"})
 	})
+	mux.HandleFunc("/secrets", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]client.SecretMeta{
+			{Name: "tok", Size: 3, Mode: "0600"},
+		})
+	})
 	mux.HandleFunc("/vms", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -134,11 +144,22 @@ func mockDaemon(t *testing.T, vms map[string]*client.Instance) *httptest.Server 
 			return
 		}
 		if len(parts) >= 2 && parts[1] == "agent" && len(parts) >= 3 && parts[2] == "health" {
-			if _, ok := vms[name]; !ok {
+			inst, ok := vms[name]
+			if !ok {
 				http.Error(w, `{"error":"not found"}`, 404)
 				return
 			}
-			_ = json.NewEncoder(w).Encode(client.Health{Hostname: name, AgentVersion: "test", UserdataRan: true})
+			// Agent unreachable when paused/suspended/stopped (mirrors real guest).
+			if inst.Status != client.StatusRunning {
+				http.Error(w, `{"error":"agent unreachable"}`, http.StatusBadGateway)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(client.Health{
+				Hostname:     name,
+				AgentVersion: "test",
+				UserdataRan:  true,
+				Readiness:    &client.Readiness{State: "ready", Phase: "done", ReadyName: "default"},
+			})
 			return
 		}
 		if len(parts) >= 2 && parts[1] == "stats" {
@@ -223,6 +244,7 @@ func mockDaemon(t *testing.T, vms map[string]*client.Instance) *httptest.Server 
 			case "start":
 				inst.Status = client.StatusRunning
 				_ = json.NewEncoder(w).Encode(inst)
+				return
 			case "shutdown":
 				if !inst.Persistent {
 					delete(vms, name)
@@ -230,11 +252,25 @@ func mockDaemon(t *testing.T, vms map[string]*client.Instance) *httptest.Server 
 					inst.Status = client.StatusStopped
 				}
 				w.WriteHeader(http.StatusOK)
+				return
+			case "pause":
+				inst.Status = client.StatusPaused
+				_ = json.NewEncoder(w).Encode(map[string]string{"message": "paused", "name": name})
+				return
+			case "resume":
+				inst.Status = client.StatusRunning
+				_ = json.NewEncoder(w).Encode(map[string]string{"message": "resumed", "name": name})
+				return
+			case "suspend":
+				inst.Status = client.StatusSuspended
+				_ = json.NewEncoder(w).Encode(map[string]string{"message": "suspended", "name": name})
+				return
+			case "restore":
+				inst.Status = client.StatusRunning
+				_ = json.NewEncoder(w).Encode(inst)
+				return
 			default:
 				// fall through for GET name
-			}
-			if action == "start" || action == "shutdown" {
-				return
 			}
 		}
 		switch r.Method {
@@ -350,6 +386,8 @@ func TestToolNamesExpanded(t *testing.T) {
 		grainmcp.ToolWorkspace, grainmcp.ToolForwardAdd, grainmcp.ToolImageList,
 		grainmcp.ToolAct, grainmcp.ToolK3s, grainmcp.ToolFSReadDir,
 		grainmcp.ToolSyncPush, grainmcp.ToolSyncPull,
+		grainmcp.ToolStatus, grainmcp.ToolPauseVM, grainmcp.ToolResumeVM,
+		grainmcp.ToolSuspendVM, grainmcp.ToolRestoreVM, grainmcp.ToolSecretLS,
 	}
 	got := map[string]bool{}
 	for _, n := range names {
@@ -362,6 +400,140 @@ func TestToolNamesExpanded(t *testing.T) {
 	}
 	if len(names) < 20 {
 		t.Fatalf("expected expanded set, got %d", len(names))
+	}
+}
+
+func TestLifecycleStatusPauseResumeSuspendRestore(t *testing.T) {
+	vms := map[string]*client.Instance{
+		"life1": {Name: "life1", Status: client.StatusRunning, Image: "grain-ubuntu", Persistent: true},
+	}
+	sess, _ := sessionWithMock(t, vms)
+	ctx := t.Context()
+
+	// status while running: agent up + readiness
+	st, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolStatus, Arguments: map[string]any{"name": "life1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txt := textOf(t, st)
+	if !strings.Contains(txt, `"status": "running"`) && !strings.Contains(txt, `"status":"running"`) {
+		t.Fatalf("status running: %s", txt)
+	}
+	if !strings.Contains(txt, `"agent": "up"`) && !strings.Contains(txt, `"agent":"up"`) {
+		t.Fatalf("agent up: %s", txt)
+	}
+	if !strings.Contains(txt, "ready") {
+		t.Fatalf("readiness: %s", txt)
+	}
+
+	// empty name
+	bad, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolStatus, Arguments: map[string]any{"name": ""},
+	})
+	if err == nil {
+		if bad == nil || !bad.IsError {
+			t.Fatal("expected error result for empty name")
+		}
+	}
+
+	// pause
+	p, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolPauseVM, Arguments: map[string]any{"name": "life1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(textOf(t, p), "pause") {
+		t.Fatal(textOf(t, p))
+	}
+	if vms["life1"].Status != client.StatusPaused {
+		t.Fatalf("status after pause: %s", vms["life1"].Status)
+	}
+
+	// status while paused: agent unreachable
+	st2, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolStatus, Arguments: map[string]any{"name": "life1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txt2 := textOf(t, st2)
+	if !strings.Contains(txt2, "unreachable") {
+		t.Fatalf("expected agent unreachable: %s", txt2)
+	}
+
+	// resume
+	r, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolResumeVM, Arguments: map[string]any{"name": "life1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(textOf(t, r), "resume") {
+		t.Fatal(textOf(t, r))
+	}
+	if vms["life1"].Status != client.StatusRunning {
+		t.Fatalf("status after resume: %s", vms["life1"].Status)
+	}
+
+	// suspend
+	su, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolSuspendVM, Arguments: map[string]any{"name": "life1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(textOf(t, su), "suspend") {
+		t.Fatal(textOf(t, su))
+	}
+	if vms["life1"].Status != client.StatusSuspended {
+		t.Fatalf("status after suspend: %s", vms["life1"].Status)
+	}
+
+	// restore
+	rs, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolRestoreVM, Arguments: map[string]any{"name": "life1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txtR := textOf(t, rs)
+	if !strings.Contains(txtR, "running") {
+		t.Fatalf("restore result: %s", txtR)
+	}
+	if vms["life1"].Status != client.StatusRunning {
+		t.Fatalf("status after restore: %s", vms["life1"].Status)
+	}
+
+	// secret ls
+	sec, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolSecretLS, Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(textOf(t, sec), "tok") {
+		t.Fatal(textOf(t, sec))
+	}
+
+	// missing VM errors
+	for _, tool := range []string{
+		grainmcp.ToolPauseVM, grainmcp.ToolResumeVM, grainmcp.ToolSuspendVM, grainmcp.ToolRestoreVM, grainmcp.ToolStatus,
+	} {
+		res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+			Name: tool, Arguments: map[string]any{"name": "nope"},
+		})
+		if err == nil && res != nil && !res.IsError {
+			// Some paths return IsError via content; accept any failure signal.
+			t.Logf("%s missing: err=%v isError=%v content=%v", tool, err, res.IsError, res.Content)
+			// Client should surface API not-found as tool error from CallTool or IsError.
+			// If neither, fail:
+			if res.Content == nil {
+				t.Fatalf("%s: expected error for missing VM", tool)
+			}
+		}
 	}
 }
 

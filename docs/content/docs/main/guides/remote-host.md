@@ -47,10 +47,11 @@ Developer laptop                         Shared host (Linux + KVM recommended)
 **Behaviors to remember:**
 
 1. **Default CLI** talks to a **unix socket on the machine where it runs**.
-2. **Remote CLI** (`GRAIN_API` or `--api`) talks **HTTP** to the daemon. Guest agent ops (exec, shell, cp, fs) are **proxied through the API** — you do not need hostfwd ports on your laptop.
+2. **Remote CLI** (`GRAIN_API` or `--api`) talks **HTTP** to the daemon. Guest agent ops (exec, shell, cp, fs) are **proxied through the API** — you do not need hostfwd ports on your laptop. The guest agent itself stays unauthenticated on loopback hostfwd; the **daemon token** is the remote gate.
 3. **Published ports** still bind to **`127.0.0.1` on the grain host**. Reach apps with SSH tunnels.
 4. **Mounts (`-v`)** are paths on the **sandbox host**, not the laptop.
 5. **`grain up` / `down` / `image` / `proxy` / `logs`** are **local-host only** — run them on the server (or over SSH).
+6. **`network: overlay`** joins VMs on a shared L2; peers can reach each other’s unauthenticated guest agents — do not mix untrusted tenants on one overlay ([security note](../networking-overlay/#security-note)).
 
 ## Security model (read this first)
 
@@ -64,6 +65,7 @@ Whoever can call authenticated `POST /vms` can create VMs, exec as root in guest
 |------|----------|
 | **Non-loopback bind without token** | Daemon **refuses to start** if `api` is not loopback and `api_token` is empty |
 | **Remote CLI to non-loopback** | CLI **requires** `GRAIN_TOKEN` / `api_token` |
+| **Cleartext HTTP transport** | Daemon serves HTTP only; Bearer tokens on non-loopback `http://` are sniffable — prefer SSH tunnel to `127.0.0.1` or TLS reverse proxy (`https://`). CLI warns once; silence with `GRAIN_INSECURE_HTTP=1` |
 | **Unix socket mode** | Socket is `0600`; still prefer token if untrusted local users share the host |
 | **`GET /healthz`** | Always unauthenticated (liveness only) |
 

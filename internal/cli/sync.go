@@ -28,6 +28,10 @@ Unlike grain cp (full snapshot replace), sync plans creates/updates/deletes,
 skips unchanged paths relative to a host-side baseline, and fails on conflicts
 (both sides diverged). Dest-ahead paths are kept (not overwritten) unless --force.
 
+By default equality uses size+mtime fingerprints. Pass --checksum to re-hash
+file content (SHA-256) for paths the planner would skip, so same-size/mtime
+files with different content still transfer.
+
 Requires the guest agent (no scp fallback). Works over remote CLI (GRAIN_API)
 via the daemon's agent proxy. Directory roots only — use grain cp for files.
 
@@ -54,9 +58,7 @@ func bindSyncFlags(cmd *cobra.Command, f *syncFlags) {
 	cmd.Flags().BoolVar(&f.delete, "delete", false, "remove dest paths missing on source (ignored paths never deleted)")
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "print plan only; no writes or state update")
 	cmd.Flags().BoolVar(&f.force, "force", false, "source-wins for conflicts and dest-ahead paths")
-	// Hidden: not implemented; Run errors if set so agents cannot assume hashing ran.
-	cmd.Flags().BoolVar(&f.checksum, "checksum", false, "not implemented: content hash refine")
-	_ = cmd.Flags().MarkHidden("checksum")
+	cmd.Flags().BoolVar(&f.checksum, "checksum", false, "re-compare skipped files with SHA-256 content hashes (upgrade skip→update when content differs)")
 	cmd.Flags().StringArrayVar(&f.exclude, "exclude", nil, "extra gitignore-style patterns (repeatable)")
 	cmd.Flags().BoolVar(&f.noDefaults, "no-defaults", false, "do not apply built-in ignores (.git/)")
 	cmd.Flags().BoolVar(&f.noGitignore, "no-gitignore", false, "do not load host .gitignore")

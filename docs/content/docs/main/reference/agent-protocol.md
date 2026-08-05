@@ -12,6 +12,8 @@ keywords:
 
 The guest agent listens on **TCP `:7475`** (and optionally **vsock port 7475**). The host reaches it via SLIRP hostfwd (`Instance.agent_port`) or AF_VSOCK when configured.
 
+**No authentication.** Endpoints accept any caller that can open the port. Host-side isolation is loopback-only hostfwd (and authenticated daemon proxy for remote CLI). On `network: overlay`, peer VMs on the shared L2 can dial each other’s agents — see [Security model](../../explain/security/#guest-agent-trust-model) and [Overlay network](../../guides/networking-overlay/#security-note).
+
 Default version string: see agent package `Version`.
 
 ## Health

@@ -10,9 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **Image pull fail-closed digests** — production catalog pulls refuse install when neither a pinned `SHA256` nor a companion `.sha256` sidecar is available (`grain-ubuntu` sidecar required; no silent skip). `ubuntu-cloud` digests refreshed to current noble minimal SHA256SUMS; `alpine-cloud` pins SHA-256 of the published qcow2 (Alpine ships `.sha512`/`.asc` only). Spec field `AllowUnverified` is for tests/dev only.
+- **Remote API transport guidance** — CLI prints a one-time stderr warning when dialing a non-loopback cleartext `http://` API URL (Bearer tokens are sniffable); silence with `GRAIN_INSECURE_HTTP=1`. Daemon non-loopback bind warning mentions cleartext HTTP. Docs (`SECURITY.md`, remote-lab, config) recommend SSH tunnel to `127.0.0.1` or HTTPS reverse proxy. `https://` API URLs use the default TLS client.
+
 
 ### Added
 
+- **`grain fwd tunnel [name]`** — print ready-to-run `ssh -N -L HOSTPORT:127.0.0.1:HOSTPORT` lines for a VM's published SLIRP and live host ports (daemon host loopback). Flags: `--host`, `--user`, `--json`; default host from `GRAIN_SSH_HOST` or `USER@HOST` placeholder. See [Remote lab](https://grainvm.com/guides/remote-lab/).
 - **Builtin profile `remote-coding`** — durable remote lab defaults (`persistent`, 4 CPU / 8192 MiB / 32 GiB, `grain-ubuntu`) without editing config; user `profiles:` with the same name override. CLI root help lists `sync`, `agent deploy`, and the profile.
 - **`grain sync push | pull`** — unidirectional incremental host↔guest directory sync via the guest agent (local dial + remote `GRAIN_API` proxy). Host-side baselines under `data_dir/sync/`; `--delete` / `--dry-run` / `--force` / ignore flags; exit `2` on conflicts with zero applies. MCP: `grain_sync_push` / `grain_sync_pull`.
 - **`grain agent deploy [name]`** — SCP/install or refresh `grain-agent` in a running guest over SSH. Local CLI SCPs directly; remote CLI (`GRAIN_API`) calls `POST /vms/{name}/agent/deploy` so deploy runs on the daemon host (agent binary must exist there). Docs cover reverse `cp`, remote tunnel + `-p` labs, and agent refresh.

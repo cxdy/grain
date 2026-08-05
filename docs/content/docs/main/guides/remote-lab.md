@@ -111,6 +111,8 @@ export GRAIN_TOKEN=replace-with-long-random-secret
 grain ls
 ```
 
+**Transport caveat:** that path is **cleartext HTTP**. The Bearer token authenticates you, but anyone on the network path can sniff `Authorization` and request bodies. Prefer the SSH tunnel above, or put a **TLS reverse proxy** in front of `127.0.0.1:7474` and set `GRAIN_API=https://sandbox.example.com` (CLI uses the system TLS stack; no extra flags). The CLI prints a one-time stderr warning for non-loopback `http://` URLs; set `GRAIN_INSECURE_HTTP=1` only if you accept cleartext on that path.
+
 Priority: `--api` flag > `GRAIN_API` > config `api_url`.
 
 Install the same `grain` CLI on the laptop (no QEMU required for remote-only use).
@@ -144,6 +146,10 @@ grain new --profile remote-coding --wait agent -n web -P 3000:3000
 # laptop: tunnel that host loopback port
 ssh -N -L 3000:127.0.0.1:3000 sandbox.example.com
 # open http://127.0.0.1:3000
+
+# or print ready-to-run lines for all published + live host ports
+grain fwd tunnel web --host sandbox.example.com
+# export GRAIN_SSH_HOST=sandbox.example.com  # default for --host
 ```
 
 You can combine API and app tunnels:
@@ -168,11 +174,15 @@ The **agent binary must exist on the daemon host** (`just agent-linux` or `~/.gr
 ## 8. Security (non-negotiable)
 
 - **Never** open API or MCP without a shared secret and network controls.
-- Prefer **`api: 127.0.0.1:7474` + SSH tunnel** over public binds.
+- Prefer **`api: 127.0.0.1:7474` + SSH tunnel** (or TLS reverse proxy → `https://…`) over public binds.
 - Non-loopback `api` **requires** `api_token` or the daemon will not start.
 - Remote CLI to a non-loopback URL **requires** `GRAIN_TOKEN` / `api_token`.
+- **Cleartext Bearer is sniffable** on non-loopback `http://` — token ≠ encryption. Tunnel or terminate TLS.
+- CLI warns once on non-loopback cleartext `http://`; silence only with `GRAIN_INSECURE_HTTP=1` when you accept the risk.
 - Keep MCP on **`127.0.0.1`** unless you know how you will authenticate and firewall it.
 - One Bearer token ≈ one trust domain; this is a team lab pattern, not multi-tenant SaaS.
+- Guest agent ops go through the **authenticated daemon proxy**; agent hostfwd stays loopback-only — do not tunnel raw `:7475` agent ports as a substitute for API auth.
+- Default networking is isolated SLIRP. **`network: overlay`** is a shared L2: peers can control each other’s unauthenticated agents — only for cooperative labs ([overlay security note](../networking-overlay/#security-note)).
 
 ## Day-to-day cheat sheet
 
