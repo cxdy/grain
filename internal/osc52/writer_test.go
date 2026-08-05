@@ -339,28 +339,19 @@ func TestWriterTmuxDCSEdgeCases(t *testing.T) {
 	}
 }
 
-func TestWriteReadClipboardDarwin(t *testing.T) {
-	// Exercises writeClipboard / ReadClipboard / runClipboardCmd / runClipboardOut on darwin.
+func TestWriteReadClipboardHelpers(t *testing.T) {
+	// Empty write is a no-op on every OS.
 	if err := writeClipboard(nil); err != nil {
 		t.Fatal(err)
 	}
-	payload := []byte("grain-osc52-test-" + t.Name())
-	if err := writeClipboard(payload); err != nil {
-		t.Fatalf("writeClipboard: %v", err)
-	}
-	got, err := ReadClipboard()
-	if err != nil {
-		t.Fatalf("ReadClipboard: %v", err)
-	}
-	// Other tests may race the clipboard; just ensure we got something or exact match.
-	if !bytes.Contains(got, []byte("grain-osc52-test-")) && string(got) != string(payload) {
-		t.Logf("clipboard may have been overwritten: %q", got)
+	if err := writeClipboard([]byte{}); err != nil {
+		t.Fatal(err)
 	}
 	// errString
 	if errNoClipboard.Error() == "" {
 		t.Fatal("empty error")
 	}
-	// runClipboard helpers directly
+	// runClipboard helpers do not need a real clipboard binary.
 	if err := runClipboardCmd([]byte("x"), "true"); err != nil {
 		t.Fatal(err)
 	}
@@ -370,6 +361,27 @@ func TestWriteReadClipboardDarwin(t *testing.T) {
 	}
 	if _, err := runClipboardOut("false"); err == nil {
 		t.Fatal("expected error")
+	}
+
+	// Host clipboard path: require a real helper (pbcopy on macOS; wl-copy/xclip/xsel on Linux).
+	// GitHub Actions Linux runners typically have none — skip the live round-trip.
+	payload := []byte("grain-osc52-test-" + t.Name())
+	if err := writeClipboard(payload); err != nil {
+		if err == errNoClipboard {
+			t.Skip("no host clipboard helper in this environment")
+		}
+		t.Fatalf("writeClipboard: %v", err)
+	}
+	got, err := ReadClipboard()
+	if err != nil {
+		if err == errNoClipboard {
+			t.Skip("no host clipboard paste helper")
+		}
+		t.Fatalf("ReadClipboard: %v", err)
+	}
+	// Other tests may race the clipboard; just ensure we got something or exact match.
+	if !bytes.Contains(got, []byte("grain-osc52-test-")) && string(got) != string(payload) {
+		t.Logf("clipboard may have been overwritten: %q", got)
 	}
 }
 
