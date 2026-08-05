@@ -132,10 +132,8 @@ func TestRunMockHypervisorCancel(t *testing.T) {
 		t.Fatal("daemon did not exit after cancel")
 	}
 
-	// Socket and pid cleaned up.
-	if _, err := os.Stat(cfg.Socket); !os.IsNotExist(err) {
-		t.Fatalf("socket should be removed: %v", err)
-	}
+	// Pid cleaned up when we still own it; socket is left for successor rebind
+	// (next Start does os.Remove before Listen).
 	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
 		t.Fatalf("pid should be removed: %v", err)
 	}

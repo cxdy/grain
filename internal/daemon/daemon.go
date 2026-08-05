@@ -109,9 +109,13 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		}
 	}()
 
-	// write pid
+	// Claim pid as soon as both listeners are up so a dying predecessor that
+	// still has our previous PID in grain.pid cannot treat the new socket as its own.
 	pidPath := filepath.Join(cfg.DataDir, "grain.pid")
-	_ = os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0o644)
+	selfPID := os.Getpid()
+	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", selfPID)), 0o644); err != nil {
+		log.Warn("write pid file", "path", pidPath, "err", err)
+	}
 
 	// Optional MCP Streamable HTTP (same process as the daemon).
 	mcpCancel := func() {}
@@ -132,7 +136,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 
 	<-ctx.Done()
-	log.Info("shutting down")
+	log.Info("shutting down", "pid", selfPID)
 	mcpCancel()
 	shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -141,7 +145,29 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		_ = httpSrv.Shutdown(shCtx)
 	}
 	_ = mgr.CleanupEphemeral(context.Background())
-	_ = os.Remove(cfg.Socket)
-	_ = os.Remove(pidPath)
+	// Never unlink the unix socket path here. A successor may have already
+	// rebound grain.sock while this process was still draining Shutdown; the
+	// old code deleted that new inode when grain.pid still listed this PID
+	// (TOCTOU: successor listens before it overwrites the pid file), leaving
+	// a live daemon on TCP with an unlinked socket. The next Start always
+	// os.Remove(socket) before Listen. Only clear the pid file if we still own it.
+	removePIDFileIfOwned(pidPath, selfPID, log)
 	return nil
+}
+
+// removePIDFileIfOwned deletes grain.pid only when it still contains selfPID.
+func removePIDFileIfOwned(pidPath string, selfPID int, log *slog.Logger) {
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		return
+	}
+	var filePID int
+	if _, err := fmt.Sscanf(string(data), "%d", &filePID); err != nil || filePID != selfPID {
+		if log != nil {
+			log.Info("skip pid cleanup — file not owned by this process",
+				"pid", selfPID, "file_pid", filePID)
+		}
+		return
+	}
+	_ = os.Remove(pidPath)
 }

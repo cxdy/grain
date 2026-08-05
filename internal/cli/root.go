@@ -220,6 +220,16 @@ MCP can also be enabled permanently:
 				// Detach from the controlling terminal's process group so a later
 				// shell Ctrl+C does not deliver SIGINT to the daemon.
 				c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+				// Persist daemon logs — background children inherit a closed TTY/pipe
+				// otherwise and we lose "shutting down" / crash lines.
+				logPath := filepath.Join(cfg.DataDir, "logs", "daemon.log")
+				if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err == nil {
+					if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+						c.Stdout = f
+						c.Stderr = f
+						defer func() { _ = f.Close() }()
+					}
+				}
 				if err := c.Start(); err != nil {
 					return err
 				}
@@ -231,9 +241,17 @@ MCP can also be enabled permanently:
 				for time.Now().Before(deadline) {
 					select {
 					case waitErr := <-errCh:
+						// Port busy often means a half-dead daemon is already serving TCP.
+						if err := probeDaemonHealth(cfg); err == nil {
+							printDaemonUp("grain already up", cfg)
+							if enableMCP {
+								fmt.Fprintln(os.Stderr, "note: existing daemon answered healthz (possibly via TCP); unix socket may need: grain down && grain up")
+							}
+							return nil
+						}
 						cleanupStaleDaemonFiles(cfg)
 						if waitErr != nil {
-							return fmt.Errorf("daemon exited during start: %w", waitErr)
+							return fmt.Errorf("daemon exited during start: %w (if address already in use: lsof -nP -iTCP:7474 -sTCP:LISTEN)", waitErr)
 						}
 						return fmt.Errorf("daemon exited during start (check: grain up --fg)")
 					default:
@@ -261,7 +279,17 @@ MCP can also be enabled permanently:
 				}
 				return fmt.Errorf("daemon failed to start (check: grain up --fg)")
 			}
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			// Ignore SIGHUP so a closed terminal/session does not stop a
+			// background daemon (Setsid already detaches the process group).
+			signal.Ignore(syscall.SIGHUP)
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+			ctx, stop := context.WithCancel(context.Background())
+			go func() {
+				sig := <-sigCh
+				log.Info("signal received, shutting down", "signal", sig.String(), "pid", os.Getpid())
+				stop()
+			}()
 			defer stop()
 			return daemon.Run(ctx, cfg, log)
 		},
@@ -286,8 +314,11 @@ func cmdDown(cfgPath *string) *cobra.Command {
 			pidPath := daemonPIDPath(cfg)
 			pid, err := readPID(pidPath)
 			if err != nil {
-				// Still try to remove a stale socket.
-				_ = os.Remove(cfg.Socket)
+				// Missing pid file: only remove this config's unix socket if it is
+				// not dialable (do not use TCP fallback — that can hit another daemon).
+				if !sockOK(cfg.Socket) {
+					_ = os.Remove(cfg.Socket)
+				}
 				return fmt.Errorf("daemon not running (%v)", err)
 			}
 			if !pidAlive(pid) {
@@ -335,10 +366,16 @@ func probeDaemonHealth(cfg config.Config) error {
 }
 
 // cleanupStaleDaemonFiles removes pid/socket left by a dead daemon process.
+// If a live pid owns the files, or this config's unix socket is still dialable,
+// leave them alone. Uses unix only (not TCP fallback) so a half-dead daemon on
+// :7474 cannot block cleanup of an unrelated temp socket in tests/tools.
 func cleanupStaleDaemonFiles(cfg config.Config) {
 	pidPath := daemonPIDPath(cfg)
 	if pid, err := readPID(pidPath); err == nil && pidAlive(pid) {
 		return // live process owns these files
+	}
+	if sockOK(cfg.Socket) {
+		return
 	}
 	_ = os.Remove(pidPath)
 	_ = os.Remove(cfg.Socket)
