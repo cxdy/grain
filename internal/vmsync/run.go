@@ -54,9 +54,9 @@ type Options struct {
 	// OnProgress is called during apply for live status (optional).
 	OnProgress func(ProgressEvent)
 
-	Delete        bool
-	DryRun        bool
-	Force         bool
+	Delete bool
+	DryRun bool
+	Force  bool
 	// Checksum is reserved for a future content-hash refine. If true, Run returns
 	// a usage error — the flag is not implemented yet (avoid silent no-op).
 	Checksum      bool
