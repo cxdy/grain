@@ -209,6 +209,25 @@ func TestToolHandlersErrorPaths(t *testing.T) {
 	if _, _, err := s.toolStopVM(ctx, nil, nameIn{Name: "x"}); err == nil {
 		t.Fatal("stop")
 	}
+	// lifecycle errors
+	if _, _, err := s.toolStatus(ctx, nil, nameIn{Name: "x"}); err == nil {
+		t.Fatal("status")
+	}
+	if _, _, err := s.toolPauseVM(ctx, nil, nameIn{Name: "x"}); err == nil {
+		t.Fatal("pause")
+	}
+	if _, _, err := s.toolResumeVM(ctx, nil, nameIn{Name: "x"}); err == nil {
+		t.Fatal("resume")
+	}
+	if _, _, err := s.toolSuspendVM(ctx, nil, nameIn{Name: "x"}); err == nil {
+		t.Fatal("suspend")
+	}
+	if _, _, err := s.toolRestoreVM(ctx, nil, nameIn{Name: "x"}); err == nil {
+		t.Fatal("restore")
+	}
+	if _, _, err := s.toolSecretLS(ctx, nil, emptyIn{}); err == nil {
+		t.Fatal("secret_ls")
+	}
 	// delete not found → ok missing
 	out, _, err := s.toolDeleteVM(ctx, nil, nameIn{Name: "x"})
 	if err != nil {
@@ -224,6 +243,21 @@ func TestToolHandlersErrorPaths(t *testing.T) {
 	}
 	if _, _, err := s.toolDeleteVM(ctx, nil, nameIn{}); err == nil {
 		t.Fatal("empty delete")
+	}
+	if _, _, err := s.toolStatus(ctx, nil, nameIn{}); err == nil {
+		t.Fatal("empty status")
+	}
+	if _, _, err := s.toolPauseVM(ctx, nil, nameIn{}); err == nil {
+		t.Fatal("empty pause")
+	}
+	if _, _, err := s.toolResumeVM(ctx, nil, nameIn{}); err == nil {
+		t.Fatal("empty resume")
+	}
+	if _, _, err := s.toolSuspendVM(ctx, nil, nameIn{}); err == nil {
+		t.Fatal("empty suspend")
+	}
+	if _, _, err := s.toolRestoreVM(ctx, nil, nameIn{}); err == nil {
+		t.Fatal("empty restore")
 	}
 	if _, _, err := s.toolExec(ctx, nil, execIn{Name: "x"}); err == nil {
 		t.Fatal("empty cmd")

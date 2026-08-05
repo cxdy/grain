@@ -29,6 +29,12 @@ const (
 	ToolStartVM        = "grain_start_vm"
 	ToolStopVM         = "grain_stop_vm"
 	ToolDeleteVM       = "grain_delete_vm"
+	ToolStatus         = "grain_status"
+	ToolPauseVM        = "grain_pause_vm"
+	ToolResumeVM       = "grain_resume_vm"
+	ToolSuspendVM      = "grain_suspend_vm"
+	ToolRestoreVM      = "grain_restore_vm"
+	ToolSecretLS       = "grain_secret_ls"
 	ToolExec           = "grain_exec"
 	ToolWriteFile      = "grain_write_file"
 	ToolReadFile       = "grain_read_file"
@@ -65,6 +71,12 @@ func ToolNames() []string {
 		ToolStartVM,
 		ToolStopVM,
 		ToolDeleteVM,
+		ToolStatus,
+		ToolPauseVM,
+		ToolResumeVM,
+		ToolSuspendVM,
+		ToolRestoreVM,
+		ToolSecretLS,
 		ToolExec,
 		ToolWriteFile,
 		ToolReadFile,
@@ -165,6 +177,38 @@ func (s *Server) register(srv *mcp.Server) {
 		Name:        ToolDeleteVM,
 		Description: "Delete a sandbox (DELETE /vms/{name}). Idempotent: missing VM returns ok with missing=true.",
 	}, s.toolDeleteVM)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: ToolStatus,
+		Description: "VM status plus guest agent readiness when reachable (GET /vms/{name} + agent health). " +
+			"Mirrors grain status: instance state, agent up/unreachable, userdata, readiness protocol.",
+	}, s.toolStatus)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        ToolPauseVM,
+		Description: "Pause a running sandbox (POST /vms/{name}/pause). Freezes guest vCPUs via QMP; QEMU stays up.",
+	}, s.toolPauseVM)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        ToolResumeVM,
+		Description: "Resume a paused sandbox (POST /vms/{name}/resume). QMP cont.",
+	}, s.toolResumeVM)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: ToolSuspendVM,
+		Description: "Suspend a persistent sandbox (POST /vms/{name}/suspend). Stops the process and frees host RAM " +
+			"(unlike pause, which freezes vCPUs while QEMU stays running). Optional qcow2 savevm.",
+	}, s.toolSuspendVM)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        ToolRestoreVM,
+		Description: "Restore a suspended sandbox (POST /vms/{name}/restore). Loads savevm when available, else cold boot.",
+	}, s.toolRestoreVM)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        ToolSecretLS,
+		Description: "List host secrets metadata (GET /secrets). Names and sizes only; no payloads.",
+	}, s.toolSecretLS)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: ToolExec,
@@ -569,6 +613,95 @@ func (s *Server) toolDeleteVM(ctx context.Context, _ *mcp.CallToolRequest, in na
 		return toolErr(err)
 	}
 	return toolJSON(map[string]any{"ok": true, "name": in.Name, "action": "delete", "missing": false})
+}
+
+func (s *Server) toolStatus(ctx context.Context, _ *mcp.CallToolRequest, in nameIn) (*mcp.CallToolResult, any, error) {
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		return toolErr(fmt.Errorf("name is required"))
+	}
+	inst, err := s.Client.Get(ctx, name)
+	if err != nil {
+		return toolErr(err)
+	}
+	out := map[string]any{
+		"name":       inst.Name,
+		"status":     inst.Status,
+		"image":      inst.Image,
+		"persistent": inst.Persistent,
+		"instance":   inst,
+	}
+	h, err := s.Client.AgentHealth(ctx, name)
+	if err != nil {
+		out["agent"] = "unreachable"
+		out["agent_error"] = err.Error()
+		return toolJSON(out)
+	}
+	out["agent"] = "up"
+	out["agent_health"] = h
+	if h.UserdataRan {
+		out["userdata"] = "ran"
+	} else {
+		out["userdata"] = "pending"
+	}
+	if h.Readiness != nil && h.Readiness.State != "" {
+		out["readiness"] = h.Readiness
+	} else {
+		out["readiness"] = "none"
+	}
+	return toolJSON(out)
+}
+
+func (s *Server) toolPauseVM(ctx context.Context, _ *mcp.CallToolRequest, in nameIn) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(in.Name) == "" {
+		return toolErr(fmt.Errorf("name is required"))
+	}
+	if err := s.Client.Pause(ctx, in.Name); err != nil {
+		return toolErr(err)
+	}
+	return toolJSON(map[string]any{"ok": true, "name": in.Name, "action": "pause"})
+}
+
+func (s *Server) toolResumeVM(ctx context.Context, _ *mcp.CallToolRequest, in nameIn) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(in.Name) == "" {
+		return toolErr(fmt.Errorf("name is required"))
+	}
+	if err := s.Client.Resume(ctx, in.Name); err != nil {
+		return toolErr(err)
+	}
+	return toolJSON(map[string]any{"ok": true, "name": in.Name, "action": "resume"})
+}
+
+func (s *Server) toolSuspendVM(ctx context.Context, _ *mcp.CallToolRequest, in nameIn) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(in.Name) == "" {
+		return toolErr(fmt.Errorf("name is required"))
+	}
+	if err := s.Client.Suspend(ctx, in.Name); err != nil {
+		return toolErr(err)
+	}
+	return toolJSON(map[string]any{"ok": true, "name": in.Name, "action": "suspend"})
+}
+
+func (s *Server) toolRestoreVM(ctx context.Context, _ *mcp.CallToolRequest, in nameIn) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(in.Name) == "" {
+		return toolErr(fmt.Errorf("name is required"))
+	}
+	inst, err := s.Client.Restore(ctx, in.Name)
+	if err != nil {
+		return toolErr(err)
+	}
+	return toolJSON(inst)
+}
+
+func (s *Server) toolSecretLS(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, any, error) {
+	list, err := s.Client.ListSecrets(ctx)
+	if err != nil {
+		return toolErr(err)
+	}
+	if list == nil {
+		list = []client.SecretMeta{}
+	}
+	return toolJSON(map[string]any{"secrets": list, "count": len(list)})
 }
 
 func (s *Server) toolExec(ctx context.Context, req *mcp.CallToolRequest, in execIn) (*mcp.CallToolResult, any, error) {
