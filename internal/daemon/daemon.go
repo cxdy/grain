@@ -109,10 +109,13 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		}
 	}()
 
-	// write pid
+	// Claim pid as soon as both listeners are up so a dying predecessor that
+	// still has our previous PID in grain.pid cannot treat the new socket as its own.
 	pidPath := filepath.Join(cfg.DataDir, "grain.pid")
 	selfPID := os.Getpid()
-	_ = os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", selfPID)), 0o644)
+	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", selfPID)), 0o644); err != nil {
+		log.Warn("write pid file", "path", pidPath, "err", err)
+	}
 
 	// Optional MCP Streamable HTTP (same process as the daemon).
 	mcpCancel := func() {}
@@ -142,35 +145,29 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		_ = httpSrv.Shutdown(shCtx)
 	}
 	_ = mgr.CleanupEphemeral(context.Background())
-	// Only unlink runtime files if we still own them. A KeepAlive/restart or a
-	// second grain up can replace grain.pid/grain.sock while Shutdown is blocked
-	// on long-lived clients (shell WebSocket, Docker probes, etc.). Unconditional
-	// remove left the successor serving TCP with an unlinked socket — CLI then
-	// reports "daemon not up" while the process is still alive.
-	removeRuntimeFilesIfOwned(cfg.Socket, pidPath, selfPID, log)
+	// Never unlink the unix socket path here. A successor may have already
+	// rebound grain.sock while this process was still draining Shutdown; the
+	// old code deleted that new inode when grain.pid still listed this PID
+	// (TOCTOU: successor listens before it overwrites the pid file), leaving
+	// a live daemon on TCP with an unlinked socket. The next Start always
+	// os.Remove(socket) before Listen. Only clear the pid file if we still own it.
+	removePIDFileIfOwned(pidPath, selfPID, log)
 	return nil
 }
 
-// removeRuntimeFilesIfOwned deletes the unix socket and pid file only when
-// grain.pid still contains selfPID. If another process has taken over (or the
-// pid file is gone), leave the paths alone.
-func removeRuntimeFilesIfOwned(socket, pidPath string, selfPID int, log *slog.Logger) {
+// removePIDFileIfOwned deletes grain.pid only when it still contains selfPID.
+func removePIDFileIfOwned(pidPath string, selfPID int, log *slog.Logger) {
 	data, err := os.ReadFile(pidPath)
 	if err != nil {
-		if log != nil {
-			log.Info("skip runtime file cleanup — pid file missing or unreadable (successor may own socket)",
-				"pid", selfPID, "err", err)
-		}
 		return
 	}
 	var filePID int
 	if _, err := fmt.Sscanf(string(data), "%d", &filePID); err != nil || filePID != selfPID {
 		if log != nil {
-			log.Info("skip runtime file cleanup — pid file not owned by this process",
+			log.Info("skip pid cleanup — file not owned by this process",
 				"pid", selfPID, "file_pid", filePID)
 		}
 		return
 	}
-	_ = os.Remove(socket)
 	_ = os.Remove(pidPath)
 }
