@@ -841,6 +841,181 @@ func (m *Manager) Get(name string) (*vm.Instance, error) {
 	return m.st.Get(name)
 }
 
+// Clone creates a stopped persistent VM by copying the source root disk and
+// adapting metadata. Source must be a persistent VM that is not running
+// (status stopped, suspended, or error with disk retained). Running, paused,
+// creating, and ephemeral VMs are refused — stop first.
+//
+// Destination name may be empty (auto sbox-N). Host SSH/agent ports and
+// SLIRP hostfwd host ports are cleared so the next Start allocates fresh ports.
+// Live SSH forwards are not copied. Cloud-init seed is regenerated for the new
+// hostname (guest OS identity may still match the source until reconfigured).
+//
+// Disk copy prefers APFS clonefile / file copy so qcow2 overlays keep their
+// backing chain (small and fast).
+func (m *Manager) Clone(ctx context.Context, srcName, dstName string) (*vm.Instance, error) {
+	srcName = strings.TrimSpace(srcName)
+	if srcName == "" {
+		return nil, fmt.Errorf("source name is required")
+	}
+	src, err := m.st.Get(srcName)
+	if err != nil {
+		return nil, err
+	}
+	if !src.Persistent {
+		return nil, fmt.Errorf("cannot clone ephemeral VM %q; only persistent VMs can be cloned (stop and recreate with -p, or clone a persistent lab)", srcName)
+	}
+	if m.rt.Running(src) || src.Status == vm.StatusRunning || src.Status == vm.StatusPaused {
+		return nil, fmt.Errorf("cannot clone running or paused VM %q; stop it first (grain stop %s)", srcName, srcName)
+	}
+	if src.Status == vm.StatusCreating {
+		return nil, fmt.Errorf("cannot clone VM %q while status is %s", srcName, src.Status)
+	}
+	if src.DiskPath == "" || !DiskExists(src.DiskPath) {
+		return nil, fmt.Errorf("vm %q has no disk to clone", srcName)
+	}
+
+	name, err := m.claimCreateName(strings.TrimSpace(dstName))
+	if err != nil {
+		return nil, err
+	}
+	defer m.releaseCreateName(name)
+
+	dstDir := m.st.Dir(name)
+	if err := os.MkdirAll(dstDir, 0o700); err != nil {
+		return nil, err
+	}
+	// Best-effort cleanup if we fail after claiming the directory.
+	success := false
+	defer func() {
+		if !success {
+			_ = os.RemoveAll(dstDir)
+		}
+	}()
+
+	baseName := filepath.Base(src.DiskPath)
+	if baseName == "" || baseName == "." || baseName == string(filepath.Separator) {
+		baseName = "disk.qcow2"
+	}
+	dstDisk := filepath.Join(dstDir, baseName)
+	if err := hypervisor.CopyDiskFile(ctx, src.DiskPath, dstDisk, false); err != nil {
+		return nil, fmt.Errorf("copy disk: %w", err)
+	}
+
+	// Optional UEFI NVRAM — copy when present so boot order survives.
+	srcVars := filepath.Join(m.st.Dir(srcName), "flash-vars.fd")
+	if DiskExists(srcVars) {
+		dstVars := filepath.Join(dstDir, "flash-vars.fd")
+		if err := hypervisor.CopyDiskFile(ctx, srcVars, dstVars, false); err != nil {
+			m.log.Warn("clone: flash-vars copy skipped", "err", err)
+		}
+	}
+
+	fwds := clonePortForwards(src.Forwards)
+	socks := cloneSocketForwards(src.SocketForwards)
+	mounts := cloneMounts(src.Mounts)
+	tags := cloneTags(src.Tags)
+
+	inst := &vm.Instance{
+		Name:           name,
+		Status:         vm.StatusStopped,
+		Persistent:     true,
+		CPUs:           src.CPUs,
+		MemoryMB:       src.MemoryMB,
+		DiskGB:         src.DiskGB,
+		Image:          src.Image,
+		Arch:           src.Arch,
+		GPU:            src.GPU,
+		Network:        src.Network,
+		Tags:           tags,
+		Forwards:       fwds,
+		Mounts:         mounts,
+		SocketForwards: socks,
+		DiskPath:       dstDisk,
+		CreatedAt:      time.Now().UTC(),
+		// Ports cleared — Start allocates SSH/agent and hostfwd HostPort 0.
+		SSHPort:   0,
+		AgentPort: 0,
+		AgentCID:  0,
+		IP:        "",
+		PID:       0,
+		QMPPath:   "",
+		Error:     "",
+	}
+
+	// Fresh cloud-init seed for the new hostname (first-boot / missing seed path).
+	// Already-provisioned guest disks keep their internal hostname until the user changes it.
+	if _, pub, err := sshkey.Ensure(m.cfg.DataDir); err == nil {
+		mountDriver := hypervisor.ResolveMountDriver(m.cfg.MountDriver, m.log)
+		if _, err := cloudinit.WriteNoCloudOpts(dstDir, cloudinit.SeedOpts{
+			Hostname: name,
+			SSHPub:   pub,
+			Mounts:   mountSpecs(mounts, mountDriver),
+			Minimal:  m.imageHasAgent(src.Image),
+		}); err != nil {
+			m.log.Warn("clone: cloud-init seed skipped", "err", err)
+		}
+	}
+
+	if err := m.st.Put(inst); err != nil {
+		return nil, err
+	}
+	success = true
+	m.log.Info("vm cloned", "src", srcName, "dst", name, "disk", dstDisk)
+	return inst, nil
+}
+
+func clonePortForwards(in []vm.PortForward) []vm.PortForward {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]vm.PortForward, len(in))
+	for i, f := range in {
+		// HostPort 0 → free port allocated on next Start (avoids conflicts with source).
+		out[i] = vm.PortForward{
+			HostPort:  0,
+			GuestPort: f.GuestPort,
+			Proto:     f.Proto,
+		}
+	}
+	return out
+}
+
+func cloneSocketForwards(in []vm.SocketForward) []vm.SocketForward {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]vm.SocketForward, len(in))
+	for i, s := range in {
+		out[i] = vm.SocketForward{
+			HostPath:  s.HostPath,
+			GuestPath: s.GuestPath,
+			// PID cleared — re-applied on Start when configured.
+		}
+	}
+	return out
+}
+
+func cloneMounts(in []vm.Mount) []vm.Mount {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]vm.Mount, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneTags(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
 func (m *Manager) Delete(ctx context.Context, name string) error {
 	inst, err := m.st.Get(name)
 	if err != nil {

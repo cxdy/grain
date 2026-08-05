@@ -51,7 +51,7 @@ func TestRootHelp(t *testing.T) {
 func TestRootSubcommandsPresent(t *testing.T) {
 	cmd := Root("0.0.0-test")
 	want := []string{
-		"up", "down", "new", "act", "stop", "start", "pause", "resume",
+		"up", "down", "new", "clone", "act", "stop", "start", "pause", "resume",
 		"suspend", "restore", "ls", "rm", "sh", "x", "cp", "sync", "fs", "logs",
 		"fwd", "stats", "secret", "proxy", "profile", "image", "agent",
 		"doctor", "update", "mcp", "version",

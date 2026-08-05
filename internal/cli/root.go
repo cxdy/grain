@@ -54,10 +54,12 @@ func Root(version string) *cobra.Command {
   grain new --profile remote-coding  durable remote lab (builtin: -p, 4c/8G)
   grain new --preset docker|k3s|act   userdata presets
   grain new --recipe file.yaml  portable create + bootstrap recipe
+  grain new --clone SRC       offline clone of stopped persistent VM
   grain new --arch amd64      x86_64 guest (QEMU TCG on Apple Silicon)
   grain new --gpu virtio      virtio-gpu for the guest
   grain new --network overlay share L2 between VMs
   grain new --wait agent      wait for agent (ssh|agent|userdata|bootstrap)
+  grain clone SRC DST   copy stopped persistent disk as new VM (offline)
   grain recipe validate|show  check a sandbox recipe file
   grain act -- [act-args]     run GitHub Actions via act in a sandbox
   grain update [--check]      check for / install latest release
@@ -115,6 +117,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 		cmdUpdate(&cfgPath, version),
 		cmdMCP(&cfgPath, version),
 		cmdNew(&cfgPath),
+		cmdClone(&cfgPath),
 		cmdAct(&cfgPath),
 		cmdRecipe(),
 		cmdStop(&cfgPath),
@@ -414,9 +417,18 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var volumes []string
 	var waitMode string
 	var useProxy bool
+	var cloneFrom string
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Launch a sandbox (ephemeral by default)",
+		Long: `Launch a sandbox (ephemeral by default).
+
+  grain new -p -n lab          persistent lab
+  grain new --clone lab -n lab2  offline disk clone of stopped persistent VM
+
+Clone limitations (same as grain clone): source must be stopped and persistent;
+qcow2 overlays keep their backing chain; guest hostname may still match the
+source; SSH/agent ports are allocated on the next start (clone is left stopped).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
@@ -429,6 +441,10 @@ func cmdNew(cfgPath *string) *cobra.Command {
 			// Allow boot + cloud-init (ReadyTimeout defaults to 2m; give API room).
 			// Recipes with bootstrap may need longer; override when recipe sets ready_timeout.
 			createTimeout := 5 * time.Minute
+
+			if strings.TrimSpace(cloneFrom) != "" {
+				return runClone(c, strings.TrimSpace(cloneFrom), name, createTimeout)
+			}
 
 			var compiled *recipe.Compiled
 			if recipePath != "" {
@@ -664,7 +680,66 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringArrayVarP(&volumes, "volume", "v", nil, "share host dir HOST:GUEST via virtio-9p (repeatable; host may be . or relative)")
 	cmd.Flags().StringArrayVar(&publishSockets, "publish-socket", nil, "SSH streamlocal socket forward HOSTPATH:GUESTPATH (repeatable; docker-style)")
 	cmd.Flags().BoolVar(&useProxy, "proxy", false, "inject HTTP(S)_PROXY via cloud-init (guest → 10.0.2.2; requires grain proxy up)")
+	cmd.Flags().StringVar(&cloneFrom, "clone", "", "offline clone of stopped persistent SRC (left stopped; use -n for destination name)")
 	return cmd
+}
+
+// cmdClone copies a stopped persistent VM disk under a new name.
+func cmdClone(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "clone <src> <dst>",
+		Short: "Clone a stopped persistent VM (offline disk copy)",
+		Long: `Copy a stopped persistent VM's root disk and metadata to a new name.
+
+  grain stop lab
+  grain clone lab lab-copy
+  grain start lab-copy
+
+Limitations (P2 offline clone):
+  - Source must be persistent and not running/paused (stop first).
+  - Ephemeral VMs cannot be cloned.
+  - Clone is left stopped; SSH/agent and published host ports are allocated on start.
+  - qcow2 overlays keep their backing chain (shared base image; small/fast copy).
+  - Guest hostname/machine-id may still match the source until you reconfigure.
+  - Live SSH port forwards (grain fwd add) are not copied.
+
+API: POST /vms/{src}/clone  body: {"name":"dst"}`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
+			return runClone(c, args[0], args[1], 5*time.Minute)
+		},
+	}
+}
+
+func runClone(c *api.Client, src, dst string, timeout time.Duration) error {
+	src = strings.TrimSpace(src)
+	dst = strings.TrimSpace(dst)
+	if src == "" {
+		return fmt.Errorf("source VM name is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := c.Health(ctx); err != nil {
+		return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+	}
+	start := time.Now()
+	inst, err := c.Clone(ctx, src, api.CloneRequest{Name: dst})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("cloned %s → %s  status=%s  persist=%v  image=%s  (%s)\n",
+		src, inst.Name, inst.Status, inst.Persistent, inst.Image, time.Since(start).Round(time.Second))
+	fmt.Printf("next:  grain start %s\n", inst.Name)
+	fmt.Printf("       grain sh %s\n", inst.Name)
+	return nil
 }
 
 // buildProxyUserdata creates cloud-init that sets HTTP(S)_PROXY for SLIRP guests.

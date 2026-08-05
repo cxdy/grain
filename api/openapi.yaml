@@ -259,6 +259,49 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /vms/{name}/clone:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [vms]
+      summary: Clone a stopped persistent VM (offline disk copy)
+      description: |
+        Copy the source VM's root disk and metadata under a new name.
+        Source must be persistent and not running (stop first). Ephemeral VMs
+        cannot be cloned. The clone is left stopped; SSH/agent and hostfwd host
+        ports are cleared and reallocated on the next start.
+
+        Limitations: qcow2 overlays keep their backing chain (shared base image);
+        guest OS hostname/identity may still match the source until reconfigured;
+        live SSH port forwards are not copied; running/paused VMs are refused.
+      operationId: cloneVM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Destination VM name (empty = auto sbox-N)
+                  example: lab-copy
+      responses:
+        "201":
+          description: Cloned instance (status=stopped)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
   /vms/{name}/shutdown:
     parameters:
       - $ref: "#/components/parameters/VMName"

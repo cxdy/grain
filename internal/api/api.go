@@ -59,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /vms/{name}", s.deleteVM)
 	mux.HandleFunc("POST /vms/{name}/shutdown", s.shutdownVM)
 	mux.HandleFunc("POST /vms/{name}/start", s.startVM)
+	mux.HandleFunc("POST /vms/{name}/clone", s.cloneVM)
 	mux.HandleFunc("POST /vms/{name}/pause", s.pauseVM)
 	mux.HandleFunc("POST /vms/{name}/resume", s.resumeVM)
 	mux.HandleFunc("POST /vms/{name}/suspend", s.suspendVM)
@@ -336,6 +337,39 @@ func (s *Server) startVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, inst)
+}
+
+type cloneBody struct {
+	Name string `json:"name"`
+}
+
+func (s *Server) cloneVM(w http.ResponseWriter, r *http.Request) {
+	src := r.PathValue("name")
+	var body cloneBody
+	if r.Body != nil {
+		defer func() { _ = r.Body.Close() }()
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid JSON body: %w", err))
+			return
+		}
+	}
+	// Disk copy can be large; use create timeout budget rather than a short default.
+	ctx, cancel := context.WithTimeout(r.Context(), s.mgr.CreateTimeout())
+	defer cancel()
+	inst, err := s.mgr.Clone(ctx, src, body.Name)
+	if err != nil {
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "not found"):
+			writeErr(w, http.StatusNotFound, err)
+		case strings.Contains(msg, "already exists"):
+			writeErr(w, http.StatusConflict, err)
+		default:
+			writeErr(w, http.StatusBadRequest, err)
+		}
+		return
+	}
+	writeJSON(w, http.StatusCreated, inst)
 }
 
 func (s *Server) pauseVM(w http.ResponseWriter, r *http.Request) {

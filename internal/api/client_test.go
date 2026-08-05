@@ -175,6 +175,10 @@ func TestAPIClientSuccessSurface(t *testing.T) {
 	mux.HandleFunc("POST /vms/{name}/start", func(w http.ResponseWriter, r *http.Request) {
 		okJSON(w, `{"name":"n","status":"running"}`)
 	})
+	mux.HandleFunc("POST /vms/{name}/clone", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		okJSON(w, `{"name":"n2","status":"stopped","persistent":true}`)
+	})
 	mux.HandleFunc("POST /vms/{name}/shutdown", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		okJSON(w, `{"message":"ok"}`)

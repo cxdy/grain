@@ -2529,3 +2529,62 @@ func TestAPIShellUnavailable(t *testing.T) {
 	_ = s
 	_ = h
 }
+
+func TestCloneVMAPI(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+	body := `{"name":"lab","persistent":true,"forwards":[{"host_port":0,"guest_port":80}]}`
+	req := httptest.NewRequest(http.MethodPost, "/vms", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/lab/shutdown", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("shutdown %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/lab/clone", strings.NewReader(`{"name":"lab2"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("clone %d %s", rr.Code, rr.Body.String())
+	}
+	var inst vm.Instance
+	if err := json.NewDecoder(rr.Body).Decode(&inst); err != nil {
+		t.Fatal(err)
+	}
+	if inst.Name != "lab2" || inst.Status != vm.StatusStopped || !inst.Persistent {
+		t.Fatalf("%+v", inst)
+	}
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/lab/clone", strings.NewReader(`{"name":"lab2"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("conflict want 409 got %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/vms/lab/start", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("start %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/lab/clone", strings.NewReader(`{"name":"lab3"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("running clone want 400 got %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms/nope/clone", strings.NewReader(`{"name":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("missing want 404 got %d", rr.Code)
+	}
+}

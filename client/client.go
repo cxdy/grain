@@ -342,6 +342,37 @@ func (c *Client) Start(ctx context.Context, name string) (*Instance, error) {
 	return &inst, nil
 }
 
+// Clone copies a stopped persistent VM disk to a new name (offline clone).
+// dstName may be empty for daemon auto-naming. Returns status=stopped.
+func (c *Client) Clone(ctx context.Context, src, dstName string) (*Instance, error) {
+	body := map[string]string{}
+	if dstName != "" {
+		body["name"] = dstName
+	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/vms/"+url.PathEscape(src)+"/clone", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var inst Instance
+	if err := json.NewDecoder(res.Body).Decode(&inst); err != nil {
+		return nil, err
+	}
+	return &inst, nil
+}
+
 // Stop is an alias for Shutdown.
 func (c *Client) Stop(ctx context.Context, name string) error {
 	return c.Shutdown(ctx, name)
