@@ -266,11 +266,12 @@ Primary project metric: wall time for `grain new -i grain-ubuntu-fc --wait agent
 
 | Field | Value |
 |-------|--------|
-| **Reference host class** | AWS nested-virt Linux (x86_64, `/dev/kvm`, Firecracker binary on PATH) |
-| **How to measure** | `./scripts/bench-fc.sh -n 5` (or `N=5 ./scripts/bench-create.sh -i grain-ubuntu-fc --wait agent` with `hypervisor: firecracker`) |
+| **Reference host class** | **AWS `m7i-flex.large` nested-virt x86_64** (Ubuntu 24.04 guest host, `/dev/kvm`, Firecracker on PATH) |
+| **How to measure** | `./scripts/bench-fc.sh -n 5` (wraps `bench-create.sh` with `grain-ubuntu-fc` + `--wait agent`) |
 | **Smoke** | `./scripts/smoke-fc.sh` |
+| **Sample p50 (2026-08)** | **~1990 ms** create→agent ready (N=5; p95 ~1999 ms on this SKU) |
 
-Publish p50/p95 from that SKU in release notes when cutting an FC-themed version; keep benches honest (nested virt is slower than bare metal).
+Nested virt is slower than bare-metal KVM; re-run `bench-fc.sh` on your class before publishing numbers in a release.
 
 ## Related
 
