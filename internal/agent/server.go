@@ -693,7 +693,7 @@ func putTar(dest string, r io.Reader, uid, gid *uint32) error {
 			if perm == 0 {
 				perm = DefaultFileMode
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, perm)
+			f, err := openTarFile(target, perm)
 			if err != nil {
 				return err
 			}
@@ -706,6 +706,9 @@ func putTar(dest string, r io.Reader, uid, gid *uint32) error {
 			}
 			_ = applyOwnership(target, uid, gid)
 		case tar.TypeSymlink:
+			if err := safeTarLinkname(hdr.Linkname); err != nil {
+				return err
+			}
 			if err := os.MkdirAll(filepath.Dir(target), DefaultDirMode); err != nil {
 				return err
 			}
@@ -718,6 +721,20 @@ func putTar(dest string, r io.Reader, uid, gid *uint32) error {
 		}
 	}
 	return nil
+}
+
+// openTarFile creates/truncates a regular file for put-tar without following a
+// final-component symlink. On Unix this uses O_NOFOLLOW; all platforms refuse
+// when the path already exists as a symlink.
+func openTarFile(path string, perm os.FileMode) (*os.File, error) {
+	if fi, err := os.Lstat(path); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("refusing to write through symlink: %s", path)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	return os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY|tarNoFollow, perm)
 }
 
 func safeTarPath(dest, name string) (string, error) {
@@ -747,6 +764,25 @@ func safeTarPath(dest, name string) (string, error) {
 		return "", fmt.Errorf("illegal tar path: %s", name)
 	}
 	return target, nil
+}
+
+// safeTarLinkname rejects symlink targets that can escape the extraction root:
+// absolute paths and any ".." path component.
+func safeTarLinkname(linkname string) error {
+	if linkname == "" {
+		return fmt.Errorf("illegal tar symlink target: empty")
+	}
+	// Absolute (OS-specific volume paths) or explicit root-relative.
+	if filepath.IsAbs(linkname) || strings.HasPrefix(linkname, "/") || strings.HasPrefix(linkname, "\\") {
+		return fmt.Errorf("illegal tar symlink target: %s", linkname)
+	}
+	// Reject ".." elements whether slash- or backslash-separated.
+	for _, part := range strings.Split(filepath.ToSlash(linkname), "/") {
+		if part == ".." {
+			return fmt.Errorf("illegal tar symlink target: %s", linkname)
+		}
+	}
+	return nil
 }
 
 func writeTar(w io.Writer, src string) error {
