@@ -173,7 +173,7 @@ func TestPullSpecFormatImgAndTinyPlaceholder(t *testing.T) {
 		ID:       id,
 		URL:      srv.URL + "/disk.img",
 		SHA256:   want,
-		Format:   "raw", // → .img
+		Format:   "raw", // → disk.raw
 		SSHUser:  "ubuntu",
 		HasAgent: false,
 	}, nil)
@@ -183,8 +183,8 @@ func TestPullSpecFormatImgAndTinyPlaceholder(t *testing.T) {
 	if !m.Ready(id) {
 		t.Fatal("ready")
 	}
-	// disk.img should exist (format not qcow2)
-	if _, err := os.Stat(filepath.Join(m.Dir(id), "disk.img")); err != nil {
+	// Format raw installs as disk.raw (tiny disk.img placeholder removed).
+	if _, err := os.Stat(filepath.Join(m.Dir(id), "disk.raw")); err != nil {
 		t.Fatal(err)
 	}
 }
