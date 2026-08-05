@@ -407,6 +407,7 @@ type syncIn struct {
 	Delete        bool     `json:"delete,omitempty" jsonschema:"remove dest paths missing on source"`
 	DryRun        bool     `json:"dry_run,omitempty" jsonschema:"plan only; no writes"`
 	Force         bool     `json:"force,omitempty" jsonschema:"source-wins for conflicts and dest-ahead"`
+	Checksum      bool     `json:"checksum,omitempty" jsonschema:"SHA-256 content refine for paths size/mtime would skip"`
 	Exclude       []string `json:"exclude,omitempty" jsonschema:"extra gitignore-style patterns"`
 	NoDefaults    bool     `json:"no_defaults,omitempty"`
 	NoGitignore   bool     `json:"no_gitignore,omitempty"`
@@ -1213,6 +1214,7 @@ func (s *Server) runSyncTool(ctx context.Context, verb vmsync.Verb, in syncIn) (
 		Delete:        in.Delete,
 		DryRun:        in.DryRun,
 		Force:         in.Force,
+		Checksum:      in.Checksum,
 		Exclude:       in.Exclude,
 		NoDefaults:    in.NoDefaults,
 		NoGitignore:   in.NoGitignore,

@@ -40,8 +40,8 @@ type syncClassifyOpts struct {
 	Verb   syncVerb
 	Delete bool // --delete
 	Force  bool // --force: conflicts + kept_dest → update
-	// Checksum is reserved for PR2+ (hash refine); planner ignores for now
-	// except documenting the hook.
+	// Checksum is handled post-plan in refinePlanChecksum (Run); the size/mtime
+	// classifier ignores this flag.
 	Checksum bool
 }
 
