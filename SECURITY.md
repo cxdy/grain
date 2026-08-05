@@ -29,9 +29,11 @@ We will acknowledge reports as soon as practical and coordinate disclosure after
 - The daemon serves **cleartext HTTP**. A Bearer `api_token` authenticates clients but does **not** encrypt the path — on a shared LAN, tokens and request bodies are sniffable if you dial `http://host:7474` directly. Prefer tunnel-to-loopback or `https://` via a reverse proxy.
 - CLI clients print a one-time stderr warning when `GRAIN_API` / `--api` / `api_url` is non-loopback `http://`. Silence only if you accept the risk: `GRAIN_INSECURE_HTTP=1`.
 - Firewall control-plane and egress-proxy ports on shared hosts.
+- **Data directory** (`data_dir`, default `~/.grain`) and VM subdirs are created with mode **0700**; VM `meta.json` is written **0600** so disks, keys, and metadata stay owner-only on multi-user hosts. Existing dirs are not chmod'd on upgrade — `chmod -R go-rwx ~/.grain` if needed.
 - Guest agent (`grain-agent` on guest `:7475`) is **unauthenticated**; hostfwd is loopback-only. Remote access should use the **authenticated daemon proxy**, not raw agent ports.
 - `network: overlay` puts VMs on a **shared L2** — peers can reach each other’s agents. Use only among mutually trusted guests; default `slirp` keeps guests isolated from each other.
-- Full team-box setup: **[Remote sandbox host](https://grainvm.com/guides/remote-host/)** (`docs/content/docs/main/guides/remote-host.md`). Happy path: **[Remote lab](https://grainvm.com/guides/remote-lab/)**.
+- Full team-box setup: **[Remote sandbox host](https://grainvm.com/guides/remote-host/)** (`docs/content/docs/main/guides/remote-host.md`). 
+- Happy path: **[Remote lab](https://grainvm.com/guides/remote-lab/)**.
 
 ## Further reading
 

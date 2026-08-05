@@ -12,9 +12,16 @@ import (
 
 func TestPutGetListDelete(t *testing.T) {
 	t.Parallel()
-	s, err := store.New(t.TempDir())
+	root := t.TempDir()
+	s, err := store.New(root)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// vms/ root is owner-only.
+	if st, err := os.Stat(filepath.Join(root, "vms")); err != nil {
+		t.Fatal(err)
+	} else if perm := st.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("vms mode %04o want 0700", perm)
 	}
 	inst := &vm.Instance{
 		Name:       "sbox-1",
@@ -26,6 +33,18 @@ func TestPutGetListDelete(t *testing.T) {
 	}
 	if err := s.Put(inst); err != nil {
 		t.Fatal(err)
+	}
+	vmDir := s.Dir("sbox-1")
+	if st, err := os.Stat(vmDir); err != nil {
+		t.Fatal(err)
+	} else if perm := st.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("vm dir mode %04o want 0700", perm)
+	}
+	metaPath := filepath.Join(vmDir, "meta.json")
+	if st, err := os.Stat(metaPath); err != nil {
+		t.Fatal(err)
+	} else if perm := st.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("meta.json mode %04o want 0600", perm)
 	}
 	got, err := s.Get("sbox-1")
 	if err != nil {
