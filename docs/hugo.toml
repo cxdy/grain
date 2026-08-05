@@ -230,3 +230,6 @@ paginate = 20
     [[params.docsNav.groups.links]]
       title = "Product surface"
       path = "explain/parity/"
+    [[params.docsNav.groups.links]]
+      title = "Hypervisor matrix"
+      path = "explain/hypervisor-matrix/"
