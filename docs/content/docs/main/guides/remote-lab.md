@@ -146,6 +146,10 @@ grain new --profile remote-coding --wait agent -n web -P 3000:3000
 # laptop: tunnel that host loopback port
 ssh -N -L 3000:127.0.0.1:3000 sandbox.example.com
 # open http://127.0.0.1:3000
+
+# or print ready-to-run lines for all published + live host ports
+grain fwd tunnel web --host sandbox.example.com
+# export GRAIN_SSH_HOST=sandbox.example.com  # default for --host
 ```
 
 You can combine API and app tunnels:

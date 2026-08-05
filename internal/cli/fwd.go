@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -109,11 +111,229 @@ Live SSH local forwards (running VM only):
   grain fwd ls  [name]
 
 Live forwards use managed "ssh -N -L" tunnels via the grain identity.
-They are cleared on stop/delete and are not re-applied on start.`,
+They are cleared on stop/delete and are not re-applied on start.
+
+Remote laptop (daemon host loopback):
+
+  Published and live host ports bind 127.0.0.1 on the grain host.
+  Print ready-to-run SSH local forwards for those ports:
+
+  grain fwd tunnel [name]
+  grain fwd tunnel [name] --host sandbox.example.com --user alice
+  grain fwd tunnel web --json
+
+  GRAIN_SSH_HOST supplies the default --host. See the remote-lab guide.`,
 	}
 	c.AddCommand(cmdFwdLs(cfgPath))
 	c.AddCommand(cmdFwdAdd(cfgPath))
 	c.AddCommand(cmdFwdRm(cfgPath))
+	c.AddCommand(cmdFwdTunnel(cfgPath))
+	return c
+}
+
+// tunnelPort is one host-side published port (SLIRP hostfwd or live SSH -L).
+type tunnelPort struct {
+	HostPort  int    `json:"host_port"`
+	GuestPort int    `json:"guest_port"`
+	Kind      string `json:"kind"` // slirp | live
+}
+
+// tunnelLine is a ready-to-run SSH local-forward command for agents/humans.
+type tunnelLine struct {
+	Name      string `json:"name"`
+	HostPort  int    `json:"host_port"`
+	GuestPort int    `json:"guest_port"`
+	Kind      string `json:"kind"`
+	SSH       string `json:"ssh"`
+}
+
+// sshTunnelTarget builds the SSH destination for tunnel lines.
+// Empty host falls back to GRAIN_SSH_HOST; if still empty, uses USER@HOST
+// (or user@HOST when --user is set) as a copy-paste template.
+func sshTunnelTarget(user, host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		host = strings.TrimSpace(os.Getenv("GRAIN_SSH_HOST"))
+	}
+	user = strings.TrimSpace(user)
+	if host == "" {
+		if user == "" {
+			return "USER@HOST"
+		}
+		return user + "@HOST"
+	}
+	if user == "" {
+		return host
+	}
+	return user + "@" + host
+}
+
+// formatSSHTunnelLine returns a single ready-to-run local forward:
+//
+//	ssh -N -L HOSTPORT:127.0.0.1:HOSTPORT target
+//
+// Hostfwd and live forwards bind on the daemon host's 127.0.0.1; the laptop
+// mirrors the same host port locally for a simple browser URL.
+func formatSSHTunnelLine(hostPort int, target string) string {
+	return fmt.Sprintf("ssh -N -L %d:127.0.0.1:%d %s", hostPort, hostPort, target)
+}
+
+// collectHostForwardPorts returns unique host ports from SLIRP Forwards and
+// LiveForwards (HostPort > 0 only). SLIRP entries come first; duplicate host
+// ports from live forwards are skipped.
+func collectHostForwardPorts(inst *vm.Instance) []tunnelPort {
+	if inst == nil {
+		return nil
+	}
+	seen := make(map[int]struct{})
+	var out []tunnelPort
+	for _, f := range inst.Forwards {
+		if f.HostPort <= 0 {
+			continue
+		}
+		if _, ok := seen[f.HostPort]; ok {
+			continue
+		}
+		seen[f.HostPort] = struct{}{}
+		proto := f.Proto
+		if proto == "" {
+			proto = "tcp"
+		}
+		// Only TCP is useful for ssh -L; skip explicit non-tcp.
+		if proto != "tcp" {
+			continue
+		}
+		out = append(out, tunnelPort{
+			HostPort:  f.HostPort,
+			GuestPort: f.GuestPort,
+			Kind:      "slirp",
+		})
+	}
+	for _, f := range inst.LiveForwards {
+		if f.HostPort <= 0 {
+			continue
+		}
+		if _, ok := seen[f.HostPort]; ok {
+			continue
+		}
+		seen[f.HostPort] = struct{}{}
+		out = append(out, tunnelPort{
+			HostPort:  f.HostPort,
+			GuestPort: f.GuestPort,
+			Kind:      "live",
+		})
+	}
+	return out
+}
+
+// buildTunnelLines formats SSH -L commands for each host forward on inst.
+func buildTunnelLines(inst *vm.Instance, target string) []tunnelLine {
+	ports := collectHostForwardPorts(inst)
+	if len(ports) == 0 {
+		return nil
+	}
+	out := make([]tunnelLine, 0, len(ports))
+	for _, p := range ports {
+		out = append(out, tunnelLine{
+			Name:      inst.Name,
+			HostPort:  p.HostPort,
+			GuestPort: p.GuestPort,
+			Kind:      p.Kind,
+			SSH:       formatSSHTunnelLine(p.HostPort, target),
+		})
+	}
+	return out
+}
+
+func cmdFwdTunnel(cfgPath *string) *cobra.Command {
+	var (
+		userFlag string
+		hostFlag string
+		asJSON   bool
+	)
+	c := &cobra.Command{
+		Use:   "tunnel [name]",
+		Short: "Print SSH -L lines to reach hostfwd ports from a laptop",
+		Long: `Print ready-to-run ssh -N -L commands for a VM's published and live host ports.
+
+Hostfwd and live forwards bind on the daemon host's 127.0.0.1. From a remote
+laptop, tunnel those ports back to your machine (same pattern as the remote-lab
+guide):
+
+  grain fwd tunnel web --host sandbox.example.com
+  # ssh -N -L 3000:127.0.0.1:3000 sandbox.example.com
+
+  grain fwd tunnel --user alice --host sandbox.example.com
+  export GRAIN_SSH_HOST=sandbox.example.com
+  grain fwd tunnel web
+
+With no --host and no GRAIN_SSH_HOST, lines use a USER@HOST placeholder.
+--json emits machine-readable entries (name, host_port, guest_port, kind, ssh).`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadCfg(cfgPath)
+			if err != nil {
+				return err
+			}
+			c, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := c.Health(ctx); err != nil {
+				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+			}
+
+			var list []*vm.Instance
+			if len(args) == 1 && args[0] != "" {
+				inst, err := c.Get(ctx, args[0])
+				if err != nil {
+					return err
+				}
+				list = []*vm.Instance{inst}
+			} else {
+				list, err = c.List(ctx)
+				if err != nil {
+					return err
+				}
+			}
+			if len(list) == 0 {
+				return fmt.Errorf("no vms — create one:  grain new -P 8080:80")
+			}
+
+			target := sshTunnelTarget(userFlag, hostFlag)
+			var lines []tunnelLine
+			for _, inst := range list {
+				lines = append(lines, buildTunnelLines(inst, target)...)
+			}
+			if len(lines) == 0 {
+				if asJSON {
+					fmt.Println("[]")
+					return nil
+				}
+				fmt.Println("no host ports to tunnel — publish with -P HOST:GUEST or grain fwd add")
+				return nil
+			}
+
+			if asJSON {
+				b, err := json.MarshalIndent(lines, "", "  ")
+				if err != nil {
+					return err
+				}
+				fmt.Println(string(b))
+				return nil
+			}
+
+			for _, ln := range lines {
+				fmt.Println(ln.SSH)
+			}
+			return nil
+		},
+	}
+	c.Flags().StringVar(&userFlag, "user", "", "SSH user on the daemon host (optional)")
+	c.Flags().StringVar(&hostFlag, "host", "", "SSH host of the daemon machine (default: GRAIN_SSH_HOST or USER@HOST placeholder)")
+	c.Flags().BoolVar(&asJSON, "json", false, "machine-readable tunnel list")
 	return c
 }
 

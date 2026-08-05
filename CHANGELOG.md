@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`grain fwd tunnel [name]`** — print ready-to-run `ssh -N -L HOSTPORT:127.0.0.1:HOSTPORT` lines for a VM's published SLIRP and live host ports (daemon host loopback). Flags: `--host`, `--user`, `--json`; default host from `GRAIN_SSH_HOST` or `USER@HOST` placeholder. See [Remote lab](https://grainvm.com/guides/remote-lab/).
 - **Builtin profile `remote-coding`** — durable remote lab defaults (`persistent`, 4 CPU / 8192 MiB / 32 GiB, `grain-ubuntu`) without editing config; user `profiles:` with the same name override. CLI root help lists `sync`, `agent deploy`, and the profile.
 - **`grain sync push | pull`** — unidirectional incremental host↔guest directory sync via the guest agent (local dial + remote `GRAIN_API` proxy). Host-side baselines under `data_dir/sync/`; `--delete` / `--dry-run` / `--force` / ignore flags; exit `2` on conflicts with zero applies. MCP: `grain_sync_push` / `grain_sync_pull`.
 - **`grain agent deploy [name]`** — SCP/install or refresh `grain-agent` in a running guest over SSH (local daemon). Docs cover reverse `cp`, remote tunnel + `-p` labs, and agent refresh.

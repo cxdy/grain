@@ -77,7 +77,7 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `grain fs ls\|stat\|mkdir\|rm` | Guest filesystem helpers |
 | `grain logs [name] [-f] [--qemu]` | Serial or QEMU logs |
 | `grain stats [name]` | Guest resource stats |
-| `grain fwd ls\|add\|rm` | Port forwards |
+| `grain fwd ls\|add\|rm\|tunnel` | Port forwards; `tunnel` prints `ssh -L` lines for host loopback |
 | `grain agent health [name]` | Agent health JSON (includes readiness when present) |
 | `grain agent deploy [name]` | Install/refresh guest agent over SSH (local daemon) |
 | `grain status [name]` | One-line VM + guest readiness |
