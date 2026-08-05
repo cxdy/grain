@@ -36,6 +36,12 @@ const DefaultFileMode = 0o644
 // DefaultDirMode is the default permission for created directories.
 const DefaultDirMode = 0o755
 
+// DefaultMaxPutBytes is the default maximum request body size for POST /cp
+// (binary and tar modes). High enough for legitimate file/tree transfers while
+// bounding unbounded-upload DoS. Operators may override with GRAIN_MAX_PUT_BYTES;
+// tests may lower MaxPutBytes.
+const DefaultMaxPutBytes int64 = 2 << 30 // 2 GiB
+
 // Readiness is the guest bootstrap/readiness contract (see docs readiness protocol).
 type Readiness struct {
 	// State is pending|running|ready|failed. Empty means no readiness/ files present.

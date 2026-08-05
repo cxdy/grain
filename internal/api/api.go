@@ -627,6 +627,7 @@ func headersSent(w http.ResponseWriter) bool {
 
 // putCP proxies file/tar upload to the guest agent (agent POST /cp).
 // Query: path (required), mode=binary|tar, uid, gid, permissions.
+// Request bodies are capped at agent.EffectiveMaxPutBytes() (413 when exceeded).
 func (s *Server) putCP(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	ac, code, err := s.agentClient(name)
@@ -647,6 +648,15 @@ func (s *Server) putCP(w http.ResponseWriter, r *http.Request) {
 	mode := q.Get("mode")
 	if mode == "" {
 		mode = "binary"
+	}
+
+	limit := agent.EffectiveMaxPutBytes()
+	if r.ContentLength > limit {
+		writeErr(w, http.StatusRequestEntityTooLarge, errors.New("request body too large"))
+		return
+	}
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 	}
 
 	switch mode {
@@ -672,11 +682,19 @@ func (s *Server) putCP(w http.ResponseWriter, r *http.Request) {
 		}
 		size := r.ContentLength
 		if err := ac.PutFile(r.Context(), path, r.Body, size, opts); err != nil {
+			if isPutBodyTooLarge(err) {
+				writeErr(w, http.StatusRequestEntityTooLarge, errors.New("request body too large"))
+				return
+			}
 			writeErr(w, http.StatusBadGateway, err)
 			return
 		}
 	case "tar":
 		if err := ac.PutTar(r.Context(), path, r.Body); err != nil {
+			if isPutBodyTooLarge(err) {
+				writeErr(w, http.StatusRequestEntityTooLarge, errors.New("request body too large"))
+				return
+			}
 			writeErr(w, http.StatusBadGateway, err)
 			return
 		}
@@ -685,6 +703,11 @@ func (s *Server) putCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func isPutBodyTooLarge(err error) bool {
+	var mbe *http.MaxBytesError
+	return errors.As(err, &mbe)
 }
 
 // getCP streams a file or tar from the guest agent (agent GET /cp).
