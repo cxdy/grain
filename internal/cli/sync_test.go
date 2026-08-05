@@ -11,7 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/api"
@@ -379,13 +381,16 @@ func TestRunSyncCmdGuestNotDir(t *testing.T) {
 func TestBindSyncFlagsPresent(t *testing.T) {
 	cfg := ""
 	cmd := cmdSyncPush(&cfg)
-	for _, name := range []string{"delete", "dry-run", "force", "checksum", "exclude", "no-defaults", "verbose", "max-file-size"} {
+	for _, name := range []string{"delete", "dry-run", "force", "checksum", "exclude", "no-defaults", "verbose", "max-file-size", "watch", "interval"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("missing flag %s", name)
 		}
 	}
 	if cmd.Flags().Lookup("checksum").Hidden {
 		t.Fatal("checksum flag should be visible")
+	}
+	if def, err := cmd.Flags().GetDuration("interval"); err != nil || def != 2*time.Second {
+		t.Fatalf("interval default: %v %v", def, err)
 	}
 }
 
@@ -399,7 +404,151 @@ func TestSyncChecksumShownInHelp(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), "--checksum") {
-		t.Fatalf("help should list --checksum: %s", buf.String())
+	s := buf.String()
+	if !strings.Contains(s, "--checksum") {
+		t.Fatalf("help should list --checksum: %s", s)
+	}
+	if !strings.Contains(s, "--watch") || !strings.Contains(s, "--interval") {
+		t.Fatalf("help should list --watch/--interval: %s", s)
+	}
+}
+
+func TestRunSyncCmdDryRunWatchIncompatible(t *testing.T) {
+	cfgPath := withRemoteCfg(t, "http://127.0.0.1:1")
+	err := runSyncCmd(&cfgPath, vmsync.Push, t.TempDir(), "lab:/work", syncFlags{
+		dryRun: true,
+		watch:  true,
+	})
+	if err == nil {
+		t.Fatal("expected dry-run+watch error")
+	}
+	if !strings.Contains(err.Error(), "incompatible") {
+		t.Fatalf("got %v", err)
+	}
+	var ew interface{ ExitCode() int }
+	if !errors.As(err, &ew) || ew.ExitCode() != vmsync.ExitUsage {
+		t.Fatalf("want exit %d: %v", vmsync.ExitUsage, err)
+	}
+}
+
+func TestRunSyncWatchCancelBeforeRun(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := runSyncWatch(ctx, time.Second, func(context.Context) (int, error) {
+		t.Fatal("once should not run when ctx already cancelled")
+		return 0, nil
+	})
+	if err != nil {
+		t.Fatalf("want nil on interrupt: %v", err)
+	}
+}
+
+func TestRunSyncWatchStopsAfterNThenCancel(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var n atomic.Int32
+	err := runSyncWatch(ctx, time.Millisecond, func(context.Context) (int, error) {
+		if n.Add(1) >= 3 {
+			cancel()
+		}
+		return vmsync.ExitOK, nil
+	})
+	if err != nil {
+		t.Fatalf("want nil: %v", err)
+	}
+	if got := n.Load(); got < 3 {
+		t.Fatalf("iterations=%d want >=3", got)
+	}
+}
+
+func TestRunSyncWatchContinuesOnConflict(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var n atomic.Int32
+	err := runSyncWatch(ctx, time.Millisecond, func(context.Context) (int, error) {
+		if n.Add(1) >= 3 {
+			cancel()
+		}
+		return vmsync.ExitConflict, vmsync.ErrConflicts
+	})
+	if err != nil {
+		t.Fatalf("want nil after conflicts+cancel: %v", err)
+	}
+	if got := n.Load(); got < 3 {
+		t.Fatalf("iterations=%d want >=3", got)
+	}
+}
+
+func TestRunSyncWatchContinuesOnApply(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var n atomic.Int32
+	err := runSyncWatch(ctx, time.Millisecond, func(context.Context) (int, error) {
+		if n.Add(1) >= 2 {
+			cancel()
+		}
+		return vmsync.ExitApply, errors.New("apply failed")
+	})
+	if err != nil {
+		t.Fatalf("want nil: %v", err)
+	}
+	if got := n.Load(); got < 2 {
+		t.Fatalf("iterations=%d", got)
+	}
+}
+
+func TestRunSyncWatchStopsOnUsage(t *testing.T) {
+	t.Parallel()
+	var n atomic.Int32
+	err := runSyncWatch(context.Background(), time.Millisecond, func(context.Context) (int, error) {
+		n.Add(1)
+		return vmsync.ExitUsage, errors.New("bad args")
+	})
+	if err == nil {
+		t.Fatal("expected usage error")
+	}
+	if !strings.Contains(err.Error(), "bad args") {
+		t.Fatalf("got %v", err)
+	}
+	var ew interface{ ExitCode() int }
+	if !errors.As(err, &ew) || ew.ExitCode() != vmsync.ExitUsage {
+		t.Fatalf("want exit %d: %v", vmsync.ExitUsage, err)
+	}
+	if n.Load() != 1 {
+		t.Fatalf("should stop immediately: n=%d", n.Load())
+	}
+}
+
+func TestRunSyncWatchDefaultInterval(t *testing.T) {
+	t.Parallel()
+	// interval <= 0 falls back to 2s; cancel after first success so we don't wait full interval.
+	ctx, cancel := context.WithCancel(context.Background())
+	var n atomic.Int32
+	err := runSyncWatch(ctx, 0, func(context.Context) (int, error) {
+		n.Add(1)
+		cancel()
+		return vmsync.ExitOK, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Load() != 1 {
+		t.Fatalf("n=%d", n.Load())
+	}
+}
+
+func TestRunSyncWatchInterruptMidRun(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	err := runSyncWatch(ctx, time.Hour, func(context.Context) (int, error) {
+		cancel()
+		return vmsync.ExitApply, errors.New("interrupted apply")
+	})
+	if err != nil {
+		t.Fatalf("interrupt mid-run should exit 0: %v", err)
 	}
 }
