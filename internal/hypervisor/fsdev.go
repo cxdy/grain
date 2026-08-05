@@ -56,7 +56,9 @@ func ResolveMountDriver(requested string, log *slog.Logger) string {
 // For virtiofs, vmDir is required (socket paths); memory-backend args are separate
 // (see virtiofsMemoryBackendArgs) and must be added once by the caller.
 // When driver is 9p or mounts are empty, vmDir is ignored.
-func fsdevArgs(mounts []vm.Mount, driver string, vmDir string) []string {
+// Incomplete mounts (empty host or tag) are skipped; complete mounts are validated
+// against QEMU option-string injection (see ValidateMount).
+func fsdevArgs(mounts []vm.Mount, driver string, vmDir string) ([]string, error) {
 	if driver == MountDriverVirtioFS {
 		return virtiofsDeviceArgs(mounts, vmDir)
 	}
@@ -65,14 +67,18 @@ func fsdevArgs(mounts []vm.Mount, driver string, vmDir string) []string {
 
 // virtio9pArgs builds QEMU -fsdev / -device pairs for each host directory mount.
 // Uses security_model=mapped-xattr (macOS-friendly; not passthrough).
-func virtio9pArgs(mounts []vm.Mount) []string {
+// Returns an error if any complete mount fails ValidateMount.
+func virtio9pArgs(mounts []vm.Mount) ([]string, error) {
 	if len(mounts) == 0 {
-		return nil
+		return nil, nil
 	}
 	args := make([]string, 0, len(mounts)*4)
 	for i, m := range mounts {
 		if m.Host == "" || m.Tag == "" {
 			continue
+		}
+		if err := ValidateMount(m); err != nil {
+			return nil, err
 		}
 		id := fmt.Sprintf("fs%d", i)
 		args = append(args,
@@ -80,5 +86,5 @@ func virtio9pArgs(mounts []vm.Mount) []string {
 			"-device", fmt.Sprintf("virtio-9p-pci,fsdev=%s,mount_tag=%s", id, m.Tag),
 		)
 	}
-	return args
+	return args, nil
 }

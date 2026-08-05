@@ -12,19 +12,24 @@ import (
 
 func TestVirtio9pArgsEmpty(t *testing.T) {
 	t.Parallel()
-	if got := virtio9pArgs(nil); got != nil {
-		t.Fatalf("got %v", got)
+	got, err := virtio9pArgs(nil)
+	if err != nil || got != nil {
+		t.Fatalf("got %v err %v", got, err)
 	}
-	if got := virtio9pArgs([]vm.Mount{}); got != nil {
-		t.Fatalf("got %v", got)
+	got, err = virtio9pArgs([]vm.Mount{})
+	if err != nil || got != nil {
+		t.Fatalf("got %v err %v", got, err)
 	}
 }
 
 func TestVirtio9pArgsSingle(t *testing.T) {
 	t.Parallel()
-	got := virtio9pArgs([]vm.Mount{
+	got, err := virtio9pArgs([]vm.Mount{
 		{Host: "/Users/me/src", Guest: "/mnt/src", Tag: "grain0"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 4 {
 		t.Fatalf("len %d: %v", len(got), got)
 	}
@@ -45,10 +50,13 @@ func TestVirtio9pArgsSingle(t *testing.T) {
 
 func TestVirtio9pArgsMultiple(t *testing.T) {
 	t.Parallel()
-	got := virtio9pArgs([]vm.Mount{
+	got, err := virtio9pArgs([]vm.Mount{
 		{Host: "/a", Guest: "/mnt/a", Tag: "grain0"},
 		{Host: "/b", Guest: "/mnt/b", Tag: "grain1"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 8 {
 		t.Fatalf("len %d: %v", len(got), got)
 	}
@@ -67,17 +75,51 @@ func TestVirtio9pArgsMultiple(t *testing.T) {
 
 func TestVirtio9pArgsSkipsIncomplete(t *testing.T) {
 	t.Parallel()
-	got := virtio9pArgs([]vm.Mount{
+	got, err := virtio9pArgs([]vm.Mount{
 		{Host: "", Guest: "/mnt/x", Tag: "grain0"},
 		{Host: "/ok", Guest: "/mnt/ok", Tag: "grain1"},
 		{Host: "/no-tag", Guest: "/mnt/y", Tag: ""},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	// only index 1 (fs1) should appear; empty host/tag skipped but index preserved
 	if len(got) != 4 {
 		t.Fatalf("len %d: %v", len(got), got)
 	}
 	if !strings.Contains(got[1], "id=fs1,path=/ok") {
 		t.Fatalf("expected fs1 for second entry: %v", got)
+	}
+}
+
+func TestVirtio9pArgsRejectsUnsafePathAndTag(t *testing.T) {
+	t.Parallel()
+	// path with comma injects extra QEMU option fields
+	_, err := virtio9pArgs([]vm.Mount{
+		{Host: "/tmp/evil,id=x", Tag: "grain0"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "host path contains forbidden character") {
+		t.Fatalf("comma path: %v", err)
+	}
+	// tag with comma / space
+	_, err = virtio9pArgs([]vm.Mount{
+		{Host: "/Users/me/src", Tag: "grain,0"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid tag") {
+		t.Fatalf("comma tag: %v", err)
+	}
+	_, err = virtio9pArgs([]vm.Mount{
+		{Host: "/Users/me/src", Tag: "grain 0"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid tag") {
+		t.Fatalf("space tag: %v", err)
+	}
+	// normal path + grain0 accepted
+	got, err := virtio9pArgs([]vm.Mount{
+		{Host: "/Users/me/src", Guest: "/mnt/src", Tag: "grain0"},
+	})
+	if err != nil || len(got) != 4 {
+		t.Fatalf("accept normal: got %v err %v", got, err)
 	}
 }
 
@@ -134,7 +176,10 @@ func (e errString) Error() string { return string(e) }
 
 func TestFsdevArgsUses9p(t *testing.T) {
 	t.Parallel()
-	got := fsdevArgs([]vm.Mount{{Host: "/a", Guest: "/mnt/a", Tag: "grain0"}}, MountDriver9p, "/tmp/vm")
+	got, err := fsdevArgs([]vm.Mount{{Host: "/a", Guest: "/mnt/a", Tag: "grain0"}}, MountDriver9p, "/tmp/vm")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 4 || !strings.Contains(got[3], "virtio-9p-pci") {
 		t.Fatalf("%v", got)
 	}
@@ -143,10 +188,13 @@ func TestFsdevArgsUses9p(t *testing.T) {
 func TestFsdevArgsVirtiofs(t *testing.T) {
 	t.Parallel()
 	vmDir := "/var/lib/grain/vms/sbox-1"
-	got := fsdevArgs([]vm.Mount{
+	got, err := fsdevArgs([]vm.Mount{
 		{Host: "/home/src", Guest: "/work", Tag: "grain0"},
 		{Host: "/data", Guest: "/data", Tag: "grain1"},
 	}, MountDriverVirtioFS, vmDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 8 {
 		t.Fatalf("len %d: %v", len(got), got)
 	}
@@ -164,6 +212,72 @@ func TestFsdevArgsVirtiofs(t *testing.T) {
 	}
 	if strings.Contains(joined, "virtio-9p") {
 		t.Fatalf("virtiofs args must not include 9p: %s", joined)
+	}
+}
+
+func TestValidateMount(t *testing.T) {
+	t.Parallel()
+	// accept normal /Users/me/src + grain0
+	if err := ValidateMount(vm.Mount{Host: "/Users/me/src", Tag: "grain0"}); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	// reject path with comma
+	err := ValidateMount(vm.Mount{Host: "/tmp/a,b", Tag: "grain0"})
+	if err == nil || !strings.Contains(err.Error(), "host path contains forbidden character") {
+		t.Fatalf("comma path: %v", err)
+	}
+	// reject path with equals
+	err = ValidateMount(vm.Mount{Host: "/tmp/a=b", Tag: "grain0"})
+	if err == nil || !strings.Contains(err.Error(), "host path contains forbidden character") {
+		t.Fatalf("equals path: %v", err)
+	}
+	// reject path with newline
+	err = ValidateMount(vm.Mount{Host: "/tmp/a\nb", Tag: "grain0"})
+	if err == nil || !strings.Contains(err.Error(), "host path contains forbidden character") {
+		t.Fatalf("newline path: %v", err)
+	}
+	// reject path with CR / NUL
+	err = ValidateMount(vm.Mount{Host: "/tmp/a\rb", Tag: "grain0"})
+	if err == nil || !strings.Contains(err.Error(), "host path contains forbidden character") {
+		t.Fatalf("CR path: %v", err)
+	}
+	err = ValidateMount(vm.Mount{Host: "/tmp/a\x00b", Tag: "grain0"})
+	if err == nil || !strings.Contains(err.Error(), "host path contains forbidden character") {
+		t.Fatalf("NUL path: %v", err)
+	}
+	// reject tag with comma or space
+	err = ValidateMount(vm.Mount{Host: "/Users/me/src", Tag: "bad,tag"})
+	if err == nil || !strings.Contains(err.Error(), "invalid tag") {
+		t.Fatalf("comma tag: %v", err)
+	}
+	err = ValidateMount(vm.Mount{Host: "/Users/me/src", Tag: "bad tag"})
+	if err == nil || !strings.Contains(err.Error(), "invalid tag") {
+		t.Fatalf("space tag: %v", err)
+	}
+	// empty tag / empty host
+	if err := ValidateMount(vm.Mount{Host: "/x", Tag: ""}); err == nil || !strings.Contains(err.Error(), "invalid tag") {
+		t.Fatalf("empty tag: %v", err)
+	}
+	if err := ValidateMount(vm.Mount{Host: "", Tag: "grain0"}); err == nil {
+		t.Fatal("empty host")
+	}
+	// tag length bound
+	if err := ValidateMount(vm.Mount{Host: "/x", Tag: strings.Repeat("a", 65)}); err == nil {
+		t.Fatal("tag too long")
+	}
+	if err := ValidateMount(vm.Mount{Host: "/x", Tag: strings.Repeat("a", 64)}); err != nil {
+		t.Fatalf("64-char tag: %v", err)
+	}
+	// ValidateMounts indexes errors
+	err = ValidateMounts([]vm.Mount{
+		{Host: "/ok", Tag: "grain0"},
+		{Host: "/bad,path", Tag: "grain1"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "mount[1]") {
+		t.Fatalf("ValidateMounts: %v", err)
+	}
+	if err := ValidateMounts(nil); err != nil {
+		t.Fatal(err)
 	}
 }
 
