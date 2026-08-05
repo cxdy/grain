@@ -159,6 +159,9 @@ func TestEnsureDirs(t *testing.T) {
 		if err != nil || !st.IsDir() {
 			t.Fatalf("%s: %v", p, err)
 		}
+		if perm := st.Mode().Perm(); perm != 0o700 {
+			t.Fatalf("%s mode %04o want 0700", p, perm)
+		}
 	}
 }
 

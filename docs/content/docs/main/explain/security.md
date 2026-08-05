@@ -45,6 +45,13 @@ You (operator)
 1. **Inject** — materialize a file in the guest. Use for TLS keys and app config files.  
 2. **Proxy inject** — guest uses a placeholder path to the proxy; real `Authorization` is added on the host. Prefer this for cloud API tokens.
 
+## Host data directory
+
+- `data_dir` (default `~/.grain`), plus `vms/`, `images/`, and `logs/`, are created with mode **0700**
+- Per-VM `meta.json` is written **0600** (host paths, ports, tags)
+- Secrets already use `0700`/`0600` under `data_dir/secrets/`
+- Grain does not rewrite modes of pre-existing directories; tighten manually on shared hosts if an older install used `0755`
+
 ## Network exposure
 
 - Default API bind `127.0.0.1` is intentional  

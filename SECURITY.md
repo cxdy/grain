@@ -27,6 +27,7 @@ We will acknowledge reports as soon as practical and coordinate disclosure after
 
 - Prefer `api: 127.0.0.1:7474` plus SSH tunnel or TLS reverse proxy.
 - Firewall control-plane and egress-proxy ports on shared hosts.
+- **Data directory** (`data_dir`, default `~/.grain`) and VM subdirs are created with mode **0700**; VM `meta.json` is written **0600** so disks, keys, and metadata stay owner-only on multi-user hosts. Existing dirs are not chmod'd on upgrade — `chmod -R go-rwx ~/.grain` if needed.
 - Full team-box setup: **[Remote sandbox host](https://grainvm.com/guides/remote-host/)** (`docs/guides/remote-host.md`).
 
 ## Further reading

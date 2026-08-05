@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -43,13 +44,25 @@ type Manager struct {
 	rt   hypervisor.Runtime
 	disk hypervisor.Disk
 	log  *slog.Logger
+
+	// createMu / creating claim in-flight Create names so concurrent same-name
+	// creates cannot both pass the store check (TOCTOU).
+	createMu sync.Mutex
+	creating map[string]struct{}
 }
 
 func New(cfg config.Config, st *store.Store, rt hypervisor.Runtime, disk hypervisor.Disk, log *slog.Logger) *Manager {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Manager{cfg: cfg, st: st, rt: rt, disk: disk, log: log}
+	return &Manager{
+		cfg:      cfg,
+		st:       st,
+		rt:       rt,
+		disk:     disk,
+		log:      log,
+		creating: make(map[string]struct{}),
+	}
 }
 
 // CreateTimeout is the outer deadline for API create (ReadyTimeout + buffer for image/disk).
@@ -72,6 +85,40 @@ func emitCreate(opts vm.CreateOpts, ev vm.CreateEvent) {
 	}
 }
 
+// claimCreateName reserves a VM name for an in-flight Create.
+// requested empty → allocate via names.Next, treating store + in-flight as taken.
+func (m *Manager) claimCreateName(requested string) (string, error) {
+	m.createMu.Lock()
+	defer m.createMu.Unlock()
+
+	existing, err := m.st.Names()
+	if err != nil {
+		return "", err
+	}
+	for n := range m.creating {
+		existing[n] = struct{}{}
+	}
+
+	name := requested
+	if name == "" {
+		name = names.Next("sbox", existing)
+	}
+	if !names.Valid(name) {
+		return "", fmt.Errorf("invalid name %q", name)
+	}
+	if _, taken := existing[name]; taken {
+		return "", fmt.Errorf("vm %q already exists", name)
+	}
+	m.creating[name] = struct{}{}
+	return name, nil
+}
+
+func (m *Manager) releaseCreateName(name string) {
+	m.createMu.Lock()
+	delete(m.creating, name)
+	m.createMu.Unlock()
+}
+
 // Create launches a sandbox. Ephemeral by default (opts.Persistent=false).
 // When opts.OnEvent is set, progress phases are emitted:
 // image, disk, seed, qemu, wait_ssh, wait_agent, userdata, ready|error.
@@ -83,21 +130,15 @@ func emitCreate(opts vm.CreateOpts, ev vm.CreateEvent) {
 //   - userdata: require agent, then poll until Health.UserdataRan
 //   - bootstrap: require agent, then poll readiness protocol until state=ready
 //     (or fail on state=failed / timeout). VM is left running on bootstrap failure.
+//
+// Concurrent Creates for the same name are serialized via an in-flight claim so
+// only one proceeds past the existence check (avoids store/disk TOCTOU races).
 func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance, error) {
-	existing, err := m.st.Names()
+	name, err := m.claimCreateName(opts.Name)
 	if err != nil {
 		return nil, err
 	}
-	name := opts.Name
-	if name == "" {
-		name = names.Next("sbox", existing)
-	}
-	if !names.Valid(name) {
-		return nil, fmt.Errorf("invalid name %q", name)
-	}
-	if _, taken := existing[name]; taken {
-		return nil, fmt.Errorf("vm %q already exists", name)
-	}
+	defer m.releaseCreateName(name)
 
 	cpus := opts.CPUs
 	if cpus <= 0 {

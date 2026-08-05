@@ -15,7 +15,7 @@ Default path: `~/.grain/config.yaml`. Override with `grain --config path …`.
 ## Core
 
 ```yaml
-data_dir: ~/.grain
+data_dir: ~/.grain           # created 0700 (owner-only); see SECURITY.md
 socket: ~/.grain/grain.sock
 api: 127.0.0.1:7474          # daemon TCP listen (empty = unix only)
 api_url: ""                  # CLI-only: remote daemon base URL (or env GRAIN_API / --api)

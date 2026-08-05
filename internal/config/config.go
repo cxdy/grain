@@ -499,7 +499,8 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-// EnsureDirs creates data directories.
+// EnsureDirs creates data directories with mode 0700 (owner-only) so VM disks,
+// keys, and metadata are private on multi-user hosts.
 func (c Config) EnsureDirs() error {
 	for _, p := range []string{
 		c.DataDir,
@@ -507,7 +508,7 @@ func (c Config) EnsureDirs() error {
 		filepath.Join(c.DataDir, "images"),
 		filepath.Join(c.DataDir, "logs"),
 	} {
-		if err := os.MkdirAll(p, 0o755); err != nil {
+		if err := os.MkdirAll(p, 0o700); err != nil {
 			return err
 		}
 	}
