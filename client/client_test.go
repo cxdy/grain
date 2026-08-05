@@ -440,7 +440,6 @@ func TestCreateWaitAndTimeoutQuery(t *testing.T) {
 	}
 }
 
-
 func TestWaitModeConstants(t *testing.T) {
 	t.Parallel()
 	if client.WaitAuto != "auto" || client.WaitSSH != "ssh" || client.WaitAgent != "agent" ||
