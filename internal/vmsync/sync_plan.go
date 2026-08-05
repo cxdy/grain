@@ -233,13 +233,6 @@ func classifyColdStart(item syncPlanItem, s, d *syncInvEntry, opts syncClassifyO
 	return item
 }
 
-func invSizeEqual(a, b *syncInvEntry) bool {
-	if a == nil || b == nil {
-		return false
-	}
-	return a.Size == b.Size
-}
-
 // invContentEqual reports cold-start content equality (size for files, target for symlinks).
 func invContentEqual(a, b *syncInvEntry) bool {
 	if a == nil || b == nil {
