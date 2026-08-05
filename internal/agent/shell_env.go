@@ -40,16 +40,6 @@ var shellEnvForward = []struct {
 	{"LC_CTYPE", "lc_ctype"},
 }
 
-// ShellEnvQueryKeys are query parameters on GET /shell that override guest env.
-// Derived from shellEnvForward (kept for docs/tests).
-func shellEnvQueryKeys() []string {
-	out := make([]string, 0, len(shellEnvForward))
-	for _, e := range shellEnvForward {
-		out = append(out, e.Query)
-	}
-	return out
-}
-
 // HostShellExtraEnv returns KEY=value pairs from the current process environment
 // suitable for ShellOpts.ExtraEnv / GET /shell query params.
 func HostShellExtraEnv() []string {
