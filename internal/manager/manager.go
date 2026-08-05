@@ -1545,7 +1545,8 @@ func copyAndPrepareForwards(in []vm.PortForward) ([]vm.PortForward, error) {
 }
 
 // prepareMounts resolves host paths to absolute, rejects non-directories,
-// assigns tags grain0, grain1, … when empty, and deep-copies the list.
+// assigns tags grain0, grain1, … when empty, validates host/tag for QEMU
+// option-string safety, and deep-copies the list.
 func prepareMounts(in []vm.Mount) ([]vm.Mount, error) {
 	if len(in) == 0 {
 		return nil, nil
@@ -1576,16 +1577,25 @@ func prepareMounts(in []vm.Mount) ([]vm.Mount, error) {
 		if tag == "" {
 			tag = fmt.Sprintf("grain%d", i)
 		}
-		out = append(out, vm.Mount{Host: abs, Guest: m.Guest, Tag: tag})
+		mount := vm.Mount{Host: abs, Guest: m.Guest, Tag: tag}
+		// Reject commas/controls in path and unsafe tags before they reach QEMU.
+		if err := hypervisor.ValidateMount(mount); err != nil {
+			return nil, fmt.Errorf("mount[%d]: %w", i, err)
+		}
+		out = append(out, mount)
 	}
 	return out, nil
 }
 
-// validateStoredMounts checks that persisted mount host paths still exist as dirs.
+// validateStoredMounts checks that persisted mount host paths still exist as dirs
+// and remain safe for QEMU option strings (path/tag sanitization).
 func validateStoredMounts(mounts []vm.Mount) error {
 	for i, m := range mounts {
 		if m.Host == "" || m.Tag == "" {
 			return fmt.Errorf("mount[%d]: incomplete (host=%q tag=%q)", i, m.Host, m.Tag)
+		}
+		if err := hypervisor.ValidateMount(m); err != nil {
+			return fmt.Errorf("mount[%d]: %w", i, err)
 		}
 		st, err := os.Stat(m.Host)
 		if err != nil {

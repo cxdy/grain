@@ -53,9 +53,18 @@ func virtiofsdPIDPath(vmDir string, i int) string {
 // StartVirtiofsDaemons launches one virtiofsd per mount under vmDir.
 // Socket/pid paths: virtiofsd-N.sock / virtiofsd-N.pid (N = mount index).
 // On failure, any already-started daemons are stopped.
+// Complete mounts are validated with ValidateMount before any daemon starts.
 func StartVirtiofsDaemons(vmDir string, mounts []vm.Mount) error {
 	if len(mounts) == 0 {
 		return nil
+	}
+	for i, m := range mounts {
+		if m.Host == "" || m.Tag == "" {
+			continue
+		}
+		if err := ValidateMount(m); err != nil {
+			return fmt.Errorf("mount[%d]: %w", i, err)
+		}
 	}
 	bin, err := lookPathVirtiofsd()
 	if err != nil {
@@ -207,14 +216,18 @@ func virtiofsMemoryBackendArgs(memoryMB int) []string {
 
 // virtiofsDeviceArgs builds -chardev / -device vhost-user-fs-pci pairs.
 // Socket paths must match those created by StartVirtiofsDaemons.
-func virtiofsDeviceArgs(mounts []vm.Mount, vmDir string) []string {
+// Returns an error if any complete mount fails ValidateMount.
+func virtiofsDeviceArgs(mounts []vm.Mount, vmDir string) ([]string, error) {
 	if len(mounts) == 0 {
-		return nil
+		return nil, nil
 	}
 	args := make([]string, 0, len(mounts)*4)
 	for i, m := range mounts {
 		if m.Host == "" || m.Tag == "" {
 			continue
+		}
+		if err := ValidateMount(m); err != nil {
+			return nil, err
 		}
 		charID := fmt.Sprintf("charfs%d", i)
 		sock := virtiofsdSocketPath(vmDir, i)
@@ -223,5 +236,5 @@ func virtiofsDeviceArgs(mounts []vm.Mount, vmDir string) []string {
 			"-device", fmt.Sprintf("vhost-user-fs-pci,queue-size=1024,chardev=%s,tag=%s", charID, m.Tag),
 		)
 	}
-	return args
+	return args, nil
 }

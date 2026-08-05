@@ -11,18 +11,22 @@ import (
 
 func TestVirtiofsDeviceArgsEmpty(t *testing.T) {
 	t.Parallel()
-	if got := virtiofsDeviceArgs(nil, "/tmp"); got != nil {
-		t.Fatalf("got %v", got)
+	got, err := virtiofsDeviceArgs(nil, "/tmp")
+	if err != nil || got != nil {
+		t.Fatalf("got %v err %v", got, err)
 	}
 }
 
 func TestVirtiofsDeviceArgsSkipsIncomplete(t *testing.T) {
 	t.Parallel()
-	got := virtiofsDeviceArgs([]vm.Mount{
+	got, err := virtiofsDeviceArgs([]vm.Mount{
 		{Host: "", Tag: "grain0"},
 		{Host: "/ok", Tag: "grain1"},
 		{Host: "/x", Tag: ""},
 	}, "/vm")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 4 {
 		t.Fatalf("len %d: %v", len(got), got)
 	}
@@ -31,6 +35,22 @@ func TestVirtiofsDeviceArgsSkipsIncomplete(t *testing.T) {
 	}
 	if got[3] != "vhost-user-fs-pci,queue-size=1024,chardev=charfs1,tag=grain1" {
 		t.Fatalf("device: %s", got[3])
+	}
+}
+
+func TestVirtiofsDeviceArgsRejectsUnsafe(t *testing.T) {
+	t.Parallel()
+	_, err := virtiofsDeviceArgs([]vm.Mount{
+		{Host: "/ok,evil", Tag: "grain0"},
+	}, "/vm")
+	if err == nil || !strings.Contains(err.Error(), "host path contains forbidden character") {
+		t.Fatalf("path: %v", err)
+	}
+	_, err = virtiofsDeviceArgs([]vm.Mount{
+		{Host: "/ok", Tag: "bad tag"},
+	}, "/vm")
+	if err == nil || !strings.Contains(err.Error(), "invalid tag") {
+		t.Fatalf("tag: %v", err)
 	}
 }
 

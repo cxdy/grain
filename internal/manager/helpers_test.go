@@ -125,6 +125,26 @@ func TestPrepareMounts(t *testing.T) {
 	if _, err := prepareMounts([]vm.Mount{{Host: f, Guest: "/x"}}); err == nil || !strings.Contains(err.Error(), "not a directory") {
 		t.Fatalf("file host: %v", err)
 	}
+	// reject host path with comma (QEMU option injection)
+	evil := filepath.Join(dir, "evil,path")
+	if err := os.Mkdir(evil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareMounts([]vm.Mount{{Host: evil, Guest: "/x"}}); err == nil || !strings.Contains(err.Error(), "host path contains forbidden character") {
+		t.Fatalf("comma path: %v", err)
+	}
+	// reject tag with comma or space
+	if _, err := prepareMounts([]vm.Mount{{Host: dir, Guest: "/x", Tag: "bad,tag"}}); err == nil || !strings.Contains(err.Error(), "invalid tag") {
+		t.Fatalf("comma tag: %v", err)
+	}
+	if _, err := prepareMounts([]vm.Mount{{Host: dir, Guest: "/x", Tag: "bad tag"}}); err == nil || !strings.Contains(err.Error(), "invalid tag") {
+		t.Fatalf("space tag: %v", err)
+	}
+	// accept normal path + grain0 auto-tag
+	out, err = prepareMounts([]vm.Mount{{Host: dir, Guest: "/work"}})
+	if err != nil || len(out) != 1 || out[0].Tag != "grain0" {
+		t.Fatalf("accept normal: %+v err %v", out, err)
+	}
 }
 
 func TestValidateStoredMounts(t *testing.T) {
@@ -149,6 +169,17 @@ func TestValidateStoredMounts(t *testing.T) {
 	_ = os.WriteFile(f, []byte("x"), 0o644)
 	if err := validateStoredMounts([]vm.Mount{{Host: f, Tag: "g0"}}); err == nil {
 		t.Fatal("file")
+	}
+	// reject persisted mounts with unsafe path/tag (defense if meta was hand-edited)
+	evil := filepath.Join(dir, "a,b")
+	if err := os.Mkdir(evil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateStoredMounts([]vm.Mount{{Host: evil, Tag: "g0"}}); err == nil || !strings.Contains(err.Error(), "host path contains forbidden character") {
+		t.Fatalf("comma path: %v", err)
+	}
+	if err := validateStoredMounts([]vm.Mount{{Host: dir, Tag: "bad tag"}}); err == nil || !strings.Contains(err.Error(), "invalid tag") {
+		t.Fatalf("space tag: %v", err)
 	}
 }
 

@@ -151,6 +151,8 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 	}
 
 	// Host directory mounts: 9p (default) or virtiofs (Linux + virtiofsd).
+	// Paths/tags are validated here (and again in arg builders) against QEMU
+	// option-string injection (commas, controls, unsafe tags).
 	driver := ResolveMountDriver(q.MountDriver, nil)
 	if driver == MountDriverVirtioFS && len(inst.Mounts) > 0 {
 		// vhost-user-fs requires a shared memory backend and a running virtiofsd
@@ -159,9 +161,18 @@ func (q *QEMURuntime) Start(ctx context.Context, inst *vm.Instance, diskPath str
 			return fmt.Errorf("virtiofsd: %w", err)
 		}
 		args = append(args, virtiofsMemoryBackendArgs(inst.MemoryMB)...)
-		args = append(args, fsdevArgs(inst.Mounts, driver, vmDir)...)
+		fsArgs, err := fsdevArgs(inst.Mounts, driver, vmDir)
+		if err != nil {
+			StopVirtiofsDaemons(vmDir)
+			return err
+		}
+		args = append(args, fsArgs...)
 	} else {
-		args = append(args, fsdevArgs(inst.Mounts, MountDriver9p, vmDir)...)
+		fsArgs, err := fsdevArgs(inst.Mounts, MountDriver9p, vmDir)
+		if err != nil {
+			return err
+		}
+		args = append(args, fsArgs...)
 	}
 
 	// virtio-vsock for low-latency guest agent (Linux host with /dev/vhost-vsock).
