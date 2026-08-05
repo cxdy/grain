@@ -1112,7 +1112,9 @@ func shellViaAgent(c *api.Client, name string, force bool, viaDaemon bool) error
 	}
 	_, _ = fmt.Fprintf(os.Stderr, "connecting via agent to %s …\n", name)
 	// No overall timeout — interactive session lasts until the user exits.
-	return ac.Shell(context.Background(), agent.ShellOpts{})
+	return ac.Shell(context.Background(), agent.ShellOpts{
+		ExtraEnv: agent.HostShellExtraEnv(),
+	})
 }
 
 func cmdX(cfgPath *string) *cobra.Command {

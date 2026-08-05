@@ -38,16 +38,14 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = conn.CloseNow() }()
 
 	ctx := r.Context()
-	// Host terminal identity (TERM_PROGRAM, etc.) for guest TUI keyboard negotiation.
-	extra := shellEnvFromQuery(map[string]string{
-		"term":                 q.Get("term"),
-		"term_program":         q.Get("term_program"),
-		"term_program_version": q.Get("term_program_version"),
-		"colorterm":            q.Get("colorterm"),
-		"lang":                 q.Get("lang"),
-		"lc_all":               q.Get("lc_all"),
-		"lc_ctype":             q.Get("lc_ctype"),
-	})
+	// Host terminal identity for guest TUI keyboard negotiation (see shellEnvForward).
+	qmap := make(map[string]string, len(shellEnvForward))
+	for _, e := range shellEnvForward {
+		if v := q.Get(e.Query); v != "" {
+			qmap[e.Query] = v
+		}
+	}
+	extra := shellEnvFromQuery(qmap)
 	cmd, ptmx, err := startLoginShell(shellPath, cols, rows, extra)
 	if err != nil {
 		s.Log.Error("shell pty start", "err", err)
@@ -72,11 +70,17 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 		_ = waitCmd()
 	}()
 
+	termProg := q.Get("term_program")
+	if termProg == "" {
+		termProg = q.Get("lc_terminal")
+	}
 	s.Log.Info("shell session started",
 		"pid", cmd.Process.Pid,
 		"cols", cols,
 		"rows", rows,
 		"shell", shellPath,
+		"term_program", termProg,
+		"extra_env", len(extra),
 	)
 
 	// Bridge: WS binary ↔ PTY; WS text JSON resize → pty.Setsize.

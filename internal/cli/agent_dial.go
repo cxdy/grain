@@ -68,7 +68,11 @@ func shellViaDaemon(c *api.Client, name string) error {
 		HTTP:    daemonHTTP(c),
 	}
 	_, _ = fmt.Fprintf(os.Stderr, "connecting via agent (remote API) to %s …\n", name)
-	return ac.Shell(context.Background(), agent.ShellOpts{})
+	// Explicit ExtraEnv so remote sessions forward the *client* terminal identity
+	// (TERM_PROGRAM / LC_TERMINAL / TERM_FEATURES / …) for Shift+Enter and friends.
+	return ac.Shell(context.Background(), agent.ShellOpts{
+		ExtraEnv: agent.HostShellExtraEnv(),
+	})
 }
 
 // daemonHTTP returns an *http.Client that sends the same Bearer token as the API client.
