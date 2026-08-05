@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Remote API transport guidance** — CLI prints a one-time stderr warning when dialing a non-loopback cleartext `http://` API URL (Bearer tokens are sniffable); silence with `GRAIN_INSECURE_HTTP=1`. Daemon non-loopback bind warning mentions cleartext HTTP. Docs (`SECURITY.md`, remote-lab, config) recommend SSH tunnel to `127.0.0.1` or HTTPS reverse proxy. `https://` API URLs use the default TLS client.
 
 
+### Docs
+
+- **Single-tenant / single-operator model** — document multi-user RBAC as an intentional non-goal: one `data_dir` owner (0700), unix socket 0600, shared `api_token` (not per-user roles); shared hosts use separate OS users/`data_dir` or separate hosts. `SECURITY.md`, explain/security, remote-host, remote-lab; config comments near `DataDir` / `APIToken`.
+
+
 ### Added
 
 - **`grain clone SRC DST` / `grain new --clone SRC`** — offline clone of a **stopped persistent** VM: copy root disk + meta under a new name (left stopped; SSH/agent and hostfwd host ports allocated on next start). API: `POST /vms/{name}/clone` with body `{"name":"dst"}`. Refuses running/paused and ephemeral VMs. Limitations: qcow2 overlays keep their backing chain; guest hostname may still match the source; live SSH forwards are not copied.
