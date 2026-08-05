@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Firecracker agent wait retries dial** — create/start `wait=agent` re-dials Firecracker UDS + CONNECT until the readiness budget expires (guest agent appears after boot; a single early CONNECT EOF no longer fails immediately). SSH agent deploy is skipped when `SSHPort` is 0.
 - **Firecracker agent wait errors** — when create/start waits for the guest agent over FC vsock UDS (no SSH deploy fallback), failures name the UDS path and point at `grain doctor` / baked agent / Firecracker guide instead of a bare timeout.
 - **Firecracker agent dial (UDS + CONNECT)** — host-side `agent.Dial` speaks Firecracker’s vsock protocol (`connect(unix:…/fc-vsock.sock)` then `CONNECT 7475\n`) so create-wait, manager, daemon API proxy, and local CLI can reach the guest agent without TCP hostfwd or host AF_VSOCK. `TargetForInstance` derives the UDS from `disk_path` when `AgentPort=0` and `AgentCID` is set (FC Start pattern).
 - **Firecracker doctor** — when `hypervisor: firecracker`, `grain doctor` hard-fails if `/dev/kvm` is missing or not RDWR-accessible (plus a soft nested-virt CPU flag hint).
