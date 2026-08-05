@@ -50,10 +50,9 @@ type Manager struct {
 	createMu sync.Mutex
 	creating map[string]struct{}
 
-  // overlayWarnOnce emits a single multi-tenant isolation warning per Manager
+	// overlayWarnOnce emits a single multi-tenant isolation warning per Manager
 	// when any VM is created with network: overlay.
 	overlayWarnOnce sync.Once
-
 }
 
 func New(cfg config.Config, st *store.Store, rt hypervisor.Runtime, disk hypervisor.Disk, log *slog.Logger) *Manager {
