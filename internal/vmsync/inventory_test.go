@@ -13,7 +13,7 @@ import (
 
 func stringReader(s string) io.Reader { return strings.NewReader(s) }
 
-func agentCP(mode string) agent.CPOpts { return agent.CPOpts{Mode: mode} }
+func agentCP() agent.CPOpts { return agent.CPOpts{Mode: "0644"} }
 
 func TestInventoryHostBasic(t *testing.T) {
 	dir := t.TempDir()
@@ -60,8 +60,8 @@ func TestInventoryGuestBFS(t *testing.T) {
 	ctx := context.Background()
 	_ = m.Mkdir(ctx, "/work", true, "0755")
 	_ = m.Mkdir(ctx, "/work/sub", true, "0755")
-	_ = m.PutFile(ctx, "/work/a.txt", stringReader("hello"), 5, agentCP("0644"))
-	_ = m.PutFile(ctx, "/work/sub/b.txt", stringReader("x"), 1, agentCP("0644"))
+	_ = m.PutFile(ctx, "/work/a.txt", stringReader("hello"), 5, agentCP())
+	_ = m.PutFile(ctx, "/work/sub/b.txt", stringReader("x"), 1, agentCP())
 
 	inv, err := InventoryGuest(ctx, m, "/work", nil)
 	if err != nil {
@@ -133,7 +133,7 @@ func TestInventoryGuestMissingAndNotDir(t *testing.T) {
 	if err != nil || len(inv) != 0 {
 		t.Fatalf("missing root: %v %v", inv, err)
 	}
-	_ = m.PutFile(ctx, "/file", stringReader("x"), 1, agentCP("0644"))
+	_ = m.PutFile(ctx, "/file", stringReader("x"), 1, agentCP())
 	_, err = InventoryGuest(ctx, m, "/file", nil)
 	if err == nil {
 		t.Fatal("expected not-directory error")
@@ -145,9 +145,9 @@ func TestInventoryGuestIgnoreAndCancel(t *testing.T) {
 	ctx := context.Background()
 	_ = m.Mkdir(ctx, "/work", true, "0755")
 	_ = m.Mkdir(ctx, "/work/build", true, "0755")
-	_ = m.PutFile(ctx, "/work/build/out.o", stringReader("o"), 1, agentCP("0644"))
-	_ = m.PutFile(ctx, "/work/skip.me", stringReader("s"), 1, agentCP("0644"))
-	_ = m.PutFile(ctx, "/work/keep.txt", stringReader("k"), 1, agentCP("0644"))
+	_ = m.PutFile(ctx, "/work/build/out.o", stringReader("o"), 1, agentCP())
+	_ = m.PutFile(ctx, "/work/skip.me", stringReader("s"), 1, agentCP())
+	_ = m.PutFile(ctx, "/work/keep.txt", stringReader("k"), 1, agentCP())
 	// Empty type treated as file.
 	m.files["/work/emptytype"] = []byte("e")
 

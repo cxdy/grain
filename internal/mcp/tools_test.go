@@ -757,7 +757,7 @@ func TestForwardRemoveSuccess(t *testing.T) {
 	ctx := t.Context()
 	// add then remove with host_port (tool requires host_port, not guest_port)
 	add, err := sess.CallTool(ctx, &mcp.CallToolParams{
-		Name: grainmcp.ToolForwardAdd,
+		Name:      grainmcp.ToolForwardAdd,
 		Arguments: map[string]any{"name": "s1", "guest_port": 8080, "host_port": 19090},
 	})
 	if err != nil {
@@ -765,7 +765,7 @@ func TestForwardRemoveSuccess(t *testing.T) {
 	}
 	_ = textOf(t, add)
 	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
-		Name: grainmcp.ToolForwardRemove,
+		Name:      grainmcp.ToolForwardRemove,
 		Arguments: map[string]any{"name": "s1", "host_port": 19090},
 	})
 	if err != nil {

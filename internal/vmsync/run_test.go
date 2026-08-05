@@ -91,7 +91,7 @@ func TestRunConflictExit2(t *testing.T) {
 	fs := newMemGuestFS()
 	ctx := context.Background()
 	_ = fs.Mkdir(ctx, "/work", true, "0755")
-	_ = fs.PutFile(ctx, "/work/f.txt", stringReader("guest"), 5, agentCP("0644"))
+	_ = fs.PutFile(ctx, "/work/f.txt", stringReader("guest"), 5, agentCP())
 
 	// Seed baseline so both sides look changed vs B.
 	id := syncStateID("test", "vm1", mustAbs(t, host), "/work")
@@ -186,7 +186,7 @@ func TestRunPullApplyAndCreateHostRoot(t *testing.T) {
 	fs := newMemGuestFS()
 	ctx := context.Background()
 	_ = fs.Mkdir(ctx, "/work", true, "0755")
-	_ = fs.PutFile(ctx, "/work/g.txt", stringReader("guest-data"), 10, agentCP("0644"))
+	_ = fs.PutFile(ctx, "/work/g.txt", stringReader("guest-data"), 10, agentCP())
 
 	var out bytes.Buffer
 	res, err := Run(ctx, Options{
@@ -219,7 +219,7 @@ func TestRunValidateGuestSourceMissing(t *testing.T) {
 func TestRunValidateGuestNotDir(t *testing.T) {
 	fs := newMemGuestFS()
 	ctx := context.Background()
-	_ = fs.PutFile(ctx, "/file", stringReader("x"), 1, agentCP("0644"))
+	_ = fs.PutFile(ctx, "/file", stringReader("x"), 1, agentCP())
 	_, err := Run(ctx, Options{
 		Verb: Pull, VM: "vm", HostRoot: t.TempDir(), GuestRoot: "/file",
 		DataDir: t.TempDir(), FS: fs,
@@ -275,7 +275,7 @@ func TestRunDryRunConflict(t *testing.T) {
 	fs := newMemGuestFS()
 	ctx := context.Background()
 	_ = fs.Mkdir(ctx, "/work", true, "0755")
-	_ = fs.PutFile(ctx, "/work/f.txt", stringReader("guest"), 5, agentCP("0644"))
+	_ = fs.PutFile(ctx, "/work/f.txt", stringReader("guest"), 5, agentCP())
 
 	id := syncStateID("test", "vm1", mustAbs(t, host), "/work")
 	stPath := syncStatePath(data, id)
@@ -311,7 +311,7 @@ func TestRunMaxFileSizeAndVerbose(t *testing.T) {
 	fs := newMemGuestFS()
 	ctx := context.Background()
 	_ = fs.Mkdir(ctx, "/work", true, "0755")
-	_ = fs.PutFile(ctx, "/work/orphan.txt", stringReader("o"), 1, agentCP("0644"))
+	_ = fs.PutFile(ctx, "/work/orphan.txt", stringReader("o"), 1, agentCP())
 
 	var out, errOut bytes.Buffer
 	res, err := Run(ctx, Options{
@@ -378,7 +378,7 @@ func TestRunForceConflictResolved(t *testing.T) {
 	fs := newMemGuestFS()
 	ctx := context.Background()
 	_ = fs.Mkdir(ctx, "/work", true, "0755")
-	_ = fs.PutFile(ctx, "/work/f.txt", stringReader("guest"), 5, agentCP("0644"))
+	_ = fs.PutFile(ctx, "/work/f.txt", stringReader("guest"), 5, agentCP())
 
 	id := syncStateID("test", "vm1", mustAbs(t, host), "/work")
 	st := newSyncState("test", "vm1", mustAbs(t, host), "/work")
@@ -409,10 +409,10 @@ func TestRunForceConflictResolved(t *testing.T) {
 func TestFilterMaxSizePull(t *testing.T) {
 	host := map[string]*syncInvEntry{"h": inv(100, 1, "0644")}
 	guest := map[string]*syncInvEntry{
-		"big":  inv(100, 1, "0644"),
-		"ok":   inv(1, 1, "0644"),
-		"dir":  {Type: "directory", Size: 0},
-		"nil":  nil,
+		"big": inv(100, 1, "0644"),
+		"ok":  inv(1, 1, "0644"),
+		"dir": {Type: "directory", Size: 0},
+		"nil": nil,
 	}
 	var errOut bytes.Buffer
 	filterMaxSize(host, guest, Options{Verb: Pull, MaxFileSize: 10}, &errOut)

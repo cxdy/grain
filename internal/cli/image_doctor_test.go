@@ -674,11 +674,11 @@ func TestRunImagePullProgressCallbackBranches(t *testing.T) {
 	// Empty kvm path + doctor firecracker qemu soft path:
 	dir := t.TempDir()
 	cfg := config.Config{
-		DataDir:     dir,
-		Hypervisor:  "mock",
-		Image:       "auto",
-		Socket:      filepath.Join(dir, "s.sock"),
-		QEMUBinary:  "qemu-system-not-installed-xyz",
+		DataDir:    dir,
+		Hypervisor: "mock",
+		Image:      "auto",
+		Socket:     filepath.Join(dir, "s.sock"),
+		QEMUBinary: "qemu-system-not-installed-xyz",
 	}
 	// mock hypervisor: qemu soft note path
 	_ = runDoctor(cfg)

@@ -1810,7 +1810,6 @@ func TestPrintDaemonUpMCPDefault(t *testing.T) {
 	})
 }
 
-
 func TestCmdAgentDeployCobraRemote(t *testing.T) {
 	cfg := withRemoteCfg(t, "http://127.0.0.1:1")
 	root := cmdAgent(&cfg)

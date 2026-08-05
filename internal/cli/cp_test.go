@@ -813,7 +813,7 @@ func TestCPViaAgentUnavailableFallback(t *testing.T) {
 	// Use a client that fails Get for agent health so dialGuestAgent fails.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"error":"agent not available"}`, 503)
+		http.Error(w, `{"error":"agent not available"}`, http.StatusServiceUnavailable)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

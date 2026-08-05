@@ -29,7 +29,7 @@ type agentSyncFS struct {
 
 // NewAgentFS wraps *agent.Client for local dial after dialGuestAgent.
 func NewAgentFS(c *agent.Client) FS {
-	return &agentSyncFS{c: c}
+	return newAgentSyncFS(c)
 }
 
 func newAgentSyncFS(c *agent.Client) *agentSyncFS {
@@ -68,7 +68,7 @@ type apiSyncFS struct {
 
 // NewAPIFS binds vmName into every api.Client call (remoteMode / GRAIN_API).
 func NewAPIFS(c *api.Client, vmName string) FS {
-	return &apiSyncFS{c: c, vmName: vmName}
+	return newAPISyncFS(c, vmName)
 }
 
 func newAPISyncFS(c *api.Client, vmName string) *apiSyncFS {

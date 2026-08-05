@@ -178,8 +178,8 @@ func TestShellEnvFromQueryEdges(t *testing.T) {
 	// control char reject + length cap
 	long := strings.Repeat("a", 600)
 	got := shellEnvFromQuery(map[string]string{
-		"term":  long,
-		"lang":  "x\x00y",
+		"term":      long,
+		"lang":      "x\x00y",
 		"colorterm": "ok",
 	})
 	join := strings.Join(got, "\n")

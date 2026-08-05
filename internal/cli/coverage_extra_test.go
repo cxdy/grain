@@ -404,7 +404,7 @@ func TestCmdStatusHappyAndBranches(t *testing.T) {
 		case r.URL.Path == "/vms/s":
 			_ = json.NewEncoder(w).Encode(&vm.Instance{Name: "s", Status: "running", Image: "grain-ubuntu"})
 		case strings.HasSuffix(r.URL.Path, "/agent/health"):
-			http.Error(w, "down", 502)
+			http.Error(w, "down", http.StatusBadGateway)
 		default:
 			http.NotFound(w, r)
 		}
@@ -572,11 +572,11 @@ func TestRunDoctorQemuDefaultAndX86Binary(t *testing.T) {
 
 	// firecracker with empty FirecrackerBinary name + missing kernel path default
 	cfg2 := config.Config{
-		DataDir:            dir,
-		Hypervisor:         "firecracker",
-		FirecrackerBinary:  "",
-		Image:              "grain-ubuntu",
-		KernelPath:         "", // uses default under data_dir
+		DataDir:           dir,
+		Hypervisor:        "firecracker",
+		FirecrackerBinary: "",
+		Image:             "grain-ubuntu",
+		KernelPath:        "", // uses default under data_dir
 	}
 	_ = runDoctor(cfg2)
 }

@@ -306,7 +306,7 @@ func TestToolDeleteNon404Error(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/vms/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodDelete {
-			http.Error(w, `{"error":"busy"}`, 409)
+			http.Error(w, `{"error":"busy"}`, http.StatusConflict)
 			return
 		}
 		http.NotFound(w, r)
