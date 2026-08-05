@@ -124,22 +124,25 @@ grain sh --ssh sbox-1            # force classic SSH
 
 Copy from tools inside the guest (for example **Grok Build**) reaches your laptop in two hops:
 
-1. **Guest → PTY:** the app must emit clipboard data. Many tools look for `pbcopy` / `xclip` / `wl-copy` first and report “clipboard unavailable” if none exist. Sandboxes have no GUI clipboard, so the guest agent installs **OSC 52 shims** on `PATH` (`/var/lib/grain/bin/{pbcopy,xclip,wl-copy,…}`) that write an OSC 52 sequence to the TTY when invoked.
-2. **PTY → laptop:** `grain sh` (local or remote/`GRAIN_API`) intercepts OSC 52 on the **client CLI** and copies to the local system clipboard (`pbcopy` on macOS; `wl-copy` / `xclip` / `xsel` on Linux).
+| Direction | Mechanism |
+|-----------|-----------|
+| **Copy (guest → laptop)** | Guest `pbcopy`/`xclip`/`wl-copy` shims emit **OSC 52** on the TTY. `grain sh` (local or remote) intercepts OSC 52 on the **client** and writes the laptop clipboard. |
+| **Paste (laptop → guest)** | Guest `pbpaste`/`wl-paste`/`xclip -o` call agent `GET /clipboard`. The agent asks the active `grain sh` client over the shell WebSocket; the client reads the laptop clipboard and returns it. Requires an interactive `grain sh` session (not bare `grain x`). |
+
+Shims live on `PATH` at `/var/lib/grain/bin/` (installed when the agent starts).
 
 | Env | Effect |
 |-----|--------|
-| `GRAIN_OSC52_CLIPBOARD=0` | Disable host CLI clipboard intercept |
+| `GRAIN_OSC52_CLIPBOARD=0` | Disable host CLI OSC 52 copy intercept (paste via `/clipboard` still works if the client can read the clipboard) |
 | `GRAIN_OSC52_PASSTHROUGH=0` | After copying, do not re-emit OSC 52 to the terminal |
 
-Sequences are still passed through by default so terminals with native OSC 52 (iTerm2, Ghostty, Kitty, …) keep working.
+**If Grok (or similar) says clipboard unavailable or paste fails:**
 
-**If Grok (or similar) says clipboard unavailable:**
-
-1. Use a guest agent build that installs the shims; redeploy: `grain agent deploy NAME`, then open a **new** `grain sh` session.
-2. Inside the guest: `which pbcopy` should show `/var/lib/grain/bin/pbcopy`.
-3. On the machine where you run `grain sh`, ensure a clipboard helper exists (`pbcopy` / `wl-copy` / …) and `GRAIN_OSC52_CLIPBOARD` is not set to `0`.
-4. Terminal **selection** copy (mouse drag + Cmd/Ctrl+C in the host terminal) is separate from OSC 52 and depends on the host terminal UI, not grain.
+1. Redeploy a current agent and open a **new** `grain sh`: `grain agent deploy NAME` (restarts the unit).
+2. Inside the guest: `which pbcopy pbpaste` → `/var/lib/grain/bin/…`.
+3. On the machine running `grain sh`, ensure system clipboard tools exist (`pbcopy` / `pbpaste` or `wl-copy` / `wl-paste` / `xclip`).
+4. Paste needs an active interactive shell session; `grain x` has no clipboard bridge.
+5. Terminal **selection** copy (mouse drag + Cmd/Ctrl+C) is the host terminal UI, not grain.
 
 ### Terminal identity (Shift+Enter / keyboard protocol)
 

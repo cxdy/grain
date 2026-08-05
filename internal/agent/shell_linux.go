@@ -53,6 +53,10 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Wire pbpaste → GET /clipboard → client host clipboard for this session.
+	unregisterClip := s.registerShellClipboard(conn)
+	defer unregisterClip()
+
 	var waitOnce sync.Once
 	var waitErr error
 	waitCmd := func() error {
@@ -125,11 +129,16 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 				if jerr := json.Unmarshal(data, &ctrl); jerr != nil {
 					continue
 				}
-				if ctrl.Type == "resize" && ctrl.Cols > 0 && ctrl.Rows > 0 {
-					_ = pty.Setsize(ptmx, &pty.Winsize{
-						Cols: uint16(ctrl.Cols),
-						Rows: uint16(ctrl.Rows),
-					})
+				switch ctrl.Type {
+				case "resize":
+					if ctrl.Cols > 0 && ctrl.Rows > 0 {
+						_ = pty.Setsize(ptmx, &pty.Winsize{
+							Cols: uint16(ctrl.Cols),
+							Rows: uint16(ctrl.Rows),
+						})
+					}
+				case "clipboard":
+					s.handleShellClipboardControl(ctrl)
 				}
 			}
 		}

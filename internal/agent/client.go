@@ -3,6 +3,7 @@ package agent
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -543,7 +544,8 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 		}
 	}()
 
-	// WS → local stdout (server close ends the session)
+	// WS → local stdout (server close ends the session).
+	// Text frames may be control messages (clipboard_get) from the agent.
 	go func() {
 		for {
 			typ, data, rerr := conn.Read(ctx)
@@ -552,8 +554,28 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 				return
 			}
 			switch typ {
-			case websocket.MessageBinary, websocket.MessageText:
-				// Binary is PTY data; write text too if the server ever sends it.
+			case websocket.MessageBinary:
+				if _, werr := stdout.Write(data); werr != nil {
+					errCh <- werr
+					return
+				}
+			case websocket.MessageText:
+				var ctrl ShellControl
+				if jerr := json.Unmarshal(data, &ctrl); jerr == nil && ctrl.Type == "clipboard_get" {
+					reply := ShellControl{Type: "clipboard", Id: ctrl.Id}
+					if clip, cerr := osc52.ReadClipboard(); cerr != nil {
+						reply.Error = cerr.Error()
+					} else {
+						reply.Data = base64.StdEncoding.EncodeToString(clip)
+					}
+					payload, _ := json.Marshal(reply)
+					if werr := conn.Write(ctx, websocket.MessageText, payload); werr != nil {
+						errCh <- werr
+						return
+					}
+					continue
+				}
+				// Unknown text: still surface to stdout (forward compatibility).
 				if _, werr := stdout.Write(data); werr != nil {
 					errCh <- werr
 					return

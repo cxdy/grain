@@ -368,6 +368,28 @@ func writeClipboard(data []byte) error {
 	}
 }
 
+// ReadClipboard returns the host system clipboard as bytes (for paste into guest).
+func ReadClipboard() ([]byte, error) {
+	switch runtime.GOOS {
+	case "darwin":
+		return runClipboardOut("pbpaste")
+	case "windows":
+		// PowerShell Get-Clipboard is more reliable than clip.exe (write-only).
+		return runClipboardOut("powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw")
+	default:
+		if _, err := exec.LookPath("wl-paste"); err == nil {
+			return runClipboardOut("wl-paste")
+		}
+		if _, err := exec.LookPath("xclip"); err == nil {
+			return runClipboardOut("xclip", "-selection", "clipboard", "-o")
+		}
+		if _, err := exec.LookPath("xsel"); err == nil {
+			return runClipboardOut("xsel", "--clipboard", "--output")
+		}
+		return nil, errNoClipboard
+	}
+}
+
 var errNoClipboard = errString("no host clipboard helper (pbcopy/wl-copy/xclip/xsel)")
 
 type errString string
@@ -381,4 +403,14 @@ func runClipboardCmd(data []byte, name string, args ...string) error {
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	return cmd.Run()
+}
+
+func runClipboardOut(name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Stderr = io.Discard
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
