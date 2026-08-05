@@ -55,6 +55,9 @@ func mockDaemon(t *testing.T, token string) *httptest.Server {
 			case client.WaitUserdata:
 				_ = enc.Encode(client.CreateEvent{Phase: client.PhaseWaitAgent, Message: "wait agent"})
 				_ = enc.Encode(client.CreateEvent{Phase: "wait_userdata", Message: "wait userdata"})
+			case client.WaitBootstrap:
+				_ = enc.Encode(client.CreateEvent{Phase: client.PhaseWaitAgent, Message: "wait agent"})
+				_ = enc.Encode(client.CreateEvent{Phase: client.PhaseBootstrap, Message: "wait bootstrap"})
 			default:
 				_ = enc.Encode(client.CreateEvent{Phase: client.PhaseWaitSSH, Message: "wait ssh"})
 			}
@@ -431,6 +434,66 @@ func TestCreateWaitAndTimeoutQuery(t *testing.T) {
 	joined := strings.Join(phases, ",")
 	if !strings.Contains(joined, client.PhaseWaitAgent) {
 		t.Fatalf("want wait_agent in phases %v", phases)
+	}
+	if !strings.Contains(joined, client.PhaseReady) {
+		t.Fatalf("want ready in phases %v", phases)
+	}
+}
+
+func TestWaitModeConstants(t *testing.T) {
+	t.Parallel()
+	if client.WaitAuto != "auto" || client.WaitSSH != "ssh" || client.WaitAgent != "agent" ||
+		client.WaitUserdata != "userdata" || client.WaitBootstrap != "bootstrap" {
+		t.Fatalf("wait constants: auto=%q ssh=%q agent=%q userdata=%q bootstrap=%q",
+			client.WaitAuto, client.WaitSSH, client.WaitAgent, client.WaitUserdata, client.WaitBootstrap)
+	}
+	if client.PhaseBootstrap != "bootstrap" || client.PhaseUserdata != "userdata" {
+		t.Fatalf("phase constants: bootstrap=%q userdata=%q", client.PhaseBootstrap, client.PhaseUserdata)
+	}
+}
+
+func TestCreateWaitBootstrapQuery(t *testing.T) {
+	t.Parallel()
+	ts := mockDaemon(t, "")
+	t.Cleanup(ts.Close)
+
+	c, err := client.DialHTTP(ts.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	inst, err := c.Create(ctx, client.CreateRequest{
+		Name:    "bootbox",
+		Wait:    client.WaitBootstrap,
+		Timeout: "2m",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if inst.Tags["wait"] != client.WaitBootstrap {
+		t.Fatalf("wait query not sent: tags=%v", inst.Tags)
+	}
+	if inst.Tags["timeout"] != "2m" {
+		t.Fatalf("timeout query not sent: tags=%v", inst.Tags)
+	}
+
+	var phases []string
+	streamInst, err := c.CreateStream(ctx, client.CreateRequest{
+		Name: "stream-bootstrap",
+		Wait: client.WaitBootstrap,
+	}, func(ev client.CreateEvent) {
+		phases = append(phases, ev.Phase)
+	})
+	if err != nil {
+		t.Fatalf("CreateStream: %v", err)
+	}
+	if streamInst.Name != "stream-bootstrap" {
+		t.Fatalf("stream name %q", streamInst.Name)
+	}
+	joined := strings.Join(phases, ",")
+	if !strings.Contains(joined, client.PhaseBootstrap) {
+		t.Fatalf("want bootstrap in phases %v", phases)
 	}
 	if !strings.Contains(joined, client.PhaseReady) {
 		t.Fatalf("want ready in phases %v", phases)

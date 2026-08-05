@@ -179,7 +179,7 @@ func createVMsURL(base string, stream bool, req CreateRequest) (string, error) {
 }
 
 // Create launches a VM (blocking JSON response until ready).
-// Set req.Wait to auto|ssh|agent|userdata and req.Timeout to a Go duration
+// Set req.Wait to auto|ssh|agent|userdata|bootstrap and req.Timeout to a Go duration
 // (e.g. "3m") to control readiness; both are sent as query parameters.
 func (c *Client) Create(ctx context.Context, req CreateRequest) (*Instance, error) {
 	b, err := json.Marshal(req)

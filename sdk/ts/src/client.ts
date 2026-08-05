@@ -102,7 +102,8 @@ export class GrainClient {
     signal?: AbortSignal,
   ): Promise<Instance> {
     const q = new URLSearchParams();
-    if (opts.wait === false) q.set("wait", "false");
+    if (typeof opts.wait === "string") q.set("wait", opts.wait);
+    else if (opts.wait === false) q.set("wait", "false");
     if (opts.timeout) q.set("timeout", opts.timeout);
     const path = q.size ? `/vms?${q}` : "/vms";
     return this.json<Instance>("POST", path, {

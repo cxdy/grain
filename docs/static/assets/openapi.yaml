@@ -7,7 +7,11 @@ info:
 
     When `api_token` (or `auth_token`) is set in daemon config, all routes except
     `GET /healthz` require `Authorization: Bearer <token>`.
-  version: 0.2.2
+
+    Sandbox recipes (`apiVersion: grain/v1`, `kind: Sandbox`) are compiled by the
+    CLI (`grain new --recipe`) into create options and userdata cloud-init; they
+    are not a separate HTTP API resource or create body kind.
+  version: 0.3.0-dev
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
@@ -943,7 +947,7 @@ components:
       properties:
         phase:
           type: string
-          enum: [image, disk, seed, qemu, wait_ssh, wait_agent, ready, error]
+          enum: [image, disk, seed, qemu, wait_ssh, wait_agent, userdata, bootstrap, ready, error]
         message:
           type: string
         name:

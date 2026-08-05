@@ -68,10 +68,24 @@ export interface CreateRequest {
   socket_forwards?: SocketForward[];
 }
 
+/** Create wait mode values for POST /vms?wait=… */
+export const Wait = {
+  Auto: "auto",
+  SSH: "ssh",
+  Agent: "agent",
+  Userdata: "userdata",
+  Bootstrap: "bootstrap",
+} as const;
+
+export type WaitMode = (typeof Wait)[keyof typeof Wait];
+
 /** Optional query params for create. */
 export interface CreateOptions {
-  /** When not streaming, wait until ready (default true). */
-  wait?: boolean;
+  /**
+   * Readiness mode. Boolean legacy: true = default/auto wait, false = "false"
+   * (rejected by current daemon). Prefer Wait.* string modes.
+   */
+  wait?: boolean | WaitMode | string;
   /** Go duration string, e.g. "3m", "90s". */
   timeout?: string;
 }
@@ -104,6 +118,8 @@ export const Phase = {
   QEMU: "qemu",
   WaitSSH: "wait_ssh",
   WaitAgent: "wait_agent",
+  Userdata: "userdata",
+  Bootstrap: "bootstrap",
   Ready: "ready",
   Error: "error",
 } as const;

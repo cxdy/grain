@@ -131,8 +131,12 @@ Pass `wait` and `timeout` as keyword args (query parameters), same as the Go cli
 | `ssh` | SSH accepts connections |
 | `agent` | Guest agent `/health` OK |
 | `userdata` | Agent reports userdata finished |
+| `bootstrap` | Guest readiness protocol reports `state=ready` |
 
-Constants: `WAIT_AUTO`, `WAIT_SSH`, `WAIT_AGENT`, `WAIT_USERDATA`.
+Constants: `WAIT_AUTO`, `WAIT_SSH`, `WAIT_AGENT`, `WAIT_USERDATA`, `WAIT_BOOTSTRAP`.
+
+Sandbox recipes are compiled by the CLI into create options + userdata; they are
+not a separate HTTP API kind.
 
 ## Auth
 
