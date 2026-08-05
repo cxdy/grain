@@ -24,6 +24,40 @@ func TestTargetHasEndpoint(t *testing.T) {
 	if !(Target{CID: 3}).HasEndpoint() {
 		t.Fatal("cid-only should have endpoint")
 	}
+	if !(Target{FirecrackerUDS: "/tmp/fc-vsock.sock"}).HasEndpoint() {
+		t.Fatal("uds-only should have endpoint")
+	}
+}
+
+func TestTargetForInstance(t *testing.T) {
+	t.Parallel()
+	// QEMU-style TCP hostfwd.
+	q := TargetForInstance(0, 7476, "/vms/a/disk.qcow2")
+	if q.Port != 7476 || q.CID != 0 || q.FirecrackerUDS != "" {
+		t.Fatalf("qemu tcp: %+v", q)
+	}
+	// QEMU with AF_VSOCK + TCP: keep CID and Port; no UDS.
+	qv := TargetForInstance(5, 7476, "/vms/a/disk.qcow2")
+	if qv.CID != 5 || qv.Port != 7476 || qv.FirecrackerUDS != "" {
+		t.Fatalf("qemu vsock: %+v", qv)
+	}
+	// Firecracker: AgentPort=0, AgentCID set, disk under VM dir.
+	fc := TargetForInstance(12, 0, "/home/u/.grain/vms/sbox/disk.raw")
+	wantUDS := "/home/u/.grain/vms/sbox/" + FirecrackerVsockSocket
+	if fc.FirecrackerUDS != wantUDS {
+		t.Fatalf("fc uds = %q, want %q", fc.FirecrackerUDS, wantUDS)
+	}
+	if fc.CID != 0 {
+		t.Fatalf("fc must not use host AF_VSOCK CID, got %d", fc.CID)
+	}
+	if fc.Port != 0 {
+		t.Fatalf("fc port = %d", fc.Port)
+	}
+	// No disk path: cannot derive UDS.
+	empty := TargetForInstance(3, 0, "")
+	if empty.FirecrackerUDS != "" || empty.CID != 3 {
+		t.Fatalf("no disk: %+v", empty)
+	}
 }
 
 func TestDialTCPOnly(t *testing.T) {
@@ -271,5 +305,120 @@ func TestDialVsockDialError(t *testing.T) {
 	}
 	if c.BaseURL != "http://127.0.0.1:4242" {
 		t.Fatalf("BaseURL %q", c.BaseURL)
+	}
+}
+
+func TestFcVsockCONNECT(t *testing.T) {
+	t.Parallel()
+	// OK handshake.
+	c1, c2 := net.Pipe()
+	t.Cleanup(func() { _ = c1.Close(); _ = c2.Close() })
+	go func() {
+		buf := make([]byte, 64)
+		n, _ := c2.Read(buf)
+		if !strings.HasPrefix(string(buf[:n]), "CONNECT 7475") {
+			_ = c2.Close()
+			return
+		}
+		_, _ = c2.Write([]byte("OK 7475\n"))
+	}()
+	if err := fcVsockCONNECT(c1, DefaultVsockPort); err != nil {
+		t.Fatalf("OK handshake: %v", err)
+	}
+
+	// Rejected.
+	r1, r2 := net.Pipe()
+	t.Cleanup(func() { _ = r1.Close(); _ = r2.Close() })
+	go func() {
+		buf := make([]byte, 64)
+		_, _ = r2.Read(buf)
+		_, _ = r2.Write([]byte("ERROR bad port\n"))
+	}()
+	if err := fcVsockCONNECT(r1, 1); err == nil {
+		t.Fatal("expected reject")
+	} else if !strings.Contains(err.Error(), "rejected") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestDialFirecrackerUDS(t *testing.T) {
+	old := firecrackerUDSDial
+	t.Cleanup(func() { firecrackerUDSDial = old })
+
+	firecrackerUDSDial = func(udsPath string, guestPort uint32) (net.Conn, error) {
+		if udsPath != "/tmp/fc-vsock.sock" || guestPort != DefaultVsockPort {
+			return nil, fmt.Errorf("unexpected dial %s:%d", udsPath, guestPort)
+		}
+		c1, c2 := net.Pipe()
+		go func() { _ = c2.Close() }()
+		return c1, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	c, err := Dial(ctx, Target{FirecrackerUDS: "/tmp/fc-vsock.sock"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BaseURL != "http://fc-vsock" {
+		t.Fatalf("BaseURL %q", c.BaseURL)
+	}
+	if c.HTTP == nil || c.HTTP.Transport == nil {
+		t.Fatal("expected custom transport")
+	}
+
+	// Exercise DialContext on the transport.
+	tr := c.HTTP.Transport.(*http.Transport)
+	dctx, dcancel := context.WithTimeout(context.Background(), time.Second)
+	defer dcancel()
+	conn, err := tr.DialContext(dctx, "unix", "ignored")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.Close()
+
+	// Prefer UDS over TCP when UDS succeeds.
+	c2, err := Dial(context.Background(), Target{FirecrackerUDS: "/tmp/fc-vsock.sock", Port: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.BaseURL != "http://fc-vsock" {
+		t.Fatalf("prefer uds BaseURL, got %q", c2.BaseURL)
+	}
+}
+
+func TestDialFirecrackerUDSError(t *testing.T) {
+	old := firecrackerUDSDial
+	t.Cleanup(func() { firecrackerUDSDial = old })
+	firecrackerUDSDial = func(string, uint32) (net.Conn, error) {
+		return nil, fmt.Errorf("uds down")
+	}
+
+	// UDS-only: hard error.
+	if _, err := Dial(context.Background(), Target{FirecrackerUDS: "/nope.sock"}); err == nil {
+		t.Fatal("expected error")
+	}
+	// UDS fail + TCP port: fall through to TCP.
+	c, err := Dial(context.Background(), Target{FirecrackerUDS: "/nope.sock", Port: 4242})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BaseURL != "http://127.0.0.1:4242" {
+		t.Fatalf("BaseURL %q", c.BaseURL)
+	}
+}
+
+func TestDialFirecrackerUDSCanceled(t *testing.T) {
+	old := firecrackerUDSDial
+	t.Cleanup(func() { firecrackerUDSDial = old })
+	// Block dial until canceled.
+	firecrackerUDSDial = func(string, uint32) (net.Conn, error) {
+		time.Sleep(5 * time.Second)
+		return nil, fmt.Errorf("late")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := Dial(ctx, Target{FirecrackerUDS: "/x.sock"}); err == nil {
+		t.Fatal("expected cancel error")
 	}
 }

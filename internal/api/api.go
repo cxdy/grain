@@ -461,13 +461,13 @@ func (s *Server) removeForward(w http.ResponseWriter, r *http.Request) {
 }
 
 // agentClient returns a host-side agent client for the VM, or an HTTP status + error.
-// Prefers virtio-vsock when AgentCID > 0, else TCP hostfwd (see agent.Dial).
+// Prefers Firecracker UDS CONNECT, then AF_VSOCK, then TCP hostfwd (see agent.Dial).
 func (s *Server) agentClient(name string) (*agent.Client, int, error) {
 	inst, err := s.mgr.Get(name)
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
-	target := agent.Target{CID: inst.AgentCID, Port: inst.AgentPort}
+	target := agent.TargetForInstance(inst.AgentCID, inst.AgentPort, inst.DiskPath)
 	if !target.HasEndpoint() {
 		return nil, http.StatusServiceUnavailable, errors.New("agent not available")
 	}
