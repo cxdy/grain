@@ -1,8 +1,7 @@
 # Firecracker kernel + raw rootfs bake (Phase 1).
-# Produces dist/fc/* via scripts/bake-fc.sh --all (download FC CI kernel/rootfs,
-# inject static grain-agent). Publish to fc-latest is a follow-up (contents:write).
-# Note: GitHub-hosted runners usually lack /dev/kvm; this job only builds artifacts
-# (no microVM smoke). Nested-KVM smoke stays on self-hosted / manual.
+# Produces dist/fc/* via scripts/bake-fc.sh --all and publishes to the movable
+# fc-latest release tag (catalog pull). GitHub-hosted runners usually lack
+# /dev/kvm — this job only builds artifacts (no microVM smoke).
 name: Bake Firecracker artifacts
 
 on:
@@ -13,9 +12,12 @@ on:
         required: false
         type: string
         default: ""
+  # Optional weekly refresh of fc-latest (same pattern as bake-golden).
+  schedule:
+    - cron: "0 7 * * 1"
 
 permissions:
-  contents: read
+  contents: write # update fc-latest release assets
 
 jobs:
   bake:
@@ -43,9 +45,49 @@ jobs:
           ls -lh dist/fc/
           cat dist/fc/*.sha256
 
-      - name: Upload artifacts
+      - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
           name: grain-fc-amd64
           path: dist/fc/*
           if-no-files-found: error
+          retention-days: 30
+
+      # Movable fc-latest release so grain image pull grain-ubuntu-fc / fc-kernel works.
+      # make_latest: false keeps code tags (v*) as the repo "latest" release.
+      - name: Publish fc-latest release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: fc-latest
+          name: Firecracker images (latest)
+          body: |
+            Pre-baked **Firecracker** kernel + raw rootfs (Ubuntu + grain-agent).
+
+            ```bash
+            # Linux + KVM + firecracker binary
+            grain image pull fc-kernel
+            grain image pull grain-ubuntu-fc
+            # config: hypervisor: firecracker
+            grain new -i grain-ubuntu-fc --wait agent
+            ```
+
+            | Asset | Role |
+            |-------|------|
+            | `vmlinux-amd64` | Guest kernel → `data_dir/kernels/vmlinux` |
+            | `grain-ubuntu-fc-amd64.raw` | Raw rootfs with static grain-agent (vsock :7475) |
+
+            Companion `.sha256` sidecars are verified by `grain image pull`.
+
+            Built by `scripts/bake-fc.sh` from Firecracker CI kernel/rootfs pins.
+            This tag is rewritten on every successful bake. **Not** a code release.
+          files: |
+            dist/fc/vmlinux-amd64
+            dist/fc/vmlinux-amd64.sha256
+            dist/fc/grain-ubuntu-fc-amd64.raw
+            dist/fc/grain-ubuntu-fc-amd64.raw.sha256
+          fail_on_unmatched_files: true
+          make_latest: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

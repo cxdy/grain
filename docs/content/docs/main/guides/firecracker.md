@@ -103,25 +103,35 @@ grain’s QEMU catalog images (`ubuntu-cloud`, `grain-ubuntu`, `alpine-cloud`) a
 
 | Catalog ID | Role | Status today |
 |------------|------|----------------|
-| **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **LocalOnly** — not pullable yet; `grain image import <raw> --id grain-ubuntu-fc` stores `images/grain-ubuntu-fc/disk.raw` |
-| **`fc-kernel`** | Guest **vmlinux** artifact | **LocalOnly** — `grain image import <vmlinux> --id fc-kernel` installs to `~/.grain/kernels/vmlinux` (or set `kernel_path`) |
+| **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **Pullable** from `fc-latest` → `images/grain-ubuntu-fc/disk.raw` (or `import`) |
+| **`fc-kernel`** | Guest **vmlinux** artifact | **Pullable** from `fc-latest` → `~/.grain/kernels/vmlinux` (or `import` / `kernel_path`) |
 
-These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. Until GitHub/CI bake publishes digests + URLs, `grain image pull grain-ubuntu-fc` / `fc-kernel` refuses (local-only). BYO remains first-class.
+These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. BYO import remains first-class.
 
-**Bake (Linux):** produce pinned Firecracker CI kernel + Ubuntu raw rootfs with static `grain-agent`:
+### Pull (published `fc-latest`)
 
 ```bash
-# On Linux with curl, qemu-img, unsquashfs, mkfs.ext4, go
+# config: hypervisor: firecracker
+grain image pull fc-kernel          # → data_dir/kernels/vmlinux
+grain image pull grain-ubuntu-fc    # → images/grain-ubuntu-fc/disk.raw
+grain new -i grain-ubuntu-fc --wait agent
+# or: ./scripts/smoke-fc.sh
+```
+
+Catalog digests use companion `.sha256` sidecars on the `fc-latest` release (fail-closed; same pattern as `grain-ubuntu`).
+
+### Bake (Linux rebuild)
+
+```bash
+# curl, qemu-img, unsquashfs, mkfs.ext4, go
 ./scripts/bake-fc.sh --all
 # → dist/fc/vmlinux-<arch> + grain-ubuntu-fc-<arch>.raw (+ .sha256)
 
 grain image import dist/fc/vmlinux-amd64 --id fc-kernel
 grain image import dist/fc/grain-ubuntu-fc-amd64.raw --id grain-ubuntu-fc
-# config: hypervisor: firecracker
-grain new -i grain-ubuntu-fc --wait agent
 ```
 
-Defaults: Firecracker CI `v1.12` `vmlinux-6.1.128` + `ubuntu-24.04.squashfs` → ext4 with agent systemd unit (vsock :7475). Override with `FC_CI_VERSION` / `FC_KERNEL_VER` / `FC_UBUNTU_SQFS`. Publish to tag `fc-latest` still pending (catalog remains LocalOnly until digests are in-tree).
+Defaults: Firecracker CI `v1.12` `vmlinux-6.1.128` + `ubuntu-24.04.squashfs` → ext4 with agent systemd unit (vsock :7475). Override with `FC_CI_VERSION` / `FC_KERNEL_VER` / `FC_UBUNTU_SQFS`. Workflow **Bake Firecracker artifacts** rewrites the `fc-latest` release.
 
 ### Operator path today (BYO)
 

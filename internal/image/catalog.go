@@ -56,19 +56,20 @@ const (
 	IDGrainUbuntu = "grain-ubuntu"
 	IDAlpineCloud = "alpine-cloud"
 	// Firecracker Phase 1 (explicit IDs — not dual-use of qcow2 grain-ubuntu).
-	// Entries stay LocalOnly until bake publishes to fc-latest (see fcReleaseBase).
+	// Published by bake-fc.yml to the fc-latest release tag (see fcReleaseBase).
 	// See grain-notes firecracker-production-plan Phase 1 / docs guides/firecracker.
 	IDGrainUbuntuFC = "grain-ubuntu-fc"
 	IDFCKernel      = "fc-kernel"
 )
 
-// fcReleaseBase is the planned GitHub Release tag for Firecracker artifacts.
-// Bake pipeline (when live) rewrites assets on tag `fc-latest`:
+// fcReleaseBase is the GitHub Release tag for Firecracker artifacts.
+// Bake pipeline rewrites assets on tag `fc-latest`:
 //
 //	grain-ubuntu-fc-amd64.raw / grain-ubuntu-fc-arm64.raw (+ .sha256)
 //	vmlinux-amd64 / vmlinux-arm64 (+ .sha256)  → installed as kernels/vmlinux
 //
 // Not a code release (softprops make_latest: false), same pattern as golden-latest.
+// Digests are not pinned in-tree (assets rewrite on bake); pull uses companion .sha256.
 const fcReleaseBase = "https://github.com/cxdy/grain/releases/download/fc-latest/"
 
 // Alpine cloud image release pin (generic UEFI + cloud-init qcow2).
@@ -186,11 +187,9 @@ func catalogFor(arch string) map[string]Spec {
 		}
 	}
 
-	// Firecracker production track (Phase 1): reserved catalog IDs.
-	// Prefer explicit FC IDs over dual-use of grain-ubuntu qcow2 so pull/import
-	// never confuses QEMU cloud images with FC raw rootfs / vmlinux.
-	// LocalOnly until bake publishes digests to fc-latest; URLs are documented
-	// for the planned asset names (pull remains refused until LocalOnly flips).
+	// Firecracker production track (Phase 1): explicit catalog IDs.
+	// Prefer separate FC IDs over dual-use of grain-ubuntu qcow2.
+	// Published by bake-fc.yml → fc-latest (sidecar digests, fail-closed pull).
 	//
 	//   grain-ubuntu-fc → images/<id>/disk.raw (HasAgent)
 	//   fc-kernel       → data_dir/kernels/vmlinux (Manager.KernelPath)
@@ -198,25 +197,28 @@ func catalogFor(arch string) map[string]Spec {
 	fcKernURL := ""
 	switch arch {
 	case "amd64", "arm64":
-		// Reserved for bake-fc publish; leave empty so LocalOnly stays true.
-		_ = fcReleaseBase + "grain-ubuntu-fc-" + arch + ".raw"
-		_ = fcReleaseBase + "vmlinux-" + arch
+		fcRootURL = fcReleaseBase + "grain-ubuntu-fc-" + arch + ".raw"
+		fcKernURL = fcReleaseBase + "vmlinux-" + arch
 	}
 	c[IDGrainUbuntuFC] = Spec{
 		ID:          IDGrainUbuntuFC,
-		Description: "Firecracker raw rootfs with grain-agent (import BYO; pull when fc-latest publishes)",
+		Description: "Firecracker raw rootfs with grain-agent (pull fc-latest or import)",
 		URL:         fcRootURL,
+		SHA256:      "", // companion .sha256 sidecar at pull time
 		Format:      "raw",
 		SSHUser:     "ubuntu",
+		SizeHint:    1500 * 1024 * 1024,
 		HasAgent:    true,
-		LocalOnly:   true, // flip false + set URL/SHA when bake ships
+		LocalOnly:   fcRootURL == "",
 	}
 	c[IDFCKernel] = Spec{
 		ID:          IDFCKernel,
-		Description: "Firecracker guest kernel vmlinux (import → kernels/vmlinux; pull when fc-latest publishes)",
+		Description: "Firecracker guest kernel vmlinux (pull → kernels/vmlinux)",
 		URL:         fcKernURL,
+		SHA256:      "", // companion .sha256 sidecar at pull time
 		Format:      "raw",
-		LocalOnly:   true,
+		SizeHint:    50 * 1024 * 1024,
+		LocalOnly:   fcKernURL == "",
 	}
 
 	return c
