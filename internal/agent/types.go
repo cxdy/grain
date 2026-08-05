@@ -165,11 +165,26 @@ type ShellOpts struct {
 // Host CLI copies the corresponding process environment into these params so
 // guest TUIs (e.g. Grok Build) can detect the outer terminal and enable
 // Kitty keyboard protocol / Shift+Enter newlines.
+//
+// Prefer shellEnvForward in shell_env.go as the source of truth; this list is
+// kept for external documentation and tests.
 var ShellEnvQueryKeys = []string{
 	"term",
 	"term_program",
 	"term_program_version",
 	"colorterm",
+	"lc_terminal",
+	"lc_terminal_version",
+	"term_features",
+	"term_session_id",
+	"iterm_session_id",
+	"iterm_profile",
+	"kitty_window_id",
+	"kitty_pid",
+	"wezterm_pane",
+	"wezterm_unix_socket",
+	"wt_session",
+	"vte_version",
 	"lang",
 	"lc_all",
 	"lc_ctype",

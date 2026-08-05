@@ -133,9 +133,26 @@ Sequences are still passed through by default so terminals with native OSC 52 (i
 
 ### Terminal identity (Shift+Enter / keyboard protocol)
 
-`grain sh` forwards the host’s `TERM`, `TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `COLORTERM`, and locale variables into the guest shell so tools like Grok Build can negotiate the same keyboard protocol as a local session (for example **Shift+Enter** for a newline). Without this, the guest only sees a generic `TERM=xterm-256color` and modified Enter keys often collapse to plain Enter.
+`grain sh` (local and remote/`GRAIN_API`) forwards host terminal identity into the guest PTY so TUIs and multiplexers can match local keyboard behavior. Without this, the guest only sees a generic `TERM=xterm-256color` and modified keys (especially **Shift+Enter**) often collapse to plain Enter.
 
-If Shift+Enter still fails, try **Alt+Enter**, or enable Kitty keyboard support in your host terminal (WezTerm: `enable_kitty_keyboard = true`).
+Forwarded when set on the client:
+
+| Category | Variables |
+|----------|-----------|
+| Core | `TERM`, `TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `COLORTERM` |
+| iTerm2 | `LC_TERMINAL`, `LC_TERMINAL_VERSION`, `TERM_FEATURES`, `TERM_SESSION_ID`, `ITERM_SESSION_ID`, `ITERM_PROFILE` |
+| Kitty / WezTerm / Windows Terminal / VTE | `KITTY_WINDOW_ID`, `KITTY_PID`, `WEZTERM_PANE`, `WEZTERM_UNIX_SOCKET`, `WT_SESSION`, `VTE_VERSION` |
+| Locale | `LANG`, `LC_ALL`, `LC_CTYPE` |
+
+**Troubleshooting Shift+Enter / odd keys inside `grain sh`:**
+
+1. On the client (where you run `grain sh`), check `echo $TERM_PROGRAM $LC_TERMINAL $TERM_FEATURES`.
+2. Inside the guest session: `echo $TERM_PROGRAM $LC_TERMINAL $TERM_FEATURES` — should match the client after a **new** `grain sh` (not an old session).
+3. Use a **CLI and guest agent** that include terminal-env forwarding (0.5.0+ for the first cut; later builds add iTerm/Kitty/WezTerm keys). Redeploy the agent after upgrading the host: `grain agent deploy NAME`.
+4. Host terminal must actually emit a modified-Enter sequence (iTerm2, Ghostty, Kitty, WezTerm with Kitty keyboard enabled: e.g. WezTerm `enable_kitty_keyboard = true`).
+5. Nested **tmux/screen**: enable extended keys in the multiplexer (tmux 3.2+: `set -s extended-keys on`) and ensure the outer terminal identity still reaches the app.
+
+If Shift+Enter still fails, try **Alt+Enter** as a fallback.
 
 Protocol: WebSocket binary frames carry PTY bytes both ways; optional text JSON control frames resize the PTY (`{"type":"resize","cols":N,"rows":M}`). The agent spawns a login shell as uid 1000 when present, otherwise root. Local stdin is put in raw mode when attached to a TTY; `SIGWINCH` is forwarded as resize frames.
 
