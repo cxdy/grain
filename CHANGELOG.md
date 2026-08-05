@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Install / `grain update` quieter when already set up** — `scripts/install.sh` skips the MCP enable prompt when `~/.grain/config.yaml` already exists, and drops the long “Next steps” footer (install progress + short “grain X installed” / PATH line only).
 - **Paste screenshots into `grain sh`** — host clipboard paste now prefers **images** (macOS: PNG/TIFF/JPEG via AppKit, converting screenshot TIFF→PNG; Linux: `wl-paste`/`xclip` image MIME types) before plain text. Fixes Grok Build “Couldn't read clipboard contents” when pasting screenshots (plain `pbpaste` returns empty for image-only clipboards). Longer paste timeout for large images.
 - **Firecracker agent wait retries dial** — create/start `wait=agent` re-dials Firecracker UDS + CONNECT until the readiness budget expires (guest agent appears after boot; a single early CONNECT EOF no longer fails immediately). SSH agent deploy is skipped when `SSHPort` is 0.
 - **Firecracker agent wait errors** — when create/start waits for the guest agent over FC vsock UDS (no SSH deploy fallback), failures name the UDS path and point at `grain doctor` / baked agent / Firecracker guide instead of a bare timeout.
