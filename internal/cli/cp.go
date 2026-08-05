@@ -157,21 +157,15 @@ func daemonPut(ctx context.Context, c *api.Client, vmName, hostPath, guestPath s
 		}
 		guestPath = filepath.ToSlash(filepath.Join(guestPath, filepath.Base(hostPath)))
 	}
+	prog := newTransferProgress("cp")
 	if fi.IsDir() {
-		pr, pw := io.Pipe()
-		go func() {
-			err := writeLocalTar(pw, hostPath)
-			_ = pw.CloseWithError(err)
-		}()
-		return c.PutTar(ctx, vmName, guestPath, pr)
+		return cpPutTar(ctx, prog, hostPath, guestPath, func(r io.Reader) error {
+			return c.PutTar(ctx, vmName, guestPath, r)
+		})
 	}
-	f, err := os.Open(hostPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	mode := fmt.Sprintf("%04o", fi.Mode().Perm())
-	return c.PutFile(ctx, vmName, guestPath, f, fi.Size(), agent.CPOpts{Mode: mode})
+	return cpPutFile(ctx, prog, hostPath, guestPath, fi, func(r io.Reader, size int64, mode string) error {
+		return c.PutFile(ctx, vmName, guestPath, r, size, agent.CPOpts{Mode: mode})
+	})
 }
 
 func daemonGet(ctx context.Context, c *api.Client, vmName, guestPath, hostPath string) error {
@@ -184,33 +178,15 @@ func daemonGet(ctx context.Context, c *api.Client, vmName, guestPath, hostPath s
 	} else if st, err := os.Stat(hostPath); err == nil && st.IsDir() {
 		hostPath = filepath.Join(hostPath, info.Name)
 	}
+	prog := newTransferProgress("cp")
 	if info.Type == "directory" {
-		if err := os.MkdirAll(hostPath, 0o755); err != nil {
-			return err
-		}
-		pr, pw := io.Pipe()
-		errCh := make(chan error, 1)
-		go func() {
-			err := c.GetTar(ctx, vmName, guestPath, pw)
-			_ = pw.CloseWithError(err)
-			errCh <- err
-		}()
-		extErr := extractTar(pr, hostPath)
-		getErr := <-errCh
-		if getErr != nil {
-			return getErr
-		}
-		return extErr
+		return cpGetTar(ctx, prog, guestPath, hostPath, func(w io.Writer) error {
+			return c.GetTar(ctx, vmName, guestPath, w)
+		})
 	}
-	if err := os.MkdirAll(filepath.Dir(hostPath), 0o755); err != nil {
-		return err
-	}
-	f, err := os.Create(hostPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	return c.GetFile(ctx, vmName, guestPath, f)
+	return cpGetFile(ctx, prog, guestPath, hostPath, info, func(w io.Writer) error {
+		return c.GetFile(ctx, vmName, guestPath, w)
+	})
 }
 
 func agentPut(ctx context.Context, ac *agent.Client, hostPath, guestPath string) error {
@@ -227,22 +203,15 @@ func agentPut(ctx context.Context, ac *agent.Client, hostPath, guestPath string)
 		guestPath = filepath.ToSlash(filepath.Join(guestPath, filepath.Base(hostPath)))
 	}
 
+	prog := newTransferProgress("cp")
 	if fi.IsDir() {
-		pr, pw := io.Pipe()
-		go func() {
-			err := writeLocalTar(pw, hostPath)
-			_ = pw.CloseWithError(err)
-		}()
-		return ac.PutTar(ctx, guestPath, pr)
+		return cpPutTar(ctx, prog, hostPath, guestPath, func(r io.Reader) error {
+			return ac.PutTar(ctx, guestPath, r)
+		})
 	}
-
-	f, err := os.Open(hostPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	mode := fmt.Sprintf("%04o", fi.Mode().Perm())
-	return ac.PutFile(ctx, guestPath, f, fi.Size(), agent.CPOpts{Mode: mode})
+	return cpPutFile(ctx, prog, hostPath, guestPath, fi, func(r io.Reader, size int64, mode string) error {
+		return ac.PutFile(ctx, guestPath, r, size, agent.CPOpts{Mode: mode})
+	})
 }
 
 func agentGet(ctx context.Context, ac *agent.Client, guestPath, hostPath string) error {
@@ -258,34 +227,80 @@ func agentGet(ctx context.Context, ac *agent.Client, guestPath, hostPath string)
 		hostPath = filepath.Join(hostPath, info.Name)
 	}
 
+	prog := newTransferProgress("cp")
 	if info.Type == "directory" {
-		if err := os.MkdirAll(hostPath, 0o755); err != nil {
-			return err
-		}
-		pr, pw := io.Pipe()
-		errCh := make(chan error, 1)
-		go func() {
-			err := ac.GetTar(ctx, guestPath, pw)
-			_ = pw.CloseWithError(err)
-			errCh <- err
-		}()
-		extErr := extractTar(pr, hostPath)
-		getErr := <-errCh
-		if getErr != nil {
-			return getErr
-		}
-		return extErr
+		return cpGetTar(ctx, prog, guestPath, hostPath, func(w io.Writer) error {
+			return ac.GetTar(ctx, guestPath, w)
+		})
 	}
+	return cpGetFile(ctx, prog, guestPath, hostPath, info, func(w io.Writer) error {
+		return ac.GetFile(ctx, guestPath, w)
+	})
+}
 
+func cpPutFile(ctx context.Context, prog *transferProgress, hostPath, guestPath string, fi os.FileInfo, put func(io.Reader, int64, string) error) error {
+	_ = ctx
+	mode := fmt.Sprintf("%04o", fi.Mode().Perm())
+	prog.SetDetail("put " + filepath.Base(hostPath) + " → " + guestPath)
+	prog.SetBytes(0, fi.Size())
+	f, err := os.Open(hostPath)
+	if err != nil {
+		prog.Finish("")
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	r := &countingReader{r: f, onRead: func(n int) { prog.AddBytes(int64(n)) }}
+	err = put(r, fi.Size(), mode)
+	if err != nil {
+		prog.Finish("")
+		return err
+	}
+	prog.Finish(fmt.Sprintf("cp: put %s (%s)", guestPath, formatByteCount(fi.Size())))
+	return nil
+}
+
+func cpPutTar(ctx context.Context, prog *transferProgress, hostPath, guestPath string, put func(io.Reader) error) error {
+	_ = ctx
+	total, _ := hostTreeSize(hostPath)
+	prog.SetDetail("put dir " + filepath.Base(hostPath) + "/ → " + guestPath)
+	prog.SetBytes(0, total)
+	pr, pw := io.Pipe()
+	go func() {
+		cw := &countingWriter{w: pw, onWrite: func(n int) { prog.AddBytes(int64(n)) }}
+		err := writeLocalTar(cw, hostPath)
+		_ = pw.CloseWithError(err)
+	}()
+	err := put(pr)
+	if err != nil {
+		prog.Finish("")
+		return err
+	}
+	msg := fmt.Sprintf("cp: put dir %s", guestPath)
+	if total > 0 {
+		msg += " (" + formatByteCount(total) + ")"
+	}
+	prog.Finish(msg)
+	return nil
+}
+
+func cpGetFile(ctx context.Context, prog *transferProgress, guestPath, hostPath string, info *agent.FSInfo, get func(io.Writer) error) error {
+	_ = ctx
 	if err := os.MkdirAll(filepath.Dir(hostPath), 0o755); err != nil {
+		prog.Finish("")
 		return err
 	}
 	f, err := os.Create(hostPath)
 	if err != nil {
+		prog.Finish("")
 		return err
 	}
 	defer func() { _ = f.Close() }()
-	if err := ac.GetFile(ctx, guestPath, f); err != nil {
+	total := info.Size
+	prog.SetDetail("get " + guestPath + " → " + filepath.Base(hostPath))
+	prog.SetBytes(0, total)
+	w := &countingWriter{w: f, onWrite: func(n int) { prog.AddBytes(int64(n)) }}
+	if err := get(w); err != nil {
+		prog.Finish("")
 		return err
 	}
 	if info.Mode != "" {
@@ -294,6 +309,40 @@ func agentGet(ctx context.Context, ac *agent.Client, guestPath, hostPath string)
 			_ = f.Chmod(perm)
 		}
 	}
+	sizeNote := ""
+	if total > 0 {
+		sizeNote = " (" + formatByteCount(total) + ")"
+	}
+	prog.Finish(fmt.Sprintf("cp: get %s%s", hostPath, sizeNote))
+	return nil
+}
+
+func cpGetTar(ctx context.Context, prog *transferProgress, guestPath, hostPath string, get func(io.Writer) error) error {
+	_ = ctx
+	if err := os.MkdirAll(hostPath, 0o755); err != nil {
+		prog.Finish("")
+		return err
+	}
+	prog.SetDetail("get dir " + guestPath + "/ → " + hostPath)
+	pr, pw := io.Pipe()
+	errCh := make(chan error, 1)
+	go func() {
+		cw := &countingWriter{w: pw, onWrite: func(n int) { prog.AddBytes(int64(n)) }}
+		err := get(cw)
+		_ = pw.CloseWithError(err)
+		errCh <- err
+	}()
+	extErr := extractTar(pr, hostPath)
+	getErr := <-errCh
+	if getErr != nil {
+		prog.Finish("")
+		return getErr
+	}
+	if extErr != nil {
+		prog.Finish("")
+		return extErr
+	}
+	prog.Finish(fmt.Sprintf("cp: get dir %s", hostPath))
 	return nil
 }
 

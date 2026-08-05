@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -202,4 +204,225 @@ func isTerminal(f *os.File) bool {
 		return false
 	}
 	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// transferProgress prints live transfer status for cp/sync (stderr).
+// TTY: spinner + rewriting line. Non-TTY: line when stage text changes.
+type transferProgress struct {
+	label string
+	tty   bool
+	start time.Time
+
+	mu     sync.Mutex
+	detail string // current stage text (action, path, counts, …)
+	done   int64  // bytes transferred (optional)
+	total  int64  // total bytes when known (0 = unknown)
+
+	stopOnce sync.Once
+	stopCh   chan struct{}
+	finished chan struct{}
+}
+
+func newTransferProgress(label string) *transferProgress {
+	if label == "" {
+		label = "transfer"
+	}
+	p := &transferProgress{
+		label:    label,
+		tty:      isTerminal(os.Stderr),
+		start:    time.Now(),
+		stopCh:   make(chan struct{}),
+		finished: make(chan struct{}),
+		detail:   "starting",
+	}
+	go p.loop()
+	return p
+}
+
+func (p *transferProgress) loop() {
+	defer close(p.finished)
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	i := 0
+	interval := 80 * time.Millisecond
+	if !p.tty {
+		interval = 500 * time.Millisecond
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	lastLine := ""
+	p.render(frames[0])
+	lastLine = p.line()
+	for {
+		select {
+		case <-p.stopCh:
+			return
+		case <-t.C:
+			if p.tty {
+				p.render(frames[i%len(frames)])
+				i++
+				continue
+			}
+			cur := p.line()
+			if cur != lastLine {
+				_, _ = fmt.Fprintln(os.Stderr, cur)
+				lastLine = cur
+			}
+		}
+	}
+}
+
+// SetDetail sets the human status text (e.g. "put 3/12 src/main.go").
+func (p *transferProgress) SetDetail(detail string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.detail = detail
+	p.mu.Unlock()
+}
+
+// SetBytes updates byte counters (total 0 = unknown).
+func (p *transferProgress) SetBytes(done, total int64) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.done = done
+	p.total = total
+	p.mu.Unlock()
+}
+
+// AddBytes increments the done counter (for streaming).
+func (p *transferProgress) AddBytes(n int64) {
+	if p == nil || n == 0 {
+		return
+	}
+	p.mu.Lock()
+	p.done += n
+	p.mu.Unlock()
+}
+
+func (p *transferProgress) line() string {
+	p.mu.Lock()
+	detail := p.detail
+	done, total := p.done, p.total
+	p.mu.Unlock()
+	elapsed := time.Since(p.start).Round(time.Second)
+	var b strings.Builder
+	b.WriteString(p.label)
+	if detail != "" {
+		b.WriteString("  ")
+		b.WriteString(detail)
+	}
+	if done > 0 || total > 0 {
+		b.WriteString("  ")
+		b.WriteString(formatByteCount(done))
+		if total > 0 {
+			b.WriteByte('/')
+			b.WriteString(formatByteCount(total))
+			if total > 0 {
+				pct := int(done * 100 / total)
+				if pct > 100 {
+					pct = 100
+				}
+				b.WriteString(fmt.Sprintf(" %d%%", pct))
+			}
+		}
+	}
+	b.WriteString("  ")
+	b.WriteString(elapsed.String())
+	return b.String()
+}
+
+func (p *transferProgress) render(frame string) {
+	if !p.tty {
+		return
+	}
+	_, _ = fmt.Fprintf(os.Stderr, "\r\033[K  %s %s", frame, p.line())
+}
+
+// Finish stops the spinner and prints a final summary line (non-empty).
+func (p *transferProgress) Finish(summary string) {
+	if p == nil {
+		return
+	}
+	p.stopOnce.Do(func() {
+		close(p.stopCh)
+		<-p.finished
+		if p.tty {
+			_, _ = fmt.Fprint(os.Stderr, "\r\033[K")
+		}
+		if summary != "" {
+			_, _ = fmt.Fprintln(os.Stderr, summary)
+		}
+	})
+}
+
+func formatByteCount(n int64) string {
+	if n < 0 {
+		n = 0
+	}
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%dB", n)
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// countingReader wraps r, reporting bytes via onRead (may be called often).
+type countingReader struct {
+	r      io.Reader
+	onRead func(n int)
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	if n > 0 && c.onRead != nil {
+		c.onRead(n)
+	}
+	return n, err
+}
+
+// countingWriter wraps w, reporting bytes via onWrite.
+type countingWriter struct {
+	w       io.Writer
+	onWrite func(n int)
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	if n > 0 && c.onWrite != nil {
+		c.onWrite(n)
+	}
+	return n, err
+}
+
+// hostTreeSize sums regular file sizes under path (file or directory).
+func hostTreeSize(path string) (int64, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return 0, err
+	}
+	if !fi.IsDir() {
+		if fi.Mode().IsRegular() {
+			return fi.Size(), nil
+		}
+		return 0, nil
+	}
+	var total int64
+	err = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total, err
 }

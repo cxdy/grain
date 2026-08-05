@@ -21,6 +21,20 @@ const (
 	Pull = syncPull
 )
 
+// ProgressEvent is emitted during apply (and optionally inventory) for CLI UIs.
+type ProgressEvent struct {
+	// Phase is a short stage label: inventory, delete, mkdir, put, get, chmod, done.
+	Phase string
+	// Index is 1-based op index within Total (0 when unknown).
+	Index int
+	// Total is the number of apply ops (deletes + dir creates + file ops).
+	Total int
+	// RelPath is the path relative to the sync root.
+	RelPath string
+	// Action is the plan action (create, update, delete, …).
+	Action string
+}
+
 // Options configures a sync run.
 type Options struct {
 	Verb      Verb
@@ -37,6 +51,8 @@ type Options struct {
 	Out io.Writer
 	// ErrOut receives warnings (optional; defaults to discard).
 	ErrOut io.Writer
+	// OnProgress is called during apply for live status (optional).
+	OnProgress func(ProgressEvent)
 
 	Delete        bool
 	DryRun        bool
@@ -179,12 +195,13 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 
 	applyRes, err := applySyncPlan(ctx, plan, syncApplyOpts{
-		Verb:      opts.Verb,
-		HostRoot:  hostRoot,
-		GuestRoot: guestRoot,
-		FS:        opts.FS,
-		State:     st,
-		StatePath: statePath,
+		Verb:       opts.Verb,
+		HostRoot:   hostRoot,
+		GuestRoot:  guestRoot,
+		FS:         opts.FS,
+		State:      st,
+		StatePath:  statePath,
+		OnProgress: opts.OnProgress,
 	})
 	if applyRes != nil {
 		res.Applied = applyRes.Applied
