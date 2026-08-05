@@ -86,7 +86,8 @@ FC_CI_VERSION="${FC_CI_VERSION:-v1.12}"
 # Pinned CI kernel/rootfs names (override via env when FC republishes).
 FC_KERNEL_VER="${FC_KERNEL_VER:-vmlinux-6.1.128}"
 FC_UBUNTU_SQFS="${FC_UBUNTU_SQFS:-ubuntu-24.04.squashfs}"
-ROOTFS_SIZE_MB="${ROOTFS_SIZE_MB:-2048}"
+# Keep under GitHub release asset limit (2 GiB exclusive).
+ROOTFS_SIZE_MB="${ROOTFS_SIZE_MB:-1536}"
 S3_BASE="https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/${FC_CI_VERSION}/${FC_ARCH}"
 
 ROOTFS_NAME="grain-ubuntu-fc-${ARCH}.raw"

@@ -45,23 +45,20 @@ func TestCatalogArchVariants(t *testing.T) {
 	if gu.Format != "qcow2" || gu.SSHUser != "ubuntu" || !gu.HasAgent {
 		t.Fatalf("%+v", gu)
 	}
-	// Firecracker Phase 1 scaffold IDs: always present, LocalOnly until bake.
+	// Firecracker catalog IDs: pullable on amd64/arm64 via fc-latest (sidecar digests).
 	fcRoot, ok := c[IDGrainUbuntuFC]
 	if !ok {
 		t.Fatal("missing grain-ubuntu-fc")
 	}
-	if fcRoot.Format != "raw" || !fcRoot.HasAgent || !fcRoot.LocalOnly || fcRoot.URL != "" {
-		t.Fatalf("grain-ubuntu-fc scaffold: %+v", fcRoot)
-	}
-	if fcRoot.AllowUnverified {
-		t.Fatal("grain-ubuntu-fc must not AllowUnverified")
+	if fcRoot.Format != "raw" || !fcRoot.HasAgent || fcRoot.AllowUnverified {
+		t.Fatalf("grain-ubuntu-fc: %+v", fcRoot)
 	}
 	fcKern, ok := c[IDFCKernel]
 	if !ok {
 		t.Fatal("missing fc-kernel")
 	}
-	if fcKern.Format != "raw" || !fcKern.LocalOnly || fcKern.URL != "" || fcKern.HasAgent {
-		t.Fatalf("fc-kernel scaffold: %+v", fcKern)
+	if fcKern.Format != "raw" || fcKern.HasAgent || fcKern.AllowUnverified {
+		t.Fatalf("fc-kernel: %+v", fcKern)
 	}
 	if _, err := Get(IDGrainUbuntuFC); err != nil {
 		t.Fatal(err)
@@ -115,6 +112,19 @@ func TestCatalogArchVariants(t *testing.T) {
 		}
 		if u.AllowUnverified {
 			t.Fatal("catalog ubuntu-cloud must not AllowUnverified")
+		}
+		// Firecracker pullable IDs: URL set, not LocalOnly, empty pin (sidecar).
+		if fcRoot.LocalOnly || fcRoot.URL == "" || !strings.Contains(fcRoot.URL, "grain-ubuntu-fc-"+arch) {
+			t.Fatalf("grain-ubuntu-fc pullable: %+v", fcRoot)
+		}
+		if fcRoot.SHA256 != "" {
+			t.Fatalf("grain-ubuntu-fc pin should stay empty (sidecar): %q", fcRoot.SHA256)
+		}
+		if fcKern.LocalOnly || fcKern.URL == "" || !strings.Contains(fcKern.URL, "vmlinux-"+arch) {
+			t.Fatalf("fc-kernel pullable: %+v", fcKern)
+		}
+		if fcKern.SHA256 != "" {
+			t.Fatalf("fc-kernel pin should stay empty (sidecar): %q", fcKern.SHA256)
 		}
 	default:
 		t.Logf("GOARCH %s: ubuntu/alpine may be absent", arch)
