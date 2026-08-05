@@ -1,34 +1,51 @@
-# Scaffold: Firecracker kernel + raw rootfs bake (Phase 1).
-# Full bake is not implemented yet — this workflow documents the contract and
-# runs scripts/bake-fc.sh --ci (dry-run / prereq scan). When bake lands, this
-# job will produce dist/fc/* and publish to the fc-latest release tag
-# (see internal/image fcReleaseBase), mirroring bake-golden.yml.
+# Firecracker kernel + raw rootfs bake (Phase 1).
+# Produces dist/fc/* via scripts/bake-fc.sh --all (download FC CI kernel/rootfs,
+# inject static grain-agent). Publish to fc-latest is a follow-up (contents:write).
+# Note: GitHub-hosted runners usually lack /dev/kvm; this job only builds artifacts
+# (no microVM smoke). Nested-KVM smoke stays on self-hosted / manual.
 name: Bake Firecracker artifacts
 
 on:
   workflow_dispatch:
     inputs:
       note:
-        description: "Optional note (scaffold only; full bake not wired)"
+        description: "Optional note"
         required: false
         type: string
         default: ""
 
-# No contents: write yet — publishing enables when real artifacts exist.
 permissions:
   contents: read
 
 jobs:
-  scaffold:
-    name: bake-fc scaffold (dry-run)
+  bake:
+    name: bake-fc (amd64)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run bake-fc dry-run
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq squashfs-tools qemu-utils e2fsprogs curl
+
+      - name: Bake kernel + rootfs
         run: |
           chmod +x scripts/bake-fc.sh
-          ./scripts/bake-fc.sh --ci
-          echo "Planned assets: grain-ubuntu-fc-<arch>.raw + vmlinux-<arch> (+ .sha256) on tag fc-latest"
+          ./scripts/bake-fc.sh --all
+          ls -lh dist/fc/
+          cat dist/fc/*.sha256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: grain-fc-amd64
+          path: dist/fc/*
+          if-no-files-found: error

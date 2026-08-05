@@ -108,7 +108,20 @@ grain’s QEMU catalog images (`ubuntu-cloud`, `grain-ubuntu`, `alpine-cloud`) a
 
 These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. Until GitHub/CI bake publishes digests + URLs, `grain image pull grain-ubuntu-fc` / `fc-kernel` refuses (local-only). BYO remains first-class.
 
-**Bake contract (planned):** release tag `fc-latest` with `grain-ubuntu-fc-<arch>.raw` and `vmlinux-<arch>` (+ `.sha256` sidecars). Scaffold: `scripts/bake-fc.sh --dry-run` and workflow **Bake Firecracker artifacts** (dry-run only until real bake lands).
+**Bake (Linux):** produce pinned Firecracker CI kernel + Ubuntu raw rootfs with static `grain-agent`:
+
+```bash
+# On Linux with curl, qemu-img, unsquashfs, mkfs.ext4, go
+./scripts/bake-fc.sh --all
+# → dist/fc/vmlinux-<arch> + grain-ubuntu-fc-<arch>.raw (+ .sha256)
+
+grain image import dist/fc/vmlinux-amd64 --id fc-kernel
+grain image import dist/fc/grain-ubuntu-fc-amd64.raw --id grain-ubuntu-fc
+# config: hypervisor: firecracker
+grain new -i grain-ubuntu-fc --wait agent
+```
+
+Defaults: Firecracker CI `v1.12` `vmlinux-6.1.128` + `ubuntu-24.04.squashfs` → ext4 with agent systemd unit (vsock :7475). Override with `FC_CI_VERSION` / `FC_KERNEL_VER` / `FC_UBUNTU_SQFS`. Publish to tag `fc-latest` still pending (catalog remains LocalOnly until digests are in-tree).
 
 ### Operator path today (BYO)
 
