@@ -279,7 +279,17 @@ MCP can also be enabled permanently:
 				}
 				return fmt.Errorf("daemon failed to start (check: grain up --fg)")
 			}
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			// Ignore SIGHUP so a closed terminal/session does not stop a
+			// background daemon (Setsid already detaches the process group).
+			signal.Ignore(syscall.SIGHUP)
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+			ctx, stop := context.WithCancel(context.Background())
+			go func() {
+				sig := <-sigCh
+				log.Info("signal received, shutting down", "signal", sig.String(), "pid", os.Getpid())
+				stop()
+			}()
 			defer stop()
 			return daemon.Run(ctx, cfg, log)
 		},
