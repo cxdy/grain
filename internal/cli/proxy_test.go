@@ -516,3 +516,63 @@ func TestRunProxyForegroundOKBrief(t *testing.T) {
 		t.Fatal("expected listen error")
 	}
 }
+
+func TestEnsureProxyAuthForListenNonLoopback(t *testing.T) {
+	dataDir := t.TempDir()
+
+	// Non-loopback without clients → refuse.
+	err := ensureProxyAuthForListen(dataDir, "0.0.0.0:3128")
+	if err == nil || !strings.Contains(err.Error(), "no clients") {
+		t.Fatalf("want no-clients error, got %v", err)
+	}
+	err = ensureProxyAuthForListen(dataDir, ":3128")
+	if err == nil || !strings.Contains(err.Error(), "no clients") {
+		t.Fatalf("want no-clients for :port, got %v", err)
+	}
+
+	// Loopback without clients is OK (auth still optional at request time).
+	if err := ensureProxyAuthForListen(dataDir, "127.0.0.1:3128"); err != nil {
+		t.Fatalf("loopback: %v", err)
+	}
+	if err := ensureProxyAuthForListen(dataDir, "[::1]:3128"); err != nil {
+		t.Fatalf("::1: %v", err)
+	}
+
+	// Create a client → non-loopback allowed.
+	st, err := proxy.NewStore(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateClient("agent"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureProxyAuthForListen(dataDir, "0.0.0.0:3128"); err != nil {
+		t.Fatalf("with client: %v", err)
+	}
+}
+
+func TestRunProxyForegroundNonLoopbackNoClients(t *testing.T) {
+	dataDir := t.TempDir()
+	cfg := config.Config{DataDir: dataDir, LogLevel: "error"}
+	err := runProxyForeground(cfg, "0.0.0.0:13129")
+	if err == nil || !strings.Contains(err.Error(), "no clients") {
+		t.Fatalf("want refuse start without clients, got %v", err)
+	}
+	// Must not have written a pid file after refusing.
+	if _, err := os.Stat(proxy.PIDPath(dataDir)); err == nil {
+		t.Fatal("pid file should not exist after refused start")
+	}
+}
+
+func TestCmdProxyUpNonLoopbackNoClients(t *testing.T) {
+	apiURLFlag = ""
+	t.Setenv("GRAIN_API", "")
+	dataDir := t.TempDir()
+	cfgPath := writeProxyConfig(t, dataDir)
+	up := cmdProxyUp(&cfgPath)
+	up.SetArgs([]string{"--listen", "0.0.0.0:13130"})
+	err := up.Execute()
+	if err == nil || !strings.Contains(err.Error(), "no clients") {
+		t.Fatalf("want no-clients error, got %v", err)
+	}
+}

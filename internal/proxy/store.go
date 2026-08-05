@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -214,6 +215,8 @@ func (s *Store) CreateClient(name string) (Client, error) {
 
 // ValidToken reports whether token matches any client.
 // When no clients exist, returns true (auth optional / open until first client).
+// Comparison uses crypto/subtle.ConstantTimeCompare (same pattern as api.BearerAuthorized)
+// so token length and equality do not leak via early returns on the happy path.
 func (s *Store) ValidToken(token string) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -224,15 +227,18 @@ func (s *Store) ValidToken(token string) (bool, error) {
 	if len(clients) == 0 {
 		return true, nil
 	}
-	if token == "" {
-		return false, nil
-	}
+	got := []byte(token)
+	match := 0
 	for _, c := range clients {
-		if c.Token == token {
-			return true, nil
+		want := []byte(c.Token)
+		if len(got) != len(want) {
+			// Dummy compare to keep timing closer when lengths differ.
+			subtle.ConstantTimeCompare(want, want)
+			continue
 		}
+		match |= subtle.ConstantTimeCompare(got, want)
 	}
-	return false, nil
+	return match == 1, nil
 }
 
 // AuthRequired reports whether any clients exist (proxy requires a token).

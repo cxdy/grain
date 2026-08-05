@@ -70,6 +70,10 @@ func cmdProxyUp(cfgPath *string) *cobra.Command {
 			if !cmd.Flags().Changed("listen") {
 				listen = proxy.ListenFromConfig(cfg.ProxyListen)
 			}
+			// Fail early (including background spawn path) if non-loopback with no clients.
+			if err := ensureProxyAuthForListen(cfg.DataDir, listen); err != nil {
+				return err
+			}
 			if !fg {
 				// Already running?
 				if pid, err := readPID(proxy.PIDPath(cfg.DataDir)); err == nil && pidAlive(pid) {
@@ -121,6 +125,26 @@ func cmdProxyUp(cfgPath *string) *cobra.Command {
 	return cmd
 }
 
+// ensureProxyAuthForListen refuses non-loopback binds when no proxy clients exist.
+// Mirrors daemon/MCP policy: open listeners on all interfaces require authentication.
+func ensureProxyAuthForListen(dataDir, listen string) error {
+	if config.ListenAddrIsLoopback(listen) {
+		return nil
+	}
+	st, err := proxy.NewStore(dataDir)
+	if err != nil {
+		return err
+	}
+	clients, err := st.ListClients()
+	if err != nil {
+		return err
+	}
+	if len(clients) == 0 {
+		return fmt.Errorf("proxy listen %q is not loopback but no clients exist — create one with `grain proxy client create` before exposing the proxy", listen)
+	}
+	return nil
+}
+
 func runProxyForeground(cfg config.Config, listen string) error {
 	if err := cfg.EnsureDirs(); err != nil {
 		return err
@@ -129,11 +153,19 @@ func runProxyForeground(cfg config.Config, listen string) error {
 	if err != nil {
 		return err
 	}
+	// Defense in depth if called without cmdProxyUp pre-check.
+	if err := ensureProxyAuthForListen(cfg.DataDir, listen); err != nil {
+		return err
+	}
 	sec, err := secrets.New(cfg.DataDir)
 	if err != nil {
 		return err
 	}
 	log := observability.NewLogger(cfg.LogLevel)
+	if !config.ListenAddrIsLoopback(listen) {
+		log.Warn("proxy listen is not loopback — ensure host firewall and client tokens; prefer 127.0.0.1 for local-only",
+			"addr", listen)
+	}
 	srv := proxy.NewServer(st, sec, listen, log)
 
 	pidPath := proxy.PIDPath(cfg.DataDir)
