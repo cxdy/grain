@@ -27,6 +27,11 @@ Transports:
   grain mcp              # stdio (default) — spawn from IDE MCP config
   grain mcp --http       # Streamable HTTP on mcp.listen (default 127.0.0.1:7476/mcp)
 
+Auth (HTTP mode, same policy as the daemon API):
+  When api_token / GRAIN_TOKEN is set, clients must send Authorization: Bearer <token>.
+  Loopback without a token is allowed (local trust). Non-loopback listen without a
+  token is refused.
+
 Requires a running daemon (grain up). Prefer co-locating HTTP MCP with the daemon:
 
   grain up --mcp
@@ -76,7 +81,7 @@ func runMCP(cfgPath *string, version string, httpMode bool, listen string) error
 	if httpMode {
 		log := observability.NewLogger(cfg.LogLevel)
 		fmt.Fprintf(os.Stderr, "grain mcp  %s\n", grainmcp.HTTPEndpoint(cfg.MCP.Listen))
-		return grainmcp.RunHTTP(ctx, cfg.MCP.Listen, version, c, cfg.DataDir, log)
+		return grainmcp.RunHTTP(ctx, cfg.MCP.Listen, version, c, cfg.DataDir, log, token)
 	}
 	return grainmcp.RunStdio(ctx, version, c, cfg.DataDir)
 }

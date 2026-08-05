@@ -129,7 +129,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 				log.Error("mcp dial local socket", "err", err)
 				return
 			}
-			if err := grainmcp.RunHTTP(mcpCtx, cfg.MCP.Listen, api.Version, c, cfg.DataDir, log); err != nil {
+			if err := grainmcp.RunHTTP(mcpCtx, cfg.MCP.Listen, api.Version, c, cfg.DataDir, log, cfg.ResolvedAPIToken()); err != nil {
 				log.Error("mcp server", "err", err)
 			}
 		}()
