@@ -541,21 +541,26 @@ func sameFile(a, b string) bool {
 	return os.SameFile(ai, bi)
 }
 
-// ListLocal returns ids that appear pulled.
+// ListLocal returns ids that appear pulled or imported.
+// Includes fc-kernel when DataDir/kernels/vmlinux is present.
 func (m *Manager) ListLocal() ([]string, error) {
 	root := filepath.Join(m.DataDir, "images")
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			entries = nil
+		} else {
+			return nil, err
 		}
-		return nil, err
 	}
 	var out []string
 	for _, e := range entries {
 		if e.IsDir() && m.Ready(e.Name()) {
 			out = append(out, e.Name())
 		}
+	}
+	if m.Ready(IDFCKernel) {
+		out = append(out, IDFCKernel)
 	}
 	return out, nil
 }
