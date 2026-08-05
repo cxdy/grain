@@ -169,6 +169,8 @@ If Shift+Enter still fails, try **Alt+Enter** as a fallback.
 
 Protocol: WebSocket binary frames carry PTY bytes both ways; optional text JSON control frames resize the PTY (`{"type":"resize","cols":N,"rows":M}`). The agent spawns a login shell as uid 1000 when present, otherwise root. Local stdin is put in raw mode when attached to a TTY; `SIGWINCH` is forwarded as resize frames.
 
+**Disconnect / host daemon restart:** Restarting the grain daemon drops all remote and local `grain sh` WebSocket sessions. The client restores cooked mode and clears common private modes (alternate screen, mouse tracking, Kitty keyboard, …) so the terminal is usable again. If the screen is still garbled, run `reset`. Reconnect with `grain sh NAME` once the daemon is back.
+
 ### Copy
 
 ```bash
