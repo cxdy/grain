@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cxdy/grain/internal/api"
@@ -15,6 +17,9 @@ import (
 
 // apiURLFlag is set from the root persistent flag --api (overrides config/env).
 var apiURLFlag string
+
+// insecureHTTPWarnOnce ensures the cleartext remote-API warning prints at most once per process.
+var insecureHTTPWarnOnce sync.Once
 
 // effectiveAPIURL returns the remote daemon base URL, or empty for local unix socket.
 // Priority: --api flag > env GRAIN_API > config api_url.
@@ -38,6 +43,10 @@ func remoteMode(cfg config.Config) bool {
 //
 // When the local unix socket is missing (half-dead daemon after a racy restart)
 // but config.api is set, fall back to loopback TCP so CLI ops still work.
+//
+// http:// and https:// bases both work; https uses the default TLS client config.
+// A one-time stderr warning is emitted for non-loopback cleartext HTTP (see
+// warnInsecureRemoteHTTP / GRAIN_INSECURE_HTTP).
 func clientFrom(cfg config.Config) (*api.Client, error) {
 	if err := requireRemoteAuth(cfg); err != nil {
 		return nil, err
@@ -67,16 +76,56 @@ func clientFrom(cfg config.Config) (*api.Client, error) {
 		}
 		return localUnixClient(sock, token), nil
 	}
+	warnInsecureRemoteHTTP(base)
 	return &api.Client{
 		Base:  base,
 		Token: token,
 		HTTP: &http.Client{
 			// No global Timeout — create waits; use request context instead.
+			// Default TLS settings apply for https:// bases (no custom certs).
 			Transport: &http.Transport{
 				ResponseHeaderTimeout: 5 * time.Minute,
 			},
 		},
 	}, nil
+}
+
+// shouldWarnInsecureHTTP reports whether the CLI should warn about cleartext
+// remote API transport. base is a normalized or raw API URL; insecureEnv is
+// the value of GRAIN_INSECURE_HTTP (1/true/yes/on silences the warning).
+func shouldWarnInsecureHTTP(base, insecureEnv string) bool {
+	if envTruthy(insecureEnv) {
+		return false
+	}
+	base = config.NormalizeAPIURL(base)
+	if base == "" {
+		return false
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme == "" {
+		return false
+	}
+	// Only plain HTTP is cleartext; https:// is fine (TLS terminator / reverse proxy).
+	if !strings.EqualFold(u.Scheme, "http") {
+		return false
+	}
+	if config.APIURLIsLoopback(base) {
+		return false
+	}
+	return true
+}
+
+// warnInsecureRemoteHTTP prints a one-time stderr warning when dialing a
+// non-loopback http:// API URL. Bearer tokens travel in cleartext and are
+// sniffable on shared networks. Prefer SSH tunnel to 127.0.0.1 or HTTPS.
+// Silence with GRAIN_INSECURE_HTTP=1.
+func warnInsecureRemoteHTTP(base string) {
+	if !shouldWarnInsecureHTTP(base, os.Getenv("GRAIN_INSECURE_HTTP")) {
+		return
+	}
+	insecureHTTPWarnOnce.Do(func() {
+		_, _ = fmt.Fprintln(os.Stderr, "warning: remote API uses cleartext HTTP to a non-loopback host — Authorization Bearer tokens can be sniffed; prefer an SSH tunnel to 127.0.0.1 or an HTTPS reverse proxy (set GRAIN_INSECURE_HTTP=1 to silence)")
+	})
 }
 
 func localUnixClient(sock, token string) *api.Client {

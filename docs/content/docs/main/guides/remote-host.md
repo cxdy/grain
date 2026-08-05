@@ -64,6 +64,7 @@ Whoever can call authenticated `POST /vms` can create VMs, exec as root in guest
 |------|----------|
 | **Non-loopback bind without token** | Daemon **refuses to start** if `api` is not loopback and `api_token` is empty |
 | **Remote CLI to non-loopback** | CLI **requires** `GRAIN_TOKEN` / `api_token` |
+| **Cleartext HTTP transport** | Daemon serves HTTP only; Bearer tokens on non-loopback `http://` are sniffable — prefer SSH tunnel to `127.0.0.1` or TLS reverse proxy (`https://`). CLI warns once; silence with `GRAIN_INSECURE_HTTP=1` |
 | **Unix socket mode** | Socket is `0600`; still prefer token if untrusted local users share the host |
 | **`GET /healthz`** | Always unauthenticated (liveness only) |
 
