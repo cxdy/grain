@@ -173,6 +173,8 @@ If the agent is missing on a non-golden image: SSH to the host and run `grain ag
 - Remote CLI to a non-loopback URL **requires** `GRAIN_TOKEN` / `api_token`.
 - Keep MCP on **`127.0.0.1`** unless you know how you will authenticate and firewall it.
 - One Bearer token ≈ one trust domain; this is a team lab pattern, not multi-tenant SaaS.
+- Guest agent ops go through the **authenticated daemon proxy**; agent hostfwd stays loopback-only — do not tunnel raw `:7475` agent ports as a substitute for API auth.
+- Default networking is isolated SLIRP. **`network: overlay`** is a shared L2: peers can control each other’s unauthenticated agents — only for cooperative labs ([overlay security note](../networking-overlay/#security-note)).
 
 ## Day-to-day cheat sheet
 

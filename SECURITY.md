@@ -27,10 +27,13 @@ We will acknowledge reports as soon as practical and coordinate disclosure after
 
 - Prefer `api: 127.0.0.1:7474` plus SSH tunnel or TLS reverse proxy.
 - Firewall control-plane and egress-proxy ports on shared hosts.
-- Full team-box setup: **[Remote sandbox host](https://grainvm.com/guides/remote-host/)** (`docs/guides/remote-host.md`).
+- Guest agent (`grain-agent` on guest `:7475`) is **unauthenticated**; hostfwd is loopback-only. Remote access should use the **authenticated daemon proxy**, not raw agent ports.
+- `network: overlay` puts VMs on a **shared L2** — peers can reach each other’s agents. Use only among mutually trusted guests; default `slirp` keeps guests isolated from each other.
+- Full team-box setup: **[Remote sandbox host](https://grainvm.com/guides/remote-host/)** (`docs/content/docs/main/guides/remote-host.md`). Happy path: **[Remote lab](https://grainvm.com/guides/remote-lab/)**.
 
 ## Further reading
 
 - [Security model](https://grainvm.com/explain/security/)
+- [Overlay network](https://grainvm.com/guides/networking-overlay/)
 - [Remote sandbox host](https://grainvm.com/guides/remote-host/)
 - [Contributing](CONTRIBUTING.md)
