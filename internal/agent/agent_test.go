@@ -876,6 +876,122 @@ func TestPutTarSymlinkDirAndIllegal(t *testing.T) {
 	}
 }
 
+func TestSafeTarLinkname(t *testing.T) {
+	t.Parallel()
+	ok := []string{"a.txt", "sub/file", "./rel", "foo/bar/baz"}
+	for _, s := range ok {
+		if err := safeTarLinkname(s); err != nil {
+			t.Fatalf("safeTarLinkname(%q): %v", s, err)
+		}
+	}
+	bad := []string{
+		"",
+		"/etc/passwd",
+		"/tmp",
+		"../escape",
+		"a/../../escape",
+		"foo/../../../etc/passwd",
+		"..",
+		`\Windows\System32`,
+	}
+	for _, s := range bad {
+		if err := safeTarLinkname(s); err == nil {
+			t.Fatalf("safeTarLinkname(%q): expected error", s)
+		}
+	}
+}
+
+func TestPutTarRejectsEscapingSymlink(t *testing.T) {
+	t.Parallel()
+
+	// Absolute symlink target must be rejected (classic escape).
+	var absBuf bytes.Buffer
+	tw := tar.NewWriter(&absBuf)
+	if err := tw.WriteHeader(&tar.Header{Name: "evil", Typeflag: tar.TypeSymlink, Linkname: "/tmp", Mode: 0o777}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dest := t.TempDir()
+	if err := putTar(dest, bytes.NewReader(absBuf.Bytes()), nil, nil); err == nil {
+		t.Fatal("expected absolute symlink target to be rejected")
+	}
+	if _, err := os.Lstat(filepath.Join(dest, "evil")); err == nil {
+		t.Fatal("escaping symlink should not have been created")
+	}
+
+	// Symlink with ".." components must be rejected.
+	var dotBuf bytes.Buffer
+	tw2 := tar.NewWriter(&dotBuf)
+	if err := tw2.WriteHeader(&tar.Header{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "../../outside", Mode: 0o777}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw2.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := putTar(t.TempDir(), bytes.NewReader(dotBuf.Bytes()), nil, nil); err == nil {
+		t.Fatal("expected .. symlink target to be rejected")
+	}
+
+	// Escape via intermediate absolute symlink then write under it: first entry fails.
+	var chain bytes.Buffer
+	tw3 := tar.NewWriter(&chain)
+	if err := tw3.WriteHeader(&tar.Header{Name: "out", Typeflag: tar.TypeSymlink, Linkname: "/etc", Mode: 0o777}); err != nil {
+		t.Fatal(err)
+	}
+	payload := "pwned"
+	if err := tw3.WriteHeader(&tar.Header{Name: "out/passwd", Mode: 0o644, Size: int64(len(payload)), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(tw3, payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw3.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := putTar(t.TempDir(), bytes.NewReader(chain.Bytes()), nil, nil); err == nil {
+		t.Fatal("expected chained absolute symlink escape to fail")
+	}
+}
+
+func TestPutTarRefusesWriteThroughSymlink(t *testing.T) {
+	t.Parallel()
+	dest := t.TempDir()
+	secret := filepath.Join(dest, "secret.txt")
+	if err := os.WriteFile(secret, []byte("keep-me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Pre-create a relative (allowed) symlink that points at secret.txt.
+	link := filepath.Join(dest, "alias")
+	if err := os.Symlink("secret.txt", link); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	body := "overwrite"
+	if err := tw.WriteHeader(&tar.Header{Name: "alias", Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(tw, body); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := putTar(dest, bytes.NewReader(buf.Bytes()), nil, nil); err == nil {
+		t.Fatal("expected write-through symlink to be refused")
+	}
+	got, err := os.ReadFile(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "keep-me" {
+		t.Fatalf("secret overwritten via symlink: %q", got)
+	}
+}
+
 func TestWriteTarFileAndDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
