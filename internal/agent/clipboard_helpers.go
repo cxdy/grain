@@ -48,7 +48,8 @@ else
 fi
 # ST = BEL — widely accepted; write to controlling TTY when present
 seq=$(printf '\033]52;c;%s\007' "$b64")
-if ! printf '%s' "$seq" >/dev/tty 2>/dev/null; then
+# Redirect both fd 1 and 2 so a missing /dev/tty does not print shell errors.
+if ! { printf '%s' "$seq" >/dev/tty; } 2>/dev/null; then
   # No controlling TTY (e.g. grain x / non-interactive): still emit on stdout
   printf '%s' "$seq"
 fi
