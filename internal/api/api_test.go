@@ -1616,6 +1616,78 @@ func TestCreateSecretInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestCreateVMInvalidJSON(t *testing.T) {
+	t.Parallel()
+	s := testServer(t)
+	h := s.Handler()
+
+	// Malformed JSON → 400
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms", strings.NewReader(`{"name":`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("malformed JSON want 400 got %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "invalid JSON body") {
+		t.Fatalf("body %s", rr.Body.String())
+	}
+
+	// Not JSON at all → 400
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms", strings.NewReader("not-json"))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("non-JSON want 400 got %d %s", rr.Code, rr.Body.String())
+	}
+
+	// Empty body is allowed (defaults)
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/vms", http.NoBody)
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("empty body want 201 got %d %s", rr.Code, rr.Body.String())
+	}
+	var inst map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &inst); err != nil {
+		t.Fatal(err)
+	}
+	name, _ := inst["name"].(string)
+	if name == "" {
+		t.Fatal("expected default name")
+	}
+}
+
+func TestInjectSecretInvalidJSON(t *testing.T) {
+	t.Parallel()
+	s, st := testServerWithStore(t)
+	h := s.Handler()
+
+	_, err := s.Secrets.Put(secrets.PutRequest{
+		Name:       "badjson",
+		DataBase64: "aGVsbG8=",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createMockVM(t, h, "inj-badjson")
+	// No agent needed: decode happens before agent dial.
+	setAgentPort(t, st, "inj-badjson", 0)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/vms/inj-badjson/secrets/badjson", strings.NewReader(`{"path":`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("malformed JSON want 400 got %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "invalid JSON body") {
+		t.Fatalf("body %s", rr.Body.String())
+	}
+}
+
 func TestCreateAcceptNDJSONHeader(t *testing.T) {
 	t.Parallel()
 	s := testServer(t)
