@@ -1708,7 +1708,6 @@ func TestRunAgentDeployErrorPaths(t *testing.T) {
 	}
 }
 
-
 func TestRunAgentDeployRemoteAPI(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {

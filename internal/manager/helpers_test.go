@@ -1138,7 +1138,6 @@ func TestWaitOrDeployAgentSoftAndHard(t *testing.T) {
 	}
 }
 
-
 func TestDeployAgentValidation(t *testing.T) {
 	m, _, st, dir := unitMgr(t, "mock")
 	ctx := context.Background()
