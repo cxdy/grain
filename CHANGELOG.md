@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Firecracker bake scaffold** — planned `fc-latest` asset names + `scripts/bake-fc.sh --dry-run` / workflow dry-run; `image.pull` installs `fc-kernel` to `kernels/vmlinux` and `Format: raw` to `disk.raw` when pull is enabled. Catalog entries stay **LocalOnly** until bake publishes digests.
+- **Firecracker bake (`scripts/bake-fc.sh --all`)** — on Linux: fetch Firecracker CI `vmlinux` + Ubuntu squashfs, convert to raw ext4, inject **static** `grain-agent` (systemd, vsock :7475). Outputs `dist/fc/vmlinux-<arch>` + `grain-ubuntu-fc-<arch>.raw` (+ `.sha256`). Workflow **Bake Firecracker artifacts** builds amd64 artifacts. Catalog still **LocalOnly** until `fc-latest` publish.
 - **Firecracker kernel/rootfs import + doctor** — `grain image import <vmlinux> --id fc-kernel` installs to `data_dir/kernels/vmlinux`; `import … --id grain-ubuntu-fc` stores **raw** `disk.raw` (not qcow2). Doctor **hard-fails** missing FC kernel and distinguishes default-path missing vs BYO `kernel_path` misconfig; soft notes when the default image is QEMU-oriented. Start errors use the same wording.
 - **Firecracker catalog ID scaffolding** — reserved `grain-ubuntu-fc` (raw rootfs + agent) and `fc-kernel` (vmlinux) catalog entries, **LocalOnly** until bake publishes digests/URLs. Explicit IDs avoid dual-use of QEMU `grain-ubuntu` qcow2. Docs: [Firecracker on Linux](https://grainvm.com/docs/main/guides/firecracker/).
 - **`grain sync push|pull --watch`** — re-run sync on a poll interval (default `--interval 2s`) until Ctrl+C. Conflicts and apply errors print and continue; usage errors abort; interrupt exits 0. Incompatible with `--dry-run`.
