@@ -71,14 +71,14 @@ See [Configuration](../../reference/config/#firecracker-experimental).
 | **KVM** | `/dev/kvm` accessible to the grain daemon user (**required** — no TCG fallback) |
 | **Nested virt** | If grain runs *inside* a VM, the outer hypervisor must expose `vmx` (Intel) or `svm` (AMD) so `/dev/kvm` exists in the guest |
 
-### Operator checklist
+### Operator checklist (vFC-1 production path)
 
 1. Linux host with `/dev/kvm` RDWR for the daemon user (add user to `kvm` group if needed).
 2. Install Firecracker and put it on `PATH` (or set `firecracker_binary`).
-3. Place a Firecracker-capable `vmlinux` at `~/.grain/kernels/vmlinux` or set `kernel_path`.
-4. Prefer a **raw** rootfs image (`grain image import ./rootfs.ext4 --id my-fc-rootfs`), not catalog qcow2 cloud images.
-5. Set `hypervisor: firecracker` in `~/.grain/config.yaml`, then `grain up` (restart daemon if it was already running).
-6. Run `grain doctor` and fix every `✗` before `grain new`.
+3. **Pull** catalog artifacts: `grain image pull fc-kernel` and `grain image pull grain-ubuntu-fc` (or BYO: place `vmlinux` / `grain image import …`).
+4. Set `hypervisor: firecracker` and preferably `image: grain-ubuntu-fc` in `~/.grain/config.yaml`, then `grain up` (restart daemon if it was already running).
+5. Run `grain doctor` and fix every `✗` before `grain new -i grain-ubuntu-fc --wait agent`.
+6. Optional BYO: raw rootfs via `grain image import ./rootfs.ext4 --id my-fc-rootfs` (not catalog qcow2 cloud images).
 
 ## `grain doctor` (Firecracker)
 
@@ -93,11 +93,11 @@ grain doctor
 | `firecracker` (or `firecracker_binary`) | **Hard** | Binary missing, or not Linux |
 | `/dev/kvm` | **Hard** | Missing or not RDWR — Firecracker cannot start |
 | Nested virt CPU flags | Soft (`·`) | Host looks like a VM without `vmx`/`svm` |
-| Firecracker kernel | **Hard** | Missing default `…/kernels/vmlinux`, or **BYO misconfigured** when `kernel_path` is set but empty/absent. Fix: place vmlinux, or `grain image import <vmlinux> --id fc-kernel` |
+| Firecracker kernel | **Hard** | Missing default `…/kernels/vmlinux`, or **BYO misconfigured** when `kernel_path` is set but empty/absent. Fix: `grain image pull fc-kernel` (or place vmlinux / `grain image import <vmlinux> --id fc-kernel`) |
 | `qemu-img` | **Hard** | Needed to convert qcow2 disks to raw at Start |
 | QEMU system binary | Soft | Optional when hypervisor is firecracker |
-| Base image | **Hard** | Default image not ready (`pull` or `import` as appropriate) |
-| FC catalog rootfs / QEMU default | Soft (`·`) | Notes when default image is QEMU-oriented or `grain-ubuntu-fc` not imported |
+| Base image | **Hard** | Default image not ready — for `grain-ubuntu-fc`: `grain image pull grain-ubuntu-fc` (import is BYO fallback) |
+| FC catalog rootfs / QEMU default | Soft (`·`) | Notes when default image is QEMU-oriented or `grain-ubuntu-fc` not pulled |
 | Agent binary / socket | Soft | Optional agent host binary; daemon up |
 
 Hard failures print `✗` and exit non-zero. Soft items print `·` and do not fail doctor.
@@ -110,14 +110,14 @@ If `grain new` fails, prefer the **create error** and `~/.grain/logs/<name>.log`
 
 grain’s QEMU catalog images (`ubuntu-cloud`, `grain-ubuntu`, `alpine-cloud`) are **qcow2 cloud images** aimed at QEMU + cloud-init. They are **not** drop-in Firecracker guests.
 
-### Reserved Firecracker catalog IDs (Phase 1 scaffold)
+### Firecracker catalog IDs (vFC-1 production)
 
 | Catalog ID | Role | Status today |
 |------------|------|----------------|
-| **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **Pullable** from `fc-latest` → `images/grain-ubuntu-fc/disk.raw` (or `import`) |
-| **`fc-kernel`** | Guest **vmlinux** artifact | **Pullable** from `fc-latest` → `~/.grain/kernels/vmlinux` (or `import` / `kernel_path`) |
+| **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **Pullable** from `fc-latest` → `images/grain-ubuntu-fc/disk.raw` (or BYO `import`) |
+| **`fc-kernel`** | Guest **vmlinux** artifact | **Pullable** from `fc-latest` → `~/.grain/kernels/vmlinux` (or BYO `import` / `kernel_path`) |
 
-These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. BYO import remains first-class.
+These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. **Pull is the happy path**; BYO import remains first-class.
 
 ### Pull (published `fc-latest`)
 
@@ -184,9 +184,9 @@ This backend is **CNI-less / TAP-less**: no SLIRP, no hostfwd, no SSH port, no o
 
 | Channel | Status |
 |---------|--------|
-| SSH / port forwards (`-P`, `grain fwd`) | Not configured (experimental) |
-| Overlay / shared L2 | Not used |
-| grain-agent | **Firecracker vsock** only |
+| SSH / port forwards (`-P`, `grain fwd`) | **Not available** (QEMU-only until vFC-2) |
+| Overlay / shared L2 | **Not available** (QEMU-only until vFC-2) |
+| grain-agent | **Supported** — Firecracker vsock UDS + `CONNECT` (vFC-1) |
 
 On Start, grain:
 
@@ -221,44 +221,46 @@ If `seed.iso` exists in the VM dir, it is attached as a second read-only drive (
 # ~/.grain/config.yaml
 hypervisor: firecracker
 firecracker_binary: firecracker
-kernel_path: /var/lib/grain/kernels/vmlinux-5.10
-image: my-fc-rootfs   # local raw import; not ubuntu-cloud by default
+image: grain-ubuntu-fc
 cpus: 2
 memory_mb: 1024
 ```
 
 ```bash
-# Import a raw rootfs as a local image id (example)
-grain image import ./rootfs.ext4 --id my-fc-rootfs
-
+# vFC-1 production path (published fc-latest)
+grain image pull fc-kernel
+grain image pull grain-ubuntu-fc
 grain up
 grain doctor
-grain new -i my-fc-rootfs
-grain stop <name>
+grain new -i grain-ubuntu-fc --wait agent
+
+# BYO alternative
+# grain image import ./rootfs.ext4 --id my-fc-rootfs
+# grain new -i my-fc-rootfs --wait agent
 ```
 
 ## Known limitations vs QEMU
 
-| Capability | QEMU (default) | Firecracker (experimental) |
-|------------|----------------|----------------------------|
+| Capability | QEMU (default) | Firecracker (vFC-1 agent production) |
+|------------|----------------|--------------------------------------|
 | Host OS | macOS + Linux | **Linux only** |
 | Acceleration | HVF / KVM (TCG fallback on Linux) | **KVM required** (no TCG) |
-| Catalog cloud images | First-class | Converted raw or custom rootfs; not drop-in |
-| Guest kernel | QEMU/UEFI path | Separate **vmlinux** (`kernel_path`) |
-| SSH + hostfwd / `-P` | Yes | **No** |
-| Guest agent reachability | TCP hostfwd and/or vhost-vsock | **FC vsock UDS** only (`CONNECT`, not host AF_VSOCK) |
-| 9p / virtiofs mounts | Yes | **No** (not wired) |
-| Overlay network | Yes | **No** |
-| Egress proxy via SLIRP | Yes | **No** host path |
+| Catalog images | QEMU cloud qcow2 first-class | **`fc-kernel` + `grain-ubuntu-fc` pullable** (`fc-latest`); QEMU cloud images not drop-in |
+| Guest kernel | QEMU/UEFI path | Catalog **`fc-kernel`** → `vmlinux` (or `kernel_path` / BYO import) |
+| SSH + hostfwd / `-P` | Yes | **No** (QEMU-only until vFC-2) |
+| Guest agent reachability | TCP hostfwd and/or vhost-vsock | **Supported** — FC vsock UDS + `CONNECT` (not host AF_VSOCK) |
+| 9p / virtiofs mounts | Yes | **No** (not wired; vFC-2) |
+| Overlay network | Yes | **No** (vFC-2) |
+| Egress proxy via SLIRP | Yes | **No** host path (vFC-2) |
 | GPU (`virtio`) | Yes | **No** |
 | Suspend / savevm | Yes | **Unsupported** |
 | Pause / resume | QMP | FC API (when socket up) |
-| Jailer / production isolation extras | N/A | **Jailer-less** experimental launch |
+| Jailer / production isolation extras | N/A | **Jailer-less** (optional later; not multi-tenant) |
 | `agent_transport` config | auto / tcp / vsock | Ignored (FC vsock always) |
 
-**Not on FC today (use QEMU):** CNI/TAP, SLIRP hostfwd, `grain fwd` / `-P`, overlay, mounts, jailer multi-tenant claims.
+**Not on FC today (use QEMU):** CNI/TAP, SLIRP hostfwd, `grain fwd` / `-P`, overlay, mounts. Jailer multi-tenant claims are out of scope.
 
-**vFC-1 (agent) is shipped:** pullable `fc-latest` catalog, host UDS `CONNECT` dial, create-wait agent. Full table: [Hypervisor matrix](../../explain/hypervisor-matrix/). **vFC-2** = net/mounts later.
+**vFC-1 (agent) is shipped:** pullable `fc-latest` catalog, host UDS `CONNECT` dial, create-wait agent. Full table: [Hypervisor matrix](../../explain/hypervisor-matrix/). **vFC-2** = net/mounts later. “Experimental” applies to jailer and future net work, **not** the shipped agent path.
 
 ### Boot metric (reference SKU)
 
@@ -269,7 +271,7 @@ Primary project metric: wall time for `grain new -i grain-ubuntu-fc --wait agent
 | **Reference host class** | **AWS `m7i-flex.large` nested-virt x86_64** (Ubuntu 24.04 guest host, `/dev/kvm`, Firecracker on PATH) |
 | **How to measure** | `./scripts/bench-fc.sh -n 5` (wraps `bench-create.sh` with `grain-ubuntu-fc` + `--wait agent`) |
 | **Smoke** | `./scripts/smoke-fc.sh` |
-| **Sample p50 (2026-08)** | **~1990 ms** create→agent ready (N=5; p95 ~1999 ms on this SKU) |
+| **Sample (2026-08, post-merge main)** | **p50 ≈ 1986 ms**, **p95 ≈ 2166 ms** (N=5 create→agent ready on this SKU) |
 
 Nested virt is slower than bare-metal KVM; re-run `bench-fc.sh` on your class before publishing numbers in a release.
 
@@ -282,4 +284,4 @@ Nested virt is slower than bare-metal KVM; re-run `bench-fc.sh` on your class be
 - [Troubleshooting](../troubleshooting/) — doctor and logs (includes Firecracker doctor rows)
 - [Configuration](../../reference/config/#firecracker-experimental) — `hypervisor`, `firecracker_binary`, `kernel_path`
 - [Concepts](../../get-started/concepts/#hypervisors) — hypervisor glossary
-- [Product surface](../../explain/parity/) — experimental status
+- [Product surface](../../explain/parity/) — FC agent production vs QEMU-only net

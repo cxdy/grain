@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Firecracker doctor / guide pull-first** — missing `fc-kernel` / `grain-ubuntu-fc` recommend `grain image pull …` (BYO import remains fallback); soft notes no longer say “not imported” / “not published yet”. Guide operator checklist + known-limitations table align with vFC-1 agent production (net still QEMU-only); boot sample p50/p95 match AWS `m7i-flex.large` post-merge bench.
 - **Install / `grain update` quieter when already set up** — `scripts/install.sh` skips the MCP enable prompt when `~/.grain/config.yaml` already exists, and drops the long “Next steps” footer (install progress + short “grain X installed” / PATH line only).
 - **Paste screenshots into `grain sh`** — host clipboard paste now prefers **images** (macOS: PNG/TIFF/JPEG via AppKit, converting screenshot TIFF→PNG; Linux: `wl-paste`/`xclip` image MIME types) before plain text. Fixes Grok Build “Couldn't read clipboard contents” when pasting screenshots (plain `pbpaste` returns empty for image-only clipboards). Longer paste timeout for large images.
 - **Firecracker agent wait retries dial** — create/start `wait=agent` re-dials Firecracker UDS + CONNECT until the readiness budget expires (guest agent appears after boot; a single early CONNECT EOF no longer fails immediately). SSH agent deploy is skipped when `SSHPort` is 0.
