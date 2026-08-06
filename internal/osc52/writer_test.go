@@ -3,6 +3,7 @@ package osc52
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -452,26 +453,26 @@ func TestReadDarwinClipboardImageLive(t *testing.T) {
 	if _, err := exec.LookPath("swift"); err != nil {
 		t.Skip("swift required for image paste")
 	}
-	// Build a valid small PNG (broken 1x1 fixtures can yield empty TIFFRepresentation).
-	png := mustSmallPNG(t)
+	// Large-ish PNG so TIFF conversion cannot "succeed" with a tiny icon rep.
+	png := mustLargePNG(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "t.png")
 	if err := os.WriteFile(path, png, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	script := `
-use framework "AppKit"
-use framework "Foundation"
-set img to current application's NSImage's alloc()'s initWithContentsOfFile:"` + path + `"
-if img is missing value then error "no img"
-set tiff to img's TIFFRepresentation()
-if tiff is missing value then error "no tiff"
-set pb to current application's NSPasteboard's generalPasteboard()
-pb's clearContents()
-pb's setData:tiff forType:(current application's NSPasteboardTypeTIFF)
-return "ok"
+	// Place TIFF-only on pasteboard (screenshot style — no public.png).
+	swiftSet := `
+import AppKit
+let url = URL(fileURLWithPath: "` + path + `")
+guard let data = try? Data(contentsOf: url),
+      let img = NSImage(data: data),
+      let tiff = img.tiffRepresentation else { exit(2) }
+let pb = NSPasteboard.general
+pb.clearContents()
+pb.setData(tiff, forType: .tiff)
+print(tiff.count)
 `
-	cmd := exec.Command("osascript", "-e", script)
+	cmd := exec.Command("swift", "-e", swiftSet)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Skipf("could not set clipboard image: %v %s", err, out)
 	}
@@ -486,43 +487,75 @@ return "ok"
 		}
 		t.Fatalf("expected image, got %d bytes magic %x", len(got), got[:n])
 	}
-	t.Logf("got %d image bytes", len(got))
+	// Full-res conversion: PNG IHDR must match source (not a tiny icon rep).
+	// File size alone is a bad signal — solid/screenshot PNGs compress tightly.
+	pw, ph, ok := pngDimensions(got)
+	if !ok {
+		t.Fatalf("could not parse PNG IHDR (%d bytes)", len(got))
+	}
+	if pw < 300 || ph < 200 {
+		t.Fatalf("TIFF→PNG dimensions %dx%d too small (want full-res screenshot, not icon)", pw, ph)
+	}
+	t.Logf("got %d image bytes (%dx%d) from TIFF clipboard", len(got), pw, ph)
+}
+
+// pngDimensions reads width/height from a PNG IHDR chunk.
+func pngDimensions(b []byte) (w, h int, ok bool) {
+	if len(b) < 24 || b[0] != 0x89 || b[1] != 'P' {
+		return 0, 0, false
+	}
+	// bytes 16..23 are width/height big-endian after 8-byte sig + 8-byte chunk header
+	w = int(b[16])<<24 | int(b[17])<<16 | int(b[18])<<8 | int(b[19])
+	h = int(b[20])<<24 | int(b[21])<<16 | int(b[22])<<8 | int(b[23])
+	if w <= 0 || h <= 0 {
+		return 0, 0, false
+	}
+	return w, h, true
 }
 
 // mustSmallPNG returns a valid 8×8 RGB PNG.
 func mustSmallPNG(t *testing.T) []byte {
 	t.Helper()
-	// Precomputed valid 8x8 RGB PNG (zlib-compressed).
-	// Generated offline; must load into NSImage successfully.
-	b, err := os.ReadFile("/tmp/clip.png")
-	if err == nil && looksLikeImage(b) {
-		return b
-	}
-	// Fallback: generate via sips from a solid color if present.
-	out := filepath.Join(t.TempDir(), "gen.png")
-	cmd := exec.Command("sips", "-s", "format", "png", "--setProperty", "formatOptions", "default",
-		"-z", "8", "8", "/System/Library/Desktop Pictures/Solid Colors/Black.png", "--out", out)
-	if err := cmd.Run(); err != nil {
-		// Last resort: write a known-good 1x1 using Python if available.
-		py := `
+	return mustPNG(t, 8, 8)
+}
+
+// mustLargePNG returns a PNG large enough that a botched TIFF→icon conversion
+// (~2KiB) cannot pass a size assertion.
+func mustLargePNG(t *testing.T) []byte {
+	t.Helper()
+	return mustPNG(t, 320, 240)
+}
+
+func mustPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	py := `
 import struct,zlib,sys
-w=h=8
-rows=b"".join(b"\x00"+bytes([i*20%256,50,100])*w for i in range(h))
-c=zlib.compress(rows,9)
+w,h=int(sys.argv[1]),int(sys.argv[2])
+rows=b""
+for y in range(h):
+    rows += b"\x00"
+    for x in range(w):
+        rows += bytes([(x*3+y)%256,(x*5)%256,(y*7)%256])
+c=zlib.compress(rows,6)
 def ch(t,d):
  return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)&0xffffffff)
 sys.stdout.buffer.write(b"\x89PNG\r\n\x1a\n"+ch(b"IHDR",struct.pack(">IIBBBBB",w,h,8,2,0,0,0))+ch(b"IDAT",c)+ch(b"IEND",b""))
 `
-		cmd = exec.Command("python3", "-c", py)
-		outb, err := cmd.Output()
-		if err != nil || !looksLikeImage(outb) {
-			t.Skipf("could not generate test PNG: %v", err)
+	cmd := exec.Command("python3", "-c", py, fmt.Sprintf("%d", w), fmt.Sprintf("%d", h))
+	outb, err := cmd.Output()
+	if err != nil || !looksLikeImage(outb) {
+		// sips fallback for small sizes only
+		if w <= 16 && h <= 16 {
+			out := filepath.Join(t.TempDir(), "gen.png")
+			cmd = exec.Command("sips", "-s", "format", "png", "-z", fmt.Sprintf("%d", h), fmt.Sprintf("%d", w),
+				"/System/Library/Desktop Pictures/Solid Colors/Black.png", "--out", out)
+			if err := cmd.Run(); err == nil {
+				if b, err := os.ReadFile(out); err == nil && looksLikeImage(b) {
+					return b
+				}
+			}
 		}
-		return outb
+		t.Skipf("could not generate test PNG %dx%d: %v", w, h, err)
 	}
-	b, err = os.ReadFile(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
+	return outb
 }
