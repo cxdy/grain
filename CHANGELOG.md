@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Warm pool** — config `warm_pool.template` + `warm_pool.size` pre-clones suspended template VMs (disk only). `grain pool status|fill|claim|drain`, `grain new --from-pool -n NAME`, API `GET /pool` / `POST /pool/{fill,claim,drain}` and create `from_pool: true`. Claim renames a ready member and starts with `-loadvm` when snapshotted; async refill + fill on daemon start. Host logs `pool claim timing`.
 - **Fast create from suspended template** — `grain new --from TEMPLATE -n NAME` (API `POST /vms` body `{"from":"TEMPLATE","name":"NAME"}`). Clones a stopped/suspended persistent VM and starts it; when the template was `grain suspend`'d with a qcow2 snapshot, QEMU `-loadvm` restores memory and agent wait is short (seconds, not full cold boot). Clone copies suspend markers. Host logs `spawn timing`.
 
 ### Changed

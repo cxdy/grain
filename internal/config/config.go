@@ -128,6 +128,10 @@ type Config struct {
 	// MCP configures the Model Context Protocol server co-located with the daemon
 	// (Streamable HTTP) or used by `grain mcp` defaults.
 	MCP MCPConfig `yaml:"mcp"`
+
+	// WarmPool pre-clones suspended template VMs for fast claim (see PoolClaim).
+	// Empty template or size 0 disables the pool.
+	WarmPool WarmPoolConfig `yaml:"warm_pool"`
 }
 
 // MCPConfig is the optional MCP tool server (see docs/guides/mcp.md).
@@ -137,6 +141,22 @@ type MCPConfig struct {
 	// Listen is host:port for Streamable HTTP MCP (default 127.0.0.1:7476).
 	// Endpoint path is /mcp (e.g. http://127.0.0.1:7476/mcp).
 	Listen string `yaml:"listen"`
+}
+
+// WarmPoolConfig holds pre-cloned suspended VMs ready for PoolClaim.
+// Template must be a persistent stopped/suspended golden (prefer grain suspend
+// with qcow2 savevm). Size is how many ready clones to keep on disk (not running).
+// Claim renames one member and starts it (-loadvm when snapshotted).
+type WarmPoolConfig struct {
+	// Template is the source VM name to clone from. Empty disables the pool.
+	Template string `yaml:"template"`
+	// Size is the desired number of ready pool members (0–32). 0 disables.
+	Size int `yaml:"size"`
+}
+
+// Enabled reports whether the warm pool should maintain members.
+func (w WarmPoolConfig) Enabled() bool {
+	return strings.TrimSpace(w.Template) != "" && w.Size > 0
 }
 
 // Profile is a named set of create-time defaults (see Profiles).

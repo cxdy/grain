@@ -259,6 +259,49 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /vms/{name}/clone:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [vms]
+      summary: Clone a stopped persistent VM (offline disk copy)
+      description: |
+        Copy the source VM's root disk and metadata under a new name.
+        Source must be persistent and not running (stop first). Ephemeral VMs
+        cannot be cloned. The clone is left stopped; SSH/agent and hostfwd host
+        ports are cleared and reallocated on the next start.
+
+        Limitations: qcow2 overlays keep their backing chain (shared base image);
+        guest OS hostname/identity may still match the source until reconfigured;
+        live SSH port forwards are not copied; running/paused VMs are refused.
+      operationId: cloneVM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Destination VM name (empty = auto sbox-N)
+                  example: lab-copy
+      responses:
+        "201":
+          description: Cloned instance (status=stopped)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
   /vms/{name}/shutdown:
     parameters:
       - $ref: "#/components/parameters/VMName"
@@ -355,6 +398,92 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /pool:
+    get:
+      tags: [vms]
+      summary: Warm pool status
+      description: |
+        Inventory of pre-cloned suspended VMs (config `warm_pool.template` / `warm_pool.size`).
+        Members use disk only until claimed.
+      operationId: poolStatus
+      responses:
+        "200":
+          description: Pool status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /pool/fill:
+    post:
+      tags: [vms]
+      summary: Fill warm pool to desired size
+      description: Clones the configured template until ready count reaches warm_pool.size.
+      operationId: poolFill
+      responses:
+        "200":
+          description: Pool status after fill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolStatus"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /pool/claim:
+    post:
+      tags: [vms]
+      summary: Claim a warm-pool member and start it
+      description: |
+        Renames one ready member (optional name), clears pool tags, and starts it.
+        Uses -loadvm when a suspend snapshot marker is present. Refills asynchronously.
+      operationId: poolClaim
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Destination VM name (auto if empty)
+      responses:
+        "201":
+          description: Running instance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /pool/drain:
+    post:
+      tags: [vms]
+      summary: Delete all warm-pool members
+      operationId: poolDrain
+      responses:
+        "200":
+          description: Drain result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  drained:
+                    type: integer
         "400":
           $ref: "#/components/responses/Error"
         "401":
@@ -775,6 +904,33 @@ paths:
         "503":
           $ref: "#/components/responses/Error"
 
+  /vms/{name}/fs/symlink:
+    parameters:
+      - $ref: "#/components/parameters/VMName"
+    post:
+      tags: [agent]
+      summary: Create or replace a symbolic link in the guest
+      operationId: fsSymlink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SymlinkRequest"
+      responses:
+        "204":
+          description: Created
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+
   /vms/{name}/fs/remove:
     parameters:
       - $ref: "#/components/parameters/VMName"
@@ -851,6 +1007,12 @@ components:
       properties:
         name:
           type: string
+        from:
+          type: string
+          description: Stopped/suspended template to clone and start (fast -loadvm when snapshotted)
+        from_pool:
+          type: boolean
+          description: Claim a warm-pool member and start (mutually exclusive with from)
         persistent:
           type: boolean
           default: false
@@ -876,6 +1038,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Mount"
+
+    PoolStatus:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        template:
+          type: string
+        desired:
+          type: integer
+        ready:
+          type: integer
+        members:
+          type: array
+          items:
+            type: string
 
     PortForward:
       type: object
@@ -1063,6 +1241,9 @@ components:
         mode:
           type: string
           example: "0644"
+        target:
+          type: string
+          description: Symlink target when type is symlink
 
     MkdirRequest:
       type: object
@@ -1075,3 +1256,14 @@ components:
         mode:
           type: string
           example: "0755"
+
+    SymlinkRequest:
+      type: object
+      required: [path, target]
+      properties:
+        path:
+          type: string
+          description: Absolute guest path of the link to create
+        target:
+          type: string
+          description: Link target (relative or absolute; not required to exist)

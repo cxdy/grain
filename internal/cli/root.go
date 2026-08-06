@@ -130,6 +130,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 		cmdResume(&cfgPath),
 		cmdSuspend(&cfgPath),
 		cmdRestore(&cfgPath),
+		cmdPool(&cfgPath),
 		cmdLs(&cfgPath),
 		cmdRm(&cfgPath),
 		cmdSh(&cfgPath),
@@ -424,6 +425,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var useProxy bool
 	var cloneFrom string
 	var fromTemplate string
+	var fromPool bool
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Launch a sandbox (ephemeral by default)",
@@ -432,6 +434,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
   grain new -p -n lab          persistent lab
   grain new --clone lab -n lab2  offline disk clone of stopped persistent VM
   grain new --from golden -n w1  fast spawn from suspended template (loadvm)
+  grain new --from-pool -n w1    claim a pre-cloned warm-pool member (see grain pool)
 
 Clone limitations (same as grain clone): source must be stopped and persistent;
 qcow2 overlays keep their backing chain; guest hostname may still match the
@@ -451,6 +454,15 @@ source; SSH/agent ports are allocated on the next start (clone is left stopped).
 
 			if strings.TrimSpace(cloneFrom) != "" {
 				return runClone(c, strings.TrimSpace(cloneFrom), name, createTimeout)
+			}
+			if fromPool {
+				if strings.TrimSpace(fromTemplate) != "" {
+					return fmt.Errorf("use either --from-pool or --from, not both")
+				}
+				if recipePath != "" || userdataFile != "" {
+					return fmt.Errorf("use --from-pool alone (not with --recipe or --userdata-file)")
+				}
+				return runPoolClaim(c, name, createTimeout)
 			}
 			if strings.TrimSpace(fromTemplate) != "" {
 				if recipePath != "" || userdataFile != "" {
@@ -695,7 +707,37 @@ source; SSH/agent ports are allocated on the next start (clone is left stopped).
 	cmd.Flags().BoolVar(&useProxy, "proxy", false, "inject HTTP(S)_PROXY via cloud-init (guest → 10.0.2.2; requires grain proxy up)")
 	cmd.Flags().StringVar(&cloneFrom, "clone", "", "offline clone of stopped persistent SRC (left stopped; use -n for destination name)")
 	cmd.Flags().StringVar(&fromTemplate, "from", "", "fast create: clone stopped/suspended template and start (uses -loadvm when snapshotted; see grain suspend)")
+	cmd.Flags().BoolVar(&fromPool, "from-pool", false, "claim a pre-cloned warm-pool member and start (see grain pool fill)")
 	return cmd
+}
+
+// runPoolClaim claims a warm-pool member (API Create with from_pool=true).
+func runPoolClaim(c *api.Client, dst string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := c.Health(ctx); err != nil {
+		return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+	}
+	start := time.Now()
+	stop := createProgress("claiming from warm pool")
+	inst, err := c.Create(ctx, api.CreateRequest{
+		Name:       dst,
+		FromPool:   true,
+		Persistent: true,
+	})
+	stop()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("claimed %s from pool  status=%s", inst.Name, inst.Status)
+	if inst.SSHPort > 0 {
+		fmt.Printf("  ssh=:%d", inst.SSHPort)
+	}
+	if inst.AgentPort > 0 {
+		fmt.Printf("  agent=:%d", inst.AgentPort)
+	}
+	fmt.Printf("  (%s)\n", time.Since(start).Round(time.Millisecond))
+	return nil
 }
 
 // runSpawn clones a template and starts it (API Create with from=).
@@ -1008,6 +1050,138 @@ func cmdResume(cfgPath *string) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func cmdPool(cfgPath *string) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "pool",
+		Short: "Warm pool of pre-cloned suspended templates",
+		Long: `Manage a warm pool of pre-cloned suspended VMs for fast claim.
+
+Configure in ~/.grain/config.yaml:
+
+  warm_pool:
+    template: golden   # persistent suspended golden (prefer grain suspend)
+    size: 2            # ready clones to keep on disk (not running)
+
+Workflow:
+
+  grain new -i grain-ubuntu -n golden -p --wait agent
+  grain suspend golden
+  # set warm_pool.template/size, restart daemon (or grain pool fill)
+  grain pool fill
+  grain new --from-pool -n work1   # or: grain pool claim -n work1
+
+Pool members use disk only (suspended/stopped). Claim renames one member and
+starts it with -loadvm when a suspend snapshot exists.`,
+	}
+	root.AddCommand(
+		&cobra.Command{
+			Use:   "status",
+			Short: "Show warm pool ready count and members",
+			RunE: func(cmd *cobra.Command, args []string) error {
+				cfg, err := loadCfg(cfgPath)
+				if err != nil {
+					return err
+				}
+				c, err := clientFrom(cfg)
+				if err != nil {
+					return err
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				if err := c.Health(ctx); err != nil {
+					return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				}
+				st, err := c.PoolStatus(ctx)
+				if err != nil {
+					return err
+				}
+				en := "disabled"
+				if st.Enabled {
+					en = "enabled"
+				}
+				fmt.Printf("warm pool  %s  template=%s  ready=%d  desired=%d\n", en, st.Template, st.Ready, st.Desired)
+				for _, n := range st.Members {
+					fmt.Printf("  %s\n", n)
+				}
+				return nil
+			},
+		},
+		&cobra.Command{
+			Use:   "fill",
+			Short: "Clone template until ready count reaches warm_pool.size",
+			RunE: func(cmd *cobra.Command, args []string) error {
+				cfg, err := loadCfg(cfgPath)
+				if err != nil {
+					return err
+				}
+				c, err := clientFrom(cfg)
+				if err != nil {
+					return err
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				defer cancel()
+				if err := c.Health(ctx); err != nil {
+					return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				}
+				st, err := c.PoolFill(ctx)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("warm pool filled  template=%s  ready=%d  desired=%d\n", st.Template, st.Ready, st.Desired)
+				return nil
+			},
+		},
+		&cobra.Command{
+			Use:   "claim",
+			Short: "Claim one pool member, rename, and start (-loadvm when snapshotted)",
+			RunE: func(cmd *cobra.Command, args []string) error {
+				cfg, err := loadCfg(cfgPath)
+				if err != nil {
+					return err
+				}
+				c, err := clientFrom(cfg)
+				if err != nil {
+					return err
+				}
+				name, _ := cmd.Flags().GetString("name")
+				return runPoolClaim(c, name, 5*time.Minute)
+			},
+		},
+		&cobra.Command{
+			Use:   "drain",
+			Short: "Delete all warm-pool members",
+			RunE: func(cmd *cobra.Command, args []string) error {
+				cfg, err := loadCfg(cfgPath)
+				if err != nil {
+					return err
+				}
+				c, err := clientFrom(cfg)
+				if err != nil {
+					return err
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				defer cancel()
+				if err := c.Health(ctx); err != nil {
+					return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				}
+				n, err := c.PoolDrain(ctx)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("warm pool drained  count=%d\n", n)
+				return nil
+			},
+		},
+	)
+	// claim -n
+	for _, c := range root.Commands() {
+		if c.Name() == "claim" {
+			c.Flags().StringP("name", "n", "", "destination VM name (auto if empty)")
+		}
+	}
+	return root
 }
 
 func cmdSuspend(cfgPath *string) *cobra.Command {

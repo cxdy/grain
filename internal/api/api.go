@@ -64,6 +64,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /vms/{name}/resume", s.resumeVM)
 	mux.HandleFunc("POST /vms/{name}/suspend", s.suspendVM)
 	mux.HandleFunc("POST /vms/{name}/restore", s.restoreVM)
+	// Warm pool of pre-cloned suspended templates.
+	mux.HandleFunc("GET /pool", s.poolStatus)
+	mux.HandleFunc("POST /pool/fill", s.poolFill)
+	mux.HandleFunc("POST /pool/claim", s.poolClaim)
+	mux.HandleFunc("POST /pool/drain", s.poolDrain)
 	mux.HandleFunc("POST /vms/{name}/forwards", s.addForward)
 	mux.HandleFunc("DELETE /vms/{name}/forwards/{hostPort}", s.removeForward)
 	mux.HandleFunc("POST /vms/{name}/exec", s.execVM)
@@ -126,7 +131,9 @@ func (s *Server) listVMs(w http.ResponseWriter, r *http.Request) {
 type createBody struct {
 	Name string `json:"name"`
 	// From is a stopped/suspended template VM to clone+start (fast path with -loadvm when snapshotted).
-	From           string             `json:"from,omitempty"`
+	From string `json:"from,omitempty"`
+	// FromPool claims a pre-cloned warm-pool member and starts it (mutually exclusive with From).
+	FromPool       bool               `json:"from_pool,omitempty"`
 	Persistent     bool               `json:"persistent"`
 	CPUs           int                `json:"cpus"`
 	MemoryMB       int                `json:"memory_mb"`
@@ -198,8 +205,24 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
-	// Fast path: spawn from suspended/stopped template (clone disk + optional -loadvm).
-	// Stream=1 clients still get a single JSON instance (spawn is short; no phase stream).
+	// Fast paths: warm-pool claim, or spawn from suspended/stopped template.
+	// Stream=1 clients still get a single JSON instance (paths are short; no phase stream).
+	if body.FromPool {
+		if strings.TrimSpace(body.From) != "" {
+			writeErr(w, http.StatusBadRequest, errors.New("from and from_pool are mutually exclusive"))
+			return
+		}
+		inst, err := s.mgr.PoolClaim(ctx, body.Name)
+		if err != nil {
+			s.met.CreateErrors.Add(1)
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		s.met.VMsCreated.Add(1)
+		s.met.VMsRunning.Add(1)
+		writeJSON(w, http.StatusCreated, inst)
+		return
+	}
 	if from := strings.TrimSpace(body.From); from != "" {
 		inst, err := s.mgr.Spawn(ctx, from, body.Name)
 		if err != nil {
@@ -433,6 +456,62 @@ func (s *Server) restoreVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, inst)
+}
+
+func (s *Server) poolStatus(w http.ResponseWriter, _ *http.Request) {
+	st, err := s.mgr.PoolStatus()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) poolFill(w http.ResponseWriter, r *http.Request) {
+	// Filling clones disks; may take a while for large templates.
+	ctx, cancel := context.WithTimeout(r.Context(), s.mgr.CreateTimeout()*2)
+	defer cancel()
+	st, err := s.mgr.PoolFill(ctx)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+type poolClaimBody struct {
+	Name string `json:"name,omitempty"`
+}
+
+func (s *Server) poolClaim(w http.ResponseWriter, r *http.Request) {
+	var body poolClaimBody
+	if r.Body != nil {
+		defer func() { _ = r.Body.Close() }()
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid JSON body"))
+			return
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.mgr.CreateTimeout())
+	defer cancel()
+	inst, err := s.mgr.PoolClaim(ctx, body.Name)
+	if err != nil {
+		s.met.CreateErrors.Add(1)
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	s.met.VMsCreated.Add(1)
+	s.met.VMsRunning.Add(1)
+	writeJSON(w, http.StatusCreated, inst)
+}
+
+func (s *Server) poolDrain(w http.ResponseWriter, r *http.Request) {
+	n, err := s.mgr.PoolDrain(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"drained": n})
 }
 
 type forwardBody struct {

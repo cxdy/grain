@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/cxdy/grain/internal/vm"
@@ -113,4 +114,84 @@ func (s *Store) Names() (map[string]struct{}, error) {
 		m[i.Name] = struct{}{}
 	}
 	return m, nil
+}
+
+// Rename moves a VM directory from oldName to newName and rewrites meta
+// (Name and DiskPath). Both names must be non-empty; newName must not exist.
+// Callers must ensure the VM is not running (process paths stay under the dir).
+func (s *Store) Rename(oldName, newName string) (*vm.Instance, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if oldName == "" || newName == "" {
+		return nil, fmt.Errorf("rename requires old and new names")
+	}
+	if oldName == newName {
+		inst, err := s.getUnlocked(oldName)
+		if err != nil {
+			return nil, err
+		}
+		return inst, nil
+	}
+	oldDir := s.Dir(oldName)
+	newDir := s.Dir(newName)
+	if _, err := os.Stat(oldDir); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("vm %q not found", oldName)
+		}
+		return nil, err
+	}
+	if _, err := os.Stat(newDir); err == nil {
+		return nil, fmt.Errorf("vm %q already exists", newName)
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	if err := os.Rename(oldDir, newDir); err != nil {
+		return nil, fmt.Errorf("rename vm dir: %w", err)
+	}
+	b, err := os.ReadFile(filepath.Join(newDir, "meta.json"))
+	if err != nil {
+		// best-effort rollback
+		_ = os.Rename(newDir, oldDir)
+		return nil, err
+	}
+	var inst vm.Instance
+	if err := json.Unmarshal(b, &inst); err != nil {
+		_ = os.Rename(newDir, oldDir)
+		return nil, err
+	}
+	// Rewrite paths that lived under the old VM directory.
+	inst.Name = newName
+	if inst.DiskPath != "" {
+		inst.DiskPath = strings.Replace(inst.DiskPath, oldDir, newDir, 1)
+	}
+	if inst.QMPPath != "" {
+		inst.QMPPath = strings.Replace(inst.QMPPath, oldDir, newDir, 1)
+	}
+	raw, err := json.MarshalIndent(&inst, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	tmp := filepath.Join(newDir, "meta.json.tmp")
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(tmp, filepath.Join(newDir, "meta.json")); err != nil {
+		return nil, err
+	}
+	return &inst, nil
+}
+
+func (s *Store) getUnlocked(name string) (*vm.Instance, error) {
+	b, err := os.ReadFile(s.path(name))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("vm %q not found", name)
+		}
+		return nil, err
+	}
+	var inst vm.Instance
+	if err := json.Unmarshal(b, &inst); err != nil {
+		return nil, err
+	}
+	return &inst, nil
 }

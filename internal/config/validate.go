@@ -20,7 +20,7 @@ var knownTopLevelKeys = map[string]struct{}{
 	"mount_driver": {}, "agent_transport": {}, "guest_arch": {}, "gpu": {}, "network": {},
 	"proxy_listen": {}, "max_vms": {}, "max_cpus_total": {}, "max_memory_mb_total": {},
 	"max_cpus_per_vm": {}, "max_memory_mb_per_vm": {}, "profiles": {}, "check_updates": {},
-	"mcp": {}, "connections": {}, "desktop": {},
+	"mcp": {}, "warm_pool": {}, "connections": {}, "desktop": {},
 }
 
 // Validate checks config for obvious errors after Load/applyDefaults.
@@ -79,6 +79,16 @@ func (c Config) Validate() error {
 	}
 	if c.ReadyTimeout < 0 {
 		errs = append(errs, "ready_timeout must be non-negative")
+	}
+
+	if c.WarmPool.Size < 0 {
+		errs = append(errs, "warm_pool.size must be non-negative")
+	}
+	if c.WarmPool.Size > 32 {
+		errs = append(errs, "warm_pool.size must be <= 32")
+	}
+	if c.WarmPool.Size > 0 && strings.TrimSpace(c.WarmPool.Template) == "" {
+		errs = append(errs, "warm_pool.template is required when warm_pool.size > 0")
 	}
 
 	if c.API != "" {
