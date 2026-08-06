@@ -81,6 +81,14 @@ func (s *Server) ListenAndServe() error {
 	} else {
 		s.Log.Info("clipboard helpers ready", "dir", dir)
 	}
+	// Headless X11 CLIPBOARD owner so arboard-based TUIs (e.g. Grok Build)
+	// can paste host images without a real desktop. Needs Xvfb on PATH.
+	ensureClipboardX11(s.Log, func(ctx context.Context) ([]byte, error) {
+		if s.clip == nil {
+			return nil, fmt.Errorf("clipboard bridge unavailable")
+		}
+		return s.clip.request(ctx)
+	})
 	ln, err := net.Listen("tcp", s.Addr)
 	if err != nil {
 		return err

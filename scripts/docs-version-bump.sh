@@ -2,6 +2,10 @@
 # Snapshot docs/content/docs/main → docs/content/docs/<version> and make that
 # version the site default / switcher "latest" in docs/hugo.toml.
 #
+# Each version entry records the git commit for tag v<version> (or HEAD if the
+# tag is not present yet) so the site can link "source at this version" without
+# relying forever on full duplicated content trees as the only model.
+#
 # Usage:
 #   ./scripts/docs-version-bump.sh 0.3.1
 #   ./scripts/docs-version-bump.sh v0.3.1
@@ -10,6 +14,9 @@
 # Idempotent: re-running for the same version refreshes the tree from main
 # and rewrites hugo.toml. Older semver trees under docs/content/docs/ stay
 # listed in the switcher (newest first).
+#
+# Optional (future): drop content trees and build from `git archive` / checkout
+# of the recorded commit at publish time — commit metadata is already here.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -110,21 +117,63 @@ others = sorted(
 ordered = [ver] + others
 
 
-def fmt_block(version: str, label: str, path_s: str) -> str:
-    return (
-        "  [[params.docsVersions]]\n"
-        f'    version = "{version}"\n'
-        f'    label = "{label}"\n'
-        f'    path = "{path_s}"\n'
-    )
+def git_commit_for(version: str) -> str:
+    """Resolve full SHA for tag vX.Y.Z, tag X.Y.Z, branch, or HEAD."""
+    import subprocess
+
+    candidates = [f"v{version}", version, "HEAD"]
+    if version == "main":
+        candidates = ["main", "HEAD"]
+    for ref in candidates:
+        try:
+            out = subprocess.check_output(
+                ["git", "rev-parse", ref],
+                cwd=str(repo),
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            if out:
+                return out
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+    return ""
+
+
+def fmt_block(version: str, label: str, path_s: str, commit: str) -> str:
+    lines = [
+        "  [[params.docsVersions]]\n",
+        f'    version = "{version}"\n',
+        f'    label = "{label}"\n',
+        f'    path = "{path_s}"\n',
+    ]
+    if commit:
+        lines.append(f'    commit = "{commit}"\n')
+    return "".join(lines)
 
 
 parts = []
+default_commit = git_commit_for(ver)
 for i, v in enumerate(ordered):
     label = f"v{v} (latest)" if i == 0 else f"v{v}"
-    parts.append(fmt_block(v, label, f"/docs/{v}/"))
-parts.append(fmt_block("main", "main (bleeding edge)", "/docs/main/"))
+    parts.append(fmt_block(v, label, f"/docs/{v}/", git_commit_for(v)))
+parts.append(fmt_block("main", "main (bleeding edge)", "/docs/main/", git_commit_for("main")))
 new_block = "".join(parts)
+
+# Default commit for marketing pages (matches latest released docs).
+text, n3 = re.subn(
+    r'(docsVersionCommit\s*=\s*")[^"]*(")',
+    rf"\g<1>{default_commit}\2",
+    text,
+    count=1,
+)
+if n3 == 0 and default_commit:
+    # Insert after docsVersionLabel if missing.
+    text, n3 = re.subn(
+        r'(docsVersionLabel\s*=\s*"[^"]*"\n)',
+        rf'\g<1>  docsVersionCommit = "{default_commit}"\n',
+        text,
+        count=1,
+    )
 
 # Each block: optional indent + [[params.docsVersions]] + key = value lines only.
 block_re = re.compile(

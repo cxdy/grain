@@ -42,7 +42,12 @@
       title: "~ — grain — first sandbox",
       blurb: "Install → create → shell in a microVM",
       doneHtml:
-        'Demo complete. <a href="#install">Install grain</a> · <a href="/get-started/quickstart/">Quick start</a>',
+        'Demo complete. <a href="#install">Install grain</a> · <a href="/docs/' +
+        (typeof document !== "undefined" &&
+        document.querySelector("[data-docs-version]")
+          ? document.querySelector("[data-docs-version]").getAttribute("data-docs-version")
+          : "main") +
+        '/get-started/quickstart/">Quick start</a>',
       guest: true,
       steps: function () {
         return [
@@ -64,7 +69,11 @@
                 { text: "✓ installed /usr/local/bin/grain", cls: "ok", delay: 350 },
                 { text: "✓ guest agent → ~/.grain/agent/", cls: "ok", delay: 200 },
                 { text: "", delay: 80 },
-                { text: "grain 0.2.2", cls: "out", delay: 150 },
+                {
+                  text: "grain " + (ctx.docsVersion || "dev"),
+                  cls: "out",
+                  delay: 150,
+                },
               ]);
             },
           },
@@ -308,6 +317,8 @@
     var ctx = {
       typeLines: typeLines,
       enterGuest: enterGuest,
+      // From data-docs-version on the demo root (Hugo site params) — never hardcode.
+      docsVersion: root.getAttribute("data-docs-version") || "",
     };
 
     function sleep(ms) {
@@ -586,7 +597,9 @@
       inputLine.hidden = true;
       hintEl.innerHTML =
         (state.scenario && state.scenario.doneHtml) ||
-        'Demo complete. <a href="#install">Install grain</a> or read the <a href="/get-started/quickstart/">quick start</a>.';
+        'Demo complete. <a href="#install">Install grain</a> or read the <a href="/docs/' +
+          (ctx.docsVersion || "main") +
+          '/get-started/quickstart/">quick start</a>.';
       nextBtn.textContent = "Replay";
       skipBtn.hidden = true;
       renderSteps();

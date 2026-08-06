@@ -1,9 +1,20 @@
 {{ $current := partial "docs-version.html" . }}
+{{ $commit := "" }}
+{{ range .Site.Params.docsVersions }}
+  {{ if eq .version $current }}{{ with .commit }}{{ $commit = . }}{{ end }}{{ end }}
+{{ end }}
+{{ if and (eq $commit "") .Site.Params.docsVersionCommit }}
+  {{ $commit = .Site.Params.docsVersionCommit }}
+{{ end }}
 <div class="version-switcher" data-version-switcher>
   <label class="visually-hidden" for="docs-version">Docs version</label>
   <select id="docs-version" class="version-select" data-version-select aria-label="Documentation version">
     {{ range .Site.Params.docsVersions }}
-      <option value="{{ .path }}" {{ if eq .version $current }}selected{{ end }}>{{ .label }}</option>
+      <option value="{{ .path }}" {{ if eq .version $current }}selected{{ end }}
+        {{ with .commit }}data-commit="{{ . }}"{{ end }}>{{ .label }}</option>
     {{ end }}
   </select>
+  {{ with $commit }}
+  <a class="version-commit" href="{{ $.Site.Params.github }}/tree/{{ . }}" title="Source commit for this docs version" rel="noopener">{{ slicestr . 0 7 }}</a>
+  {{ end }}
 </div>

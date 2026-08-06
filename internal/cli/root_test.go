@@ -48,6 +48,57 @@ func TestRootHelp(t *testing.T) {
 	}
 }
 
+// TestRootSilenceErrorsOnce is the regression for issue #93: cobra must not
+// print "Error: …" when Execute fails — cmd/grain/main.go prints a single
+// "error: …" line. Without SilenceErrors, users saw both.
+func TestRootSilenceErrorsOnce(t *testing.T) {
+	root := Root("test-version")
+	if !root.SilenceErrors {
+		t.Fatal("Root.SilenceErrors must be true so main prints errors once")
+	}
+	if !root.SilenceUsage {
+		t.Fatal("Root.SilenceUsage should stay true")
+	}
+
+	const msg = "no vms — create one first:  grain new"
+	root.AddCommand(&cobra.Command{
+		Use:   "failtest-dup-err",
+		Short: "test-only failing command",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("%s", msg)
+		},
+	})
+
+	var errBuf bytes.Buffer
+	root.SetErr(&errBuf)
+	root.SetOut(io.Discard)
+	root.SetArgs([]string{"failtest-dup-err"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error from failtest-dup-err")
+	}
+	if err.Error() != msg {
+		t.Fatalf("error = %q, want %q", err.Error(), msg)
+	}
+	// Cobra must not have written "Error:" (the pre-fix duplicate).
+	if strings.Contains(errBuf.String(), "Error:") {
+		t.Fatalf("cobra printed Error: (duped messages); stderr=%q", errBuf.String())
+	}
+	// What main does once:
+	var mainBuf bytes.Buffer
+	fmt.Fprintln(&mainBuf, "error:", err)
+	out := mainBuf.String()
+	if strings.Count(out, msg) != 1 {
+		t.Fatalf("expected message once in main-style print, got %q", out)
+	}
+	if strings.Contains(out, "Error:") {
+		t.Fatalf("main-style print must use lowercase error: prefix, got %q", out)
+	}
+	if !strings.HasPrefix(out, "error: ") {
+		t.Fatalf("want main prefix error: , got %q", out)
+	}
+}
+
 func TestRootSubcommandsPresent(t *testing.T) {
 	cmd := Root("0.0.0-test")
 	want := []string{

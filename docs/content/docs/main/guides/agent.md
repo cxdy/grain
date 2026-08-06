@@ -129,9 +129,10 @@ Copy from tools inside the guest (for example **Grok Build**) reaches your lapto
 | Direction | Mechanism |
 |-----------|-----------|
 | **Copy (guest → laptop)** | Guest `pbcopy`/`xclip`/`wl-copy` shims emit **OSC 52** on the TTY. `grain sh` (local or remote) intercepts OSC 52 on the **client** and writes the laptop clipboard. |
-| **Paste (laptop → guest)** | Guest `pbpaste`/`wl-paste`/`xclip -o` call agent `GET /clipboard`. The agent asks the active `grain sh` client over the shell WebSocket; the client reads the laptop clipboard and returns it. Requires an interactive `grain sh` session (not bare `grain x`). |
+| **Paste (laptop → guest)** | Guest `pbpaste`/`wl-paste`/`xclip -o` call agent `GET /clipboard`. The agent asks the active `grain sh` client over the shell WebSocket; the client reads the laptop clipboard (**preferring images**: macOS PNG/TIFF→PNG, Linux `wl-paste`/`xclip` image MIME) and returns it. Requires an interactive `grain sh` session (not bare `grain x`). |
+| **Native X11 paste (Grok Build, arboard, …)** | When **Xvfb** is installed in the guest, the agent starts a virtual display (`DISPLAY=:7`) and owns X11 **CLIPBOARD**, serving the same host paste data on SelectionRequest. Shell sessions get `DISPLAY=:7` so headless TUIs that use arboard (not only CLI shims) can paste screenshots. |
 
-Shims live on `PATH` at `/var/lib/grain/bin/` (installed when the agent starts).
+Shims live on `PATH` at `/var/lib/grain/bin/` (installed when the agent starts). They advertise `TARGETS` / MIME types for tools that probe before reading image data.
 
 | Env | Effect |
 |-----|--------|
@@ -140,10 +141,10 @@ Shims live on `PATH` at `/var/lib/grain/bin/` (installed when the agent starts).
 
 **If Grok (or similar) says clipboard unavailable or paste fails:**
 
-1. Redeploy a current agent and open a **new** `grain sh`: `grain agent deploy NAME` (restarts the unit).
-2. Inside the guest: `which pbcopy pbpaste` → `/var/lib/grain/bin/…`.
-3. On the machine running `grain sh`, ensure system clipboard tools exist (`pbcopy` / `pbpaste` or `wl-copy` / `wl-paste` / `xclip`).
-4. Paste needs an active interactive shell session; `grain x` has no clipboard bridge.
+1. Redeploy a current agent and open a **new** `grain sh`: `grain agent deploy NAME` (restarts the unit). Image paste needs both an updated **CLI** (host clipboard read) and **guest agent**.
+2. Inside the guest: `which pbcopy pbpaste` → `/var/lib/grain/bin/…`. For Grok/arboard image paste: install `xvfb` in the guest (`sudo apt-get install -y xvfb`) so the agent can own X11 CLIPBOARD; confirm `echo $DISPLAY` is `:7` in a fresh `grain sh`.
+3. On the machine running `grain sh`, ensure system clipboard tools exist (`pbcopy` / AppKit via Swift on macOS, or `wl-copy` / `wl-paste` / `xclip` on Linux).
+4. Paste needs an active interactive shell session; `grain x` has no clipboard bridge. The clipboard client is whichever host runs `grain sh` (local or remote `GRAIN_API`).
 5. Terminal **selection** copy (mouse drag + Cmd/Ctrl+C) is the host terminal UI, not grain.
 
 ### Terminal identity (Shift+Enter / keyboard protocol)

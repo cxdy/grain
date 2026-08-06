@@ -194,6 +194,21 @@ func startLoginShell(shellPath string, cols, rows int, extraEnv []string) (*exec
 			}
 		}
 	}
+	// Point arboard/X11 clients at the grain virtual display when active.
+	if disp := clipboardDisplayEnv(); disp != "" {
+		// Replace existing DISPLAY= if present; otherwise append.
+		replaced := false
+		for i, kv := range env {
+			if len(kv) >= 8 && kv[:8] == "DISPLAY=" {
+				env[i] = disp
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			env = append(env, disp)
+		}
+	}
 	cmd.Env = env
 	if os.Geteuid() == 0 && (uid != 0 || gid != 0) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{

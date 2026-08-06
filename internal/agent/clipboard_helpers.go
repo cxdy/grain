@@ -57,12 +57,21 @@ fi
 
 	// pbpaste fetches the client host clipboard via the agent (shell session
 	// must be active — grain sh asks the laptop for paste data).
+	// Supports macOS-style -Prefer (ignored) and dumps image or text bytes.
 	const osc52Paste = `#!/bin/sh
 # grain: paste from client clipboard via grain-agent GET /clipboard
 # Supports text and image/png|jpeg (host grain sh reads screenshot pasteboard types).
 url="http://127.0.0.1:7475/clipboard"
+# Ignore macOS pbpaste flags (-Prefer txt|rtf|ps).
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -Prefer|-prefer) shift; [ $# -gt 0 ] && shift ;;
+    -*) shift ;;
+    *) shift ;;
+  esac
+done
 if command -v curl >/dev/null 2>&1; then
-  exec curl -sf --max-time 20 "$url"
+  exec curl -sS -f --max-time 20 "$url"
 fi
 if command -v wget >/dev/null 2>&1; then
   exec wget -q -O - --timeout=20 "$url"
@@ -71,10 +80,11 @@ echo "grain clipboard: curl/wget required for paste" >&2
 exit 1
 `
 
-	// xclip-compatible: honor -i/-o and ignore -selection args.
+	// xclip-compatible: honor -i/-o, TARGETS listing, and -t MIME for paste.
 	const xclipShim = `#!/bin/sh
-# grain: xclip shim → OSC 52 copy (or paste stub)
+# grain: xclip shim → OSC 52 copy or host paste via agent
 mode=copy
+target=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -o|--output|-out) mode=paste; shift ;;
@@ -83,16 +93,44 @@ while [ $# -gt 0 ]; do
       shift
       [ $# -gt 0 ] && shift
       ;;
-    -loops|-l|-display|-d|-target|-t|-filter|-f)
+    -loops|-l|-display|-d|-filter|-f)
       shift
       [ $# -gt 0 ] && shift
+      ;;
+    -target|-t)
+      shift
+      if [ $# -gt 0 ]; then target="$1"; shift; fi
       ;;
     -*) shift ;;
     *) shift ;;
   esac
 done
 if [ "$mode" = paste ]; then
-  exec "$(dirname "$0")/pbpaste"
+  pb="$(dirname "$0")/pbpaste"
+  # TARGETS: advertise types based on a real paste probe (image magic / text).
+  case "$target" in
+    TARGETS|TARGETS_INTERNAL)
+      data=$("$pb" 2>/dev/null) || exit 1
+      # Always list TARGETS first (xclip convention).
+      printf '%s\n' TARGETS
+      magic=$(printf '%s' "$data" | head -c 4 | od -An -tx1 | tr -d ' \n')
+      case "$magic" in
+        89504e47*) printf '%s\n' image/png image/jpeg UTF8_STRING STRING TEXT ;;
+        ffd8*) printf '%s\n' image/jpeg image/png UTF8_STRING STRING TEXT ;;
+        *) printf '%s\n' UTF8_STRING STRING TEXT TIMESTAMP ;;
+      esac
+      exit 0
+      ;;
+    image/png|image/jpeg|image/*)
+      exec "$pb"
+      ;;
+    ""|UTF8_STRING|STRING|TEXT|text/plain*)
+      exec "$pb"
+      ;;
+    *)
+      exec "$pb"
+      ;;
+  esac
 fi
 exec "$(dirname "$0")/pbcopy"
 `
@@ -103,7 +141,33 @@ exec "$(dirname "$0")/pbcopy"
 `
 
 	const wlPasteShim = `#!/bin/sh
-exec "$(dirname "$0")/pbpaste"
+# grain: wl-paste shim → host paste; honor --list-types / --type
+list=0
+typ=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -l|--list-types) list=1; shift ;;
+    -t|--type)
+      shift
+      if [ $# -gt 0 ]; then typ="$1"; shift; fi
+      ;;
+    -n|--no-newline) shift ;;
+    -*) shift ;;
+    *) shift ;;
+  esac
+done
+pb="$(dirname "$0")/pbpaste"
+if [ "$list" = 1 ]; then
+  data=$("$pb" 2>/dev/null) || exit 1
+  magic=$(printf '%s' "$data" | head -c 4 | od -An -tx1 | tr -d ' \n')
+  case "$magic" in
+    89504e47*) printf '%s\n' image/png image/jpeg text/plain ;;
+    ffd8*) printf '%s\n' image/jpeg image/png text/plain ;;
+    *) printf '%s\n' text/plain ;;
+  esac
+  exit 0
+fi
+exec "$pb"
 `
 
 	const xselShim = `#!/bin/sh
