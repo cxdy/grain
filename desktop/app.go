@@ -214,6 +214,63 @@ func (a *App) CreateSandbox(opts desktop.CreateOpts) (*desktop.Sandbox, error) {
 	return svc.CreateSandbox(ctx, opts)
 }
 
+// PoolStatus returns warm-pool inventory from the daemon.
+func (a *App) PoolStatus() (*desktop.PoolStatus, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.PoolStatus(ctx)
+}
+
+// PoolFill fills the warm pool to the configured size.
+func (a *App) PoolFill() (*desktop.PoolStatus, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Disk clones can take a while.
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+	return svc.PoolFill(ctx)
+}
+
+// ListCreateTemplates returns stopped/suspended persistent VMs for spawn-from.
+func (a *App) ListCreateTemplates() ([]desktop.Sandbox, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.ListCreateTemplates(ctx)
+}
+
+// ExecOne runs sh -c on one sandbox (progressive multi-host Run UI).
+func (a *App) ExecOne(name, command string) (desktop.BulkExecResult, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.BulkExecResult{}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	return svc.ExecOne(ctx, name, command)
+}
+
 // StartSandbox boots a stopped VM.
 func (a *App) StartSandbox(name string) (*desktop.Sandbox, error) {
 	svc, err := a.service()

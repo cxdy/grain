@@ -302,6 +302,38 @@ a:hover { text-decoration: underline; }
   padding: 0.35rem 0.6rem;
   font-size: 0.88rem;
 }
+.sandbox-compact-label { margin: 0; font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
+#sandbox-sort { width: auto; max-width: 10rem; }
+/* Compact density for large sandbox lists */
+#vm-table.compact td,
+#vm-table.compact th {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.82rem;
+}
+#vm-table.compact .badge-status,
+#vm-table.compact .badge-agent {
+  font-size: 0.72rem;
+  padding: 0.08rem 0.35rem;
+}
+.create-mode-field {
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  padding: 0.55rem 0.75rem 0.65rem;
+  margin: 0 0 0.75rem;
+}
+.create-mode-field legend {
+  padding: 0 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.create-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+.create-mode-row .check-label { margin: 0.15rem 0; }
+#create-pool-status { margin: 0.35rem 0 0.5rem; }
 /* xterm needs explicit focusable surface for keyboard input */
 .xterm-host .xterm,
 .xterm-host .xterm-screen,
@@ -323,7 +355,30 @@ a:hover { text-decoration: underline; }
 .multi-ssh-form {
   display: flex;
   gap: 0.45rem;
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.45rem;
+}
+.multi-ssh-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.55rem;
+  font-size: 0.78rem;
+}
+.mss-hist-btn {
+  font-family: var(--mono);
+  font-size: 0.72rem !important;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#vm-table tr.status-group td {
+  background: var(--bg-soft);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.65rem;
+  border-bottom: 1px solid var(--border);
 }
 .multi-ssh-form .input {
   flex: 1;

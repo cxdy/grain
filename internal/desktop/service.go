@@ -53,6 +53,10 @@ type CreateOpts struct {
 	DiskGB     int    `json:"disk_gb"`
 	Wait       string `json:"wait"`
 	Timeout    string `json:"timeout"`
+	// From spawns from a stopped/suspended template (fast loadvm when snapshotted).
+	From string `json:"from,omitempty"`
+	// FromPool claims a warm-pool member (mutually exclusive with From).
+	FromPool bool `json:"from_pool,omitempty"`
 	// Advanced
 	Arch     string `json:"arch"`     // arm64|amd64
 	GPU      string `json:"gpu"`      // ""|virtio
@@ -62,7 +66,7 @@ type CreateOpts struct {
 	Publish string `json:"publish"`
 	// Mounts is newline or comma separated HOST:GUEST paths.
 	Mounts string `json:"mounts"`
-	// MetricsEnabled opt-in host-side guest stats ring (default false).
+	// MetricsEnabled host-side guest stats ring (daemon default true when unset).
 	MetricsEnabled bool `json:"metrics_enabled"`
 }
 
@@ -241,6 +245,58 @@ func (s *Service) ListActivity(ctx context.Context, since string, limit int) ([]
 	return c.ListActivity(ctx, since, limit)
 }
 
+// PoolStatus is warm-pool inventory (GET /pool).
+type PoolStatus = client.PoolStatus
+
+// PoolStatus returns warm pool ready count and members.
+func (s *Service) PoolStatus(ctx context.Context) (*PoolStatus, error) {
+	c, err := s.ensureClient()
+	if err != nil {
+		return nil, err
+	}
+	return c.PoolStatus(ctx)
+}
+
+// PoolFill clones the configured template until ready == desired.
+func (s *Service) PoolFill(ctx context.Context) (*PoolStatus, error) {
+	c, err := s.ensureClient()
+	if err != nil {
+		return nil, err
+	}
+	return c.PoolFill(ctx)
+}
+
+// ListCreateTemplates returns stopped/suspended persistent VMs suitable as --from sources.
+func (s *Service) ListCreateTemplates(ctx context.Context) ([]Sandbox, error) {
+	list, err := s.ListSandboxes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []Sandbox
+	for _, sb := range list {
+		st := strings.ToLower(sb.Status)
+		if !sb.Persistent {
+			continue
+		}
+		if st == "stopped" || st == "suspended" || st == "error" {
+			out = append(out, sb)
+		}
+	}
+	return out, nil
+}
+
+// ExecOne runs sh -c command on a single sandbox (for progressive multi-host UI).
+func (s *Service) ExecOne(ctx context.Context, name, command string) (BulkExecResult, error) {
+	list, err := s.BulkExec(ctx, []string{name}, command)
+	if err != nil {
+		return BulkExecResult{}, err
+	}
+	if len(list) == 0 {
+		return BulkExecResult{Name: name, Error: "empty result", Line: name + ": error: empty result"}, nil
+	}
+	return list[0], nil
+}
+
 // ListSandboxes returns VM summaries from the daemon List API.
 // For running VMs, probes guest agent health (short timeout).
 func (s *Service) ListSandboxes(ctx context.Context) ([]Sandbox, error) {
@@ -309,6 +365,8 @@ func (s *Service) CreateSandbox(ctx context.Context, opts CreateOpts) (*Sandbox,
 func buildCreateRequest(opts CreateOpts, cfg Config) (client.CreateRequest, error) {
 	req := client.CreateRequest{
 		Name:           opts.Name,
+		From:           strings.TrimSpace(opts.From),
+		FromPool:       opts.FromPool,
 		Image:          opts.Image,
 		Persistent:     opts.Persistent,
 		CPUs:           opts.CPUs,
@@ -321,6 +379,9 @@ func buildCreateRequest(opts CreateOpts, cfg Config) (client.CreateRequest, erro
 		Network:        opts.Network,
 		Userdata:       opts.Userdata,
 		MetricsEnabled: opts.MetricsEnabled,
+	}
+	if req.From != "" && req.FromPool {
+		return req, fmt.Errorf("from and from_pool are mutually exclusive")
 	}
 	if req.Image == "" {
 		req.Image = cfg.Image

@@ -110,6 +110,14 @@
                   <span class="sr-only">Search sandboxes</span>
                   <input type="search" class="input" id="sandbox-search" placeholder="Search by name, image, status…" autocomplete="off" />
                 </label>
+                <label class="check-label sandbox-compact-label" title="Tighter rows for large lists">
+                  <input type="checkbox" id="sandbox-compact" /> Compact
+                </label>
+                <select class="input sm" id="sandbox-sort" title="Sort list" aria-label="Sort sandboxes">
+                  <option value="name">Sort: name</option>
+                  <option value="status">Sort: status</option>
+                  <option value="created">Sort: newest</option>
+                </select>
               </div>
               <div class="table-wrap">
                 <table class="data-table" id="vm-table">
@@ -490,10 +498,12 @@
           <p class="multi-ssh-hosts" id="multi-ssh-hosts"></p>
           <form id="multi-ssh-form" class="multi-ssh-form">
             <input class="input" id="multi-ssh-cmd" type="text" autocomplete="off" spellcheck="false"
-              placeholder="uname -a" aria-label="Command" />
+              placeholder="uname -a" aria-label="Command" list="multi-ssh-cmd-list" />
+            <datalist id="multi-ssh-cmd-list"></datalist>
             <button type="submit" class="btn btn-primary" id="multi-ssh-run">Run</button>
           </form>
-          <pre class="multi-ssh-out" id="multi-ssh-out" aria-live="polite"></pre>
+          <div class="multi-ssh-history" id="multi-ssh-history" hidden></div>
+          <div class="multi-ssh-out" id="multi-ssh-out" aria-live="polite"></div>
           <div class="modal-foot no-select">
             <button type="button" class="btn btn-ghost" data-close="modal-multi-ssh">Close</button>
           </div>
@@ -513,6 +523,16 @@
             <input class="input" name="name" placeholder="auto if empty" autocomplete="off" />
             <span class="field-hint" id="name-hint">Lowercase letters, digits, hyphens; start with a letter.</span>
           </label>
+          <fieldset class="create-mode-field">
+            <legend class="field-label">Create mode</legend>
+            <div class="create-mode-row">
+              <label class="check-label"><input type="radio" name="create_mode" value="cold" checked /> Cold boot (image)</label>
+              <label class="check-label"><input type="radio" name="create_mode" value="from" /> From template (fast)</label>
+              <label class="check-label"><input type="radio" name="create_mode" value="pool" /> From warm pool</label>
+            </div>
+            <p class="hint muted" id="create-mode-hint">Cold boot waits for guest agent (~seconds). Template/pool use suspend snapshots when available.</p>
+          </fieldset>
+          <div id="create-cold-fields">
           <label class="field"><span>Image</span>
             <select class="input" name="image" id="create-image"></select>
             <input class="input mt-sm" name="image_custom" id="create-image-custom" placeholder="custom id or path" hidden />
@@ -523,7 +543,18 @@
             <label class="field"><span>Disk (GiB)</span><input class="input" name="disk_gb" type="number" min="1" /></label>
           </div>
           <label class="check-label"><input type="checkbox" name="persistent" /> Persistent disk</label>
-          <label class="check-label"><input type="checkbox" name="metrics_enabled" /> Collect metrics (guest stats on host)</label>
+          <label class="check-label"><input type="checkbox" name="metrics_enabled" checked /> Collect metrics (guest stats on host)</label>
+          </div>
+          <div id="create-from-fields" hidden>
+            <label class="field"><span>Template (stopped/suspended persistent)</span>
+              <select class="input" name="from_template" id="create-from-template"></select>
+            </label>
+            <p class="hint muted">Prefer a golden you <code>grain suspend</code>’d after agent ready.</p>
+          </div>
+          <div id="create-pool-fields" hidden>
+            <p class="hint" id="create-pool-status">Checking warm pool…</p>
+            <button type="button" class="btn btn-ghost btn-sm" id="create-pool-fill">Fill pool now</button>
+          </div>
           <details class="adv">
             <summary>Advanced</summary>
             <div class="field-grid mt-sm">
