@@ -101,6 +101,22 @@ func TestValidateEnums(t *testing.T) {
 	}
 }
 
+func TestValidateWarmPool(t *testing.T) {
+	cfg := Defaults()
+	cfg.WarmPool = WarmPoolConfig{Template: "golden", Size: 2}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cfg.WarmPool.Size = 33
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "warm_pool.size") {
+		t.Fatalf("want size error, got %v", err)
+	}
+	cfg.WarmPool = WarmPoolConfig{Template: "", Size: 2}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "template") {
+		t.Fatalf("want template error, got %v", err)
+	}
+}
+
 func TestValidateFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "c.yaml")

@@ -98,6 +98,58 @@ spec:
 	}
 }
 
+func TestPreviewFromCatalogNoLibraryWrite(t *testing.T) {
+	t.Parallel()
+	body := []byte(`
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: docker-lab
+  description: from yaml body
+spec:
+  image: grain-ubuntu
+  cpus: 2
+`)
+	sum := sha256.Sum256(body)
+	hexSum := hex.EncodeToString(sum[:])
+	mux := http.NewServeMux()
+	mux.HandleFunc("/recipes/catalog.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{
+  "apiVersion": "grain.recipes/v1",
+  "recipes": [
+    {"id": "docker-lab", "title": "Docker lab", "description": "index desc", "path": "docker-lab.yaml", "sha256": %q}
+  ]
+}`, hexSum)
+	})
+	mux.HandleFunc("/recipes/docker-lab.yaml", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(body)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cache := filepath.Join(t.TempDir(), "c.json")
+	cat, err := FetchCatalog(srv.Client(), srv.URL+"/recipes/catalog.json", cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib := t.TempDir()
+	prev, err := PreviewFromCatalog(srv.Client(), cat, "docker-lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prev.SuggestedID != "docker-lab" || prev.YAML == "" || prev.Image != "grain-ubuntu" {
+		t.Fatalf("%+v", prev)
+	}
+	if prev.Description != "from yaml body" {
+		t.Fatalf("desc %q", prev.Description)
+	}
+	list, _ := ListLibrary(lib)
+	if len(list) != 0 {
+		t.Fatal("preview must not install")
+	}
+}
+
 func TestPreviewFromURLNoLibraryWrite(t *testing.T) {
 	t.Parallel()
 	body := []byte(`

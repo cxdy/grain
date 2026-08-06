@@ -178,6 +178,97 @@ func createVMsURL(base string, stream bool, req CreateRequest) (string, error) {
 	return u.String(), nil
 }
 
+// PoolStatus returns warm-pool inventory (GET /pool).
+func (c *Client) PoolStatus(ctx context.Context) (*PoolStatus, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/pool", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var st PoolStatus
+	if err := json.NewDecoder(res.Body).Decode(&st); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// PoolFill clones the configured template until ready == desired (POST /pool/fill).
+func (c *Client) PoolFill(ctx context.Context) (*PoolStatus, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/pool/fill", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var st PoolStatus
+	if err := json.NewDecoder(res.Body).Decode(&st); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// PoolClaim renames a ready warm-pool member and starts it (POST /pool/claim).
+func (c *Client) PoolClaim(ctx context.Context, name string) (*Instance, error) {
+	b, err := json.Marshal(PoolClaimRequest{Name: name})
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/pool/claim", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	res, err := c.do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var inst Instance
+	if err := json.NewDecoder(res.Body).Decode(&inst); err != nil {
+		return nil, err
+	}
+	return &inst, nil
+}
+
+// PoolDrain deletes all warm-pool members (POST /pool/drain).
+func (c *Client) PoolDrain(ctx context.Context) (int, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/pool/drain", nil)
+	if err != nil {
+		return 0, err
+	}
+	res, err := c.do(httpReq)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return 0, decodeAPIError(res)
+	}
+	var out struct {
+		Drained int `json:"drained"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return 0, err
+	}
+	return out.Drained, nil
+}
+
 // Create launches a VM (blocking JSON response until ready).
 // Set req.Wait to auto|ssh|agent|userdata|bootstrap and req.Timeout to a Go duration
 // (e.g. "3m") to control readiness; both are sent as query parameters.

@@ -64,6 +64,8 @@ inst, err = c.CreateStream(ctx, client.CreateRequest{
 | `Suspend` | `POST /vms/{name}/suspend` | Persistent only — stops process, frees host RAM; optional qcow2 savevm |
 | `Restore` | `POST /vms/{name}/restore` | From `suspended` — loadvm when snapshot exists, else cold boot |
 | `Delete` | `DELETE /vms/{name}` | Remove VM |
+| `PoolStatus` / `PoolFill` / `PoolClaim` / `PoolDrain` | `GET/POST /pool…` | Warm pool of pre-cloned suspended templates; claim = rename + start |
+| Create `From` / `FromPool` | `POST /vms` | Spawn from template or claim from pool |
 
 ```go
 _ = c.Pause(ctx, name)

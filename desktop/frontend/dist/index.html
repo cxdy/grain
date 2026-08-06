@@ -223,23 +223,29 @@
               <div class="view-head">
                 <h2>Recipes</h2>
                 <div class="btn-row">
-                  <button type="button" class="btn btn-primary btn-sm" id="btn-recipe-new-form">New from form…</button>
-                  <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-import-file">Import file…</button>
-                  <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-import-url">Import URL…</button>
-                  <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-browse">Browse official</button>
+                  <button type="button" class="btn btn-primary btn-sm" id="btn-recipe-new-form">New</button>
+                  <div class="dropdown" id="recipe-import-dropdown">
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-import" aria-haspopup="true" aria-expanded="false">Import…</button>
+                    <ul class="dropdown-menu" id="recipe-import-menu" role="menu">
+                      <li><button type="button" class="dropdown-item" data-import="file" role="menuitem">File…</button></li>
+                      <li><button type="button" class="dropdown-item" data-import="url" role="menuitem">URL…</button></li>
+                    </ul>
+                  </div>
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-refresh">Refresh</button>
                 </div>
               </div>
               <p class="hint muted" id="recipes-hint">Portable create + bootstrap configs in <code>~/.grain/recipes</code>. Import never creates a sandbox — use Deploy.</p>
-              <div class="recipes-layout">
+
+              <h3 class="recipes-section-title">Your library</h3>
+              <div class="recipes-layout" id="recipes-layout">
                 <div class="table-wrap recipes-list">
-                  <table class="data-table">
+                  <table class="data-table recipes-table" id="recipes-table">
                     <thead>
                       <tr><th>ID</th><th>Image</th><th>Bootstrap</th><th>Description</th><th></th></tr>
                     </thead>
                     <tbody id="recipes-tbody"></tbody>
                   </table>
-                  <p class="muted empty-hint" id="recipes-empty" hidden>No recipes yet. Import a file, URL, or browse official catalog.</p>
+                  <p class="muted empty-hint" id="recipes-empty" hidden>No recipes yet. Import a file or URL, or Add from the official catalog below.</p>
                 </div>
                 <div class="recipes-detail" id="recipes-detail" hidden>
                   <div class="view-head">
@@ -256,16 +262,16 @@
                   <p class="error-text" id="recipe-yaml-err" hidden></p>
                 </div>
               </div>
-              <div id="recipes-catalog" class="recipes-catalog" hidden>
+
+              <div id="recipes-catalog" class="recipes-catalog">
                 <div class="view-head">
-                  <h3>Official catalog</h3>
-                  <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-catalog-close">Close</button>
+                  <h3 class="recipes-section-title">Official catalog</h3>
                 </div>
-                <p class="hint muted">Index only — bodies download when you Add. Offline uses cached index when available.</p>
+                <p class="hint muted">Index always shown (cached offline). Click a row to preview description + YAML when online. Add installs to your library — never creates a sandbox.</p>
                 <div class="table-wrap">
-                  <table class="data-table">
+                  <table class="data-table recipes-table catalog-table">
                     <thead>
-                      <tr><th>ID</th><th>Title</th><th>Local</th><th></th></tr>
+                      <tr><th>ID</th><th>Summary</th><th>Local</th><th></th></tr>
                     </thead>
                     <tbody id="catalog-tbody"></tbody>
                   </table>
@@ -627,6 +633,28 @@
       </div>
     </div>
 
+    <div class="modal-backdrop" id="modal-recipe-catalog-preview" hidden>
+      <div class="modal modal-wide" role="dialog" aria-labelledby="catalog-preview-title">
+        <div class="modal-head no-select">
+          <strong id="catalog-preview-title">Recipe</strong>
+          <button type="button" class="btn-icon" data-close="modal-recipe-catalog-preview" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="hint" id="catalog-preview-desc"></p>
+          <dl class="insp-kv" id="catalog-preview-kv"></dl>
+          <ul class="recipe-warn-list" id="catalog-preview-warn"></ul>
+          <p class="error-text" id="catalog-preview-err" hidden></p>
+          <label class="field-label" for="catalog-preview-yaml">YAML</label>
+          <pre id="catalog-preview-yaml" class="recipe-yaml-pre muted" aria-live="polite">Loading…</pre>
+          <div class="modal-foot no-select">
+            <button type="button" class="btn btn-ghost" data-close="modal-recipe-catalog-preview">Close</button>
+            <button type="button" class="btn btn-ghost" id="catalog-preview-open-lib" hidden>Open in library</button>
+            <button type="button" class="btn btn-primary" id="catalog-preview-add">Add to library</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-backdrop" id="modal-recipe-deploy" hidden>
       <div class="modal sm" role="dialog">
         <div class="modal-head no-select">
@@ -652,27 +680,34 @@
     </div>
 
     <div class="modal-backdrop" id="modal-recipe-form" hidden>
-      <div class="modal" role="dialog">
+      <div class="modal modal-recipe-form" role="dialog">
         <div class="modal-head no-select">
-          <strong>New recipe from form</strong>
+          <strong>New recipe</strong>
           <button type="button" class="btn-icon" data-close="modal-recipe-form" aria-label="Close">×</button>
         </div>
-        <form id="recipe-form-builder" class="modal-body">
+        <form id="recipe-form-builder" class="modal-body recipe-form-body">
           <p class="hint">Builds a grain/v1 YAML recipe. Advanced bootstrap still works best in the YAML editor.</p>
-          <div class="field-grid">
+          <div class="field-grid field-grid-2">
             <label class="field"><span>Library id</span><input class="input" name="id" id="rf-id" required placeholder="my-lab" /></label>
             <label class="field"><span>Sandbox name</span><input class="input" name="name" id="rf-name" placeholder="my-lab" /></label>
           </div>
           <label class="field"><span>Description</span><input class="input" name="description" id="rf-desc" /></label>
-          <div class="field-grid">
+          <div class="field-grid field-grid-2">
             <label class="field"><span>Image</span><input class="input" name="image" id="rf-image" value="grain-ubuntu" /></label>
             <label class="field"><span>Preset</span>
-              <select class="input" id="rf-preset">
-                <option value="">(none)</option>
-                <option value="docker">docker</option>
-                <option value="k3s">k3s</option>
-                <option value="act">act</option>
-              </select>
+              <div class="host-menu settings-host-menu rf-preset-menu" id="rf-preset-menu">
+                <input type="hidden" id="rf-preset" value="" />
+                <button type="button" class="host-btn" id="rf-preset-btn" aria-haspopup="listbox" aria-expanded="false">
+                  <span id="rf-preset-label">(none)</span>
+                  <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+                </button>
+                <div class="host-popover" id="rf-preset-popover" hidden role="listbox">
+                  <button type="button" class="host-item active" data-preset="" role="option">(none)</button>
+                  <button type="button" class="host-item" data-preset="docker" role="option">docker</button>
+                  <button type="button" class="host-item" data-preset="k3s" role="option">k3s</button>
+                  <button type="button" class="host-item" data-preset="act" role="option">act</button>
+                </div>
+              </div>
             </label>
           </div>
           <div class="field-grid">
@@ -680,14 +715,14 @@
             <label class="field"><span>Memory MiB</span><input class="input" type="number" min="256" id="rf-mem" value="4096" /></label>
             <label class="field"><span>Disk GiB</span><input class="input" type="number" min="1" id="rf-disk" value="20" /></label>
           </div>
-          <label class="check-label"><input type="checkbox" id="rf-persist" /> Persistent</label>
-          <div class="field-grid">
+          <div class="field-grid field-grid-3-persist">
             <label class="field"><span>Mount host</span><input class="input" id="rf-mhost" placeholder="." /></label>
             <label class="field"><span>Mount guest</span><input class="input" id="rf-mguest" placeholder="/work" /></label>
+            <label class="field"><span>Publish guest port</span><input class="input" type="number" id="rf-gport" placeholder="optional" /></label>
           </div>
-          <label class="field"><span>Publish guest port</span><input class="input" type="number" id="rf-gport" placeholder="optional" /></label>
-          <label class="field"><span>Bootstrap shell (optional)</span>
-            <textarea class="input recipe-yaml" id="rf-boot" rows="4" placeholder="apt-get install -y git"></textarea>
+          <label class="check-label"><input type="checkbox" id="rf-persist" /> Persistent</label>
+          <label class="field field-compact"><span>Bootstrap shell (optional)</span>
+            <textarea class="input recipe-yaml recipe-yaml-sm" id="rf-boot" rows="3" placeholder="apt-get install -y git"></textarea>
           </label>
           <p class="error-text" id="rf-err" hidden></p>
           <div class="modal-foot no-select">

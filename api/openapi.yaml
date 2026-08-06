@@ -403,6 +403,92 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /pool:
+    get:
+      tags: [vms]
+      summary: Warm pool status
+      description: |
+        Inventory of pre-cloned suspended VMs (config `warm_pool.template` / `warm_pool.size`).
+        Members use disk only until claimed.
+      operationId: poolStatus
+      responses:
+        "200":
+          description: Pool status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /pool/fill:
+    post:
+      tags: [vms]
+      summary: Fill warm pool to desired size
+      description: Clones the configured template until ready count reaches warm_pool.size.
+      operationId: poolFill
+      responses:
+        "200":
+          description: Pool status after fill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolStatus"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /pool/claim:
+    post:
+      tags: [vms]
+      summary: Claim a warm-pool member and start it
+      description: |
+        Renames one ready member (optional name), clears pool tags, and starts it.
+        Uses -loadvm when a suspend snapshot marker is present. Refills asynchronously.
+      operationId: poolClaim
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Destination VM name (auto if empty)
+      responses:
+        "201":
+          description: Running instance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /pool/drain:
+    post:
+      tags: [vms]
+      summary: Delete all warm-pool members
+      operationId: poolDrain
+      responses:
+        "200":
+          description: Drain result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  drained:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /vms/{name}/forwards:
     parameters:
       - $ref: "#/components/parameters/VMName"
@@ -921,6 +1007,12 @@ components:
       properties:
         name:
           type: string
+        from:
+          type: string
+          description: Stopped/suspended template to clone and start (fast -loadvm when snapshotted)
+        from_pool:
+          type: boolean
+          description: Claim a warm-pool member and start (mutually exclusive with from)
         persistent:
           type: boolean
           default: false
@@ -946,6 +1038,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Mount"
+
+    PoolStatus:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        template:
+          type: string
+        desired:
+          type: integer
+        ready:
+          type: integer
+        members:
+          type: array
+          items:
+            type: string
 
     PortForward:
       type: object

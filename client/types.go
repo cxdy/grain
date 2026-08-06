@@ -87,7 +87,9 @@ const (
 type CreateRequest struct {
 	Name string `json:"name,omitempty"`
 	// From clones a stopped/suspended template and starts it (fast -loadvm when snapshotted).
-	From           string            `json:"from,omitempty"`
+	From string `json:"from,omitempty"`
+	// FromPool claims a pre-cloned warm-pool member and starts it (mutually exclusive with From).
+	FromPool       bool              `json:"from_pool,omitempty"`
 	Persistent     bool              `json:"persistent"`
 	CPUs           int               `json:"cpus,omitempty"`
 	MemoryMB       int               `json:"memory_mb,omitempty"`
@@ -102,12 +104,26 @@ type CreateRequest struct {
 	Mounts         []Mount           `json:"mounts,omitempty"`
 	SocketForwards []SocketForward   `json:"socket_forwards,omitempty"`
 	// Wait is auto|ssh|agent|userdata|bootstrap (empty = daemon default/auto).
-	// Legacy true/1 maps to ssh on the server. Ignored when From is set (snapshot agent wait).
+	// Legacy true/1 maps to ssh on the server. Ignored when From/FromPool is set (snapshot agent wait).
 	Wait string `json:"-"`
 	// Timeout is an optional Go duration string for create readiness (e.g. "3m").
 	Timeout string `json:"-"`
 	// MetricsEnabled opt-in guest stats sampling on the host (default false).
 	MetricsEnabled bool `json:"metrics_enabled,omitempty"`
+}
+
+// PoolStatus is GET /pool — warm-pool inventory.
+type PoolStatus struct {
+	Enabled  bool     `json:"enabled"`
+	Template string   `json:"template,omitempty"`
+	Desired  int      `json:"desired"`
+	Ready    int      `json:"ready"`
+	Members  []string `json:"members,omitempty"`
+}
+
+// PoolClaimRequest is POST /pool/claim body.
+type PoolClaimRequest struct {
+	Name string `json:"name,omitempty"`
 }
 
 // Stats is guest resource basics from GET /vms/{name}/stats.

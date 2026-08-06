@@ -323,3 +323,54 @@ func TestStoreListNamesSkipNonDirAndCorrupt(t *testing.T) {
 		t.Fatal(names)
 	}
 }
+
+func TestRename(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	s, err := store.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disk := filepath.Join(s.Dir("old"), "disk.qcow2")
+	if err := os.MkdirAll(s.Dir("old"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(disk, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	inst := &vm.Instance{
+		Name:      "old",
+		Status:    vm.StatusStopped,
+		DiskPath:  disk,
+		CPUs:      1,
+		MemoryMB:  512,
+		CreatedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	if err := s.Put(inst); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Rename("old", "new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "new" {
+		t.Fatalf("name %s", got.Name)
+	}
+	wantDisk := filepath.Join(s.Dir("new"), "disk.qcow2")
+	if got.DiskPath != wantDisk {
+		t.Fatalf("disk %s want %s", got.DiskPath, wantDisk)
+	}
+	if _, err := s.Get("old"); err == nil {
+		t.Fatal("old should be gone")
+	}
+	if g2, err := s.Get("new"); err != nil || g2.DiskPath != wantDisk {
+		t.Fatalf("get new: %+v %v", g2, err)
+	}
+	// conflict
+	if err := s.Put(&vm.Instance{Name: "taken", Status: vm.StatusStopped, CPUs: 1, MemoryMB: 256}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Rename("new", "taken"); err == nil {
+		t.Fatal("expected conflict")
+	}
+}

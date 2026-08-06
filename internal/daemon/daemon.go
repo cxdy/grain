@@ -52,6 +52,17 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// ephemeral sandboxes do not survive daemon restart
 	_ = mgr.CleanupEphemeral(ctx)
 
+	// Warm pool: best-effort background fill when configured (does not block listen).
+	if cfg.WarmPool.Enabled() {
+		go func() {
+			bg, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			if err := mgr.EnsureWarmPool(bg); err != nil {
+				log.Warn("warm pool fill on start", "err", err)
+			}
+		}()
+	}
+
 	met := observability.NewMetrics()
 	// seed running gauge from store
 	if list, err := mgr.List(); err == nil {
