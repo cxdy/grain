@@ -19,13 +19,29 @@ func TestFCCreateTimePublishSpecs(t *testing.T) {
 		{HostPort: 19000, GuestPort: 9000},
 	}
 	live := []vm.LiveForward{{HostPort: 19000, GuestPort: 9000, PID: 1}}
-	got := FCCreateTimePublishSpecs(fwds, live)
+	got := FCCreateTimePublishSpecs(fwds, live, 0, 0)
 	if len(got) != 1 || got[0].HostPort != 18080 || got[0].GuestPort != 8080 {
 		t.Fatalf("got %+v", got)
 	}
 	// All covered → empty.
-	if n := FCCreateTimePublishSpecs(fwds[:1], []vm.LiveForward{{HostPort: 18080, GuestPort: 8080}}); len(n) != 0 {
+	if n := FCCreateTimePublishSpecs(fwds[:1], []vm.LiveForward{{HostPort: 18080, GuestPort: 8080}}, 0, 0); len(n) != 0 {
 		t.Fatalf("expected empty, got %+v", n)
+	}
+	// SSH + agent host ports included when allocated.
+	got2 := FCCreateTimePublishSpecs(nil, nil, 2200, 17475)
+	if len(got2) != 2 {
+		t.Fatalf("ssh+agent: %+v", got2)
+	}
+	if got2[0].HostPort != 2200 || got2[0].GuestPort != 22 {
+		t.Fatalf("ssh rule %+v", got2[0])
+	}
+	if got2[1].HostPort != 17475 || got2[1].GuestPort != 7475 {
+		t.Fatalf("agent rule %+v", got2[1])
+	}
+	// SSH already live → only agent.
+	got3 := FCCreateTimePublishSpecs(nil, []vm.LiveForward{{HostPort: 2200, GuestPort: 22}}, 2200, 17475)
+	if len(got3) != 1 || got3[0].HostPort != 17475 {
+		t.Fatalf("covered ssh: %+v", got3)
 	}
 }
 

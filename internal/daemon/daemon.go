@@ -39,7 +39,7 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	case "firecracker":
 		rt = hypervisor.NewFirecrackerRuntime(cfg.FirecrackerBinary, cfg.DataDir, cfg.KernelPath)
 		disk = hypervisor.NewLocalDisk(cfg.DataDir)
-		log.Info("hypervisor", "backend", "firecracker", "note", "experimental; Linux only")
+		log.Info("hypervisor", "backend", "firecracker", "note", "Linux+KVM; agent + TAP publish")
 	default:
 		qrt := hypervisor.NewQEMURuntime(cfg.QEMUBinary, cfg.DataDir)
 		qrt.MountDriver = hypervisor.ResolveMountDriver(cfg.MountDriver, log)

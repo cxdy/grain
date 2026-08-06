@@ -47,7 +47,7 @@ grain new --preset k3s -n lab -p --wait userdata
 | [Egress proxy](./proxy/) | Admins locking down outbound HTTP(S) |
 | [MCP server](../mcp/) | Claude Code / Codex / OpenCode / Grok Build tool host |
 | [Secrets](./secrets/) | Host secrets and inject into VMs |
-| [Firecracker](./firecracker/) | Linux experimental backend |
+| [Firecracker](./firecracker/) | Supported Linux+KVM backend (agent + partial net) |
 | [Troubleshooting](./troubleshooting/) | When boot, agent, or QEMU misbehaves |
 
 ## More recipes

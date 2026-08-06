@@ -78,7 +78,8 @@ func SetupFCNet(plan FCNetPlan, hostSSH, hostAgent int, fwds []vm.PortForward) (
 	return st, nil
 }
 
-// TeardownFCNet removes DNAT rules, host→guest SNAT, and the TAP device.
+// TeardownFCNet removes DNAT rules, host→guest SNAT, guest egress MASQUERADE,
+// TAP FORWARD accepts, and the TAP device.
 func TeardownFCNet(st FCNetState) error {
 	var first error
 	for i := len(st.DNATRules) - 1; i >= 0; i-- {
@@ -87,6 +88,8 @@ func TeardownFCNet(st FCNetState) error {
 		}
 	}
 	removeHostToGuestSNAT(st.FCNetPlan)
+	removeMASQUERADE(st.FCNetPlan)
+	removeForwardFilter(st.FCNetPlan)
 	if st.TapName != "" {
 		if err := deleteTAP(st.TapName); err != nil && first == nil {
 			first = err
@@ -126,15 +129,37 @@ func enableForwarding() error {
 	return runSysctl("net.ipv4.ip_forward", "1")
 }
 
+func guestSubnetCIDR(plan FCNetPlan) string {
+	return fmt.Sprintf("10.%d.%d.0/%d", fcNetBaseOctet, plan.Slot, plan.Prefix)
+}
+
 func ensureMASQUERADE(plan FCNetPlan) error {
 	// Egress from guest subnet.
-	src := fmt.Sprintf("10.%d.%d.0/%d", fcNetBaseOctet, plan.Slot, plan.Prefix)
+	src := guestSubnetCIDR(plan)
 	// Idempotent: check exists then add.
 	check := exec.Command("iptables", "-t", "nat", "-C", "POSTROUTING", "-s", src, "!", "-o", plan.TapName, "-j", "MASQUERADE")
 	if check.Run() == nil {
 		return nil
 	}
 	return runIPTables("-t", "nat", "-A", "POSTROUTING", "-s", src, "!", "-o", plan.TapName, "-j", "MASQUERADE")
+}
+
+// removeMASQUERADE drops the guest-egress rule for this plan (best-effort).
+func removeMASQUERADE(plan FCNetPlan) {
+	if plan.TapName == "" {
+		return
+	}
+	src := guestSubnetCIDR(plan)
+	_ = runIPTables("-t", "nat", "-D", "POSTROUTING", "-s", src, "!", "-o", plan.TapName, "-j", "MASQUERADE")
+}
+
+// removeForwardFilter drops TAP FORWARD ACCEPT rules (best-effort).
+func removeForwardFilter(plan FCNetPlan) {
+	if plan.TapName == "" {
+		return
+	}
+	_ = runIPTables("-D", "FORWARD", "-i", plan.TapName, "-j", "ACCEPT")
+	_ = runIPTables("-D", "FORWARD", "-o", plan.TapName, "-j", "ACCEPT")
 }
 
 // ensureHostToGuestSNAT rewrites DNATed local-client packets so saddr is the

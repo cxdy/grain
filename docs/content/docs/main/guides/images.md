@@ -286,7 +286,7 @@ grain targets **real cloud-init Linux** sandboxes: SSH, packages, agents, k3s la
 
 A smaller rootfs can be added later as another catalog id; the default stays a known-good Ubuntu cloud image so `grain new` + `grain sh` works without hand-rolled kernels or init. Golden images (`grain-ubuntu`) layer agent readiness on that same base via `grain image pull` or local import.
 
-## Firecracker rootfs (experimental)
+## Firecracker rootfs
 
 When `hypervisor: firecracker`, guests need a **raw** root disk and a separate **vmlinux** kernel. Catalog qcow2 cloud images are converted with `qemu-img convert -O raw` at Start when possible; otherwise Start asks for a raw golden.
 
@@ -295,6 +295,6 @@ Firecracker does not use UEFI the same way as QEMU aarch64 cloud boots. Prefer a
 ## Related
 
 - [Troubleshooting](../troubleshooting/) — pull failures, doctor image check
-- [Firecracker](../firecracker/) — experimental FC backend, kernel/rootfs, vsock
+- [Firecracker](../firecracker/) — FC backend, kernel/rootfs, vsock agent, TAP publish
 - [Agent](../agent/) — wait modes, deploy, golden HasAgent path
 - [Mounts](../mounts/) — 9p shares into the guest

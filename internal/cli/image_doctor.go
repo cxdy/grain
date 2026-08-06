@@ -145,7 +145,7 @@ func runDoctor(cfg config.Config) error {
 		hv = "qemu"
 	}
 
-	// Firecracker backend (experimental, Linux only).
+	// Firecracker backend (supported on Linux+KVM).
 	if hv == "firecracker" {
 		fcBin := cfg.FirecrackerBinary
 		if fcBin == "" {

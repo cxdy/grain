@@ -39,7 +39,7 @@ Checks:
 | qmp | soft check that QEMU documents `-qmp` (needed for pause/resume/graceful stop) |
 | daemon socket | optional; prints if not running |
 
-When **`hypervisor: firecracker`** (experimental), doctor also checks:
+When **`hypervisor: firecracker`**, doctor also checks:
 
 | Check | Notes |
 |-------|--------|
@@ -48,7 +48,7 @@ When **`hypervisor: firecracker`** (experimental), doctor also checks:
 | nested virt hint | soft note when CPU looks like a VM without `vmx`/`svm` |
 | guest kernel | soft note if `kernel_path` / default `vmlinux` is missing (Start will hard-fail) |
 
-See [Firecracker on Linux](../firecracker/) for the full experimental operator path.
+See [Firecracker on Linux](../firecracker/) for the full operator path.
 
 Hard failures print `✗` and cause a non-zero exit. Soft items print `·` and do not fail doctor.
 
@@ -200,4 +200,4 @@ Full limits and layout: [Firecracker on Linux](../firecracker/).
 - [Networking](../networking/)
 - [Mounts](../mounts/)
 - [Images](../images/)
-- [Firecracker](../firecracker/) — experimental Linux backend
+- [Firecracker](../firecracker/) — supported Linux+KVM backend

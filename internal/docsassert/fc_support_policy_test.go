@@ -81,7 +81,7 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 		}
 	}
 
-	// Must not deny published pull or claim agent path is still scaffolding.
+	// Must not deny published pull or claim agent path is still scaffolding / experimental.
 	for _, bad := range []string{
 		"Host `agent.Dial` AF_VSOCK path does **not** speak CONNECT yet",
 		"catalog FC images remain deferred",
@@ -91,12 +91,23 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 		"Firecracker (experimental)",
 		"Not configured (experimental)",
 		"FC is a separate experimental path",
+		"experimental operator path",
+		"experimental Linux backend",
+		"Experimental Linux-only backend",
 		"p95 ~1999",
 		// Stale pre-vFC-2 claim that publish never works on FC:
 		"They do **not** enable networking on `hypervisor: firecracker`",
+		// Stale DNAT-only model (publish is host TCP proxy):
+		"TAP + DNAT",
 	} {
 		if strings.Contains(matrix, bad) || strings.Contains(fcGuide, bad) {
 			t.Errorf("stale claim still present: %q", bad)
+		}
+	}
+	// Official support language.
+	for _, want := range []string{"Supported", "TCP proxy", "arm64"} {
+		if !strings.Contains(fcGuide, want) {
+			t.Errorf("guide missing official support wording %q", want)
 		}
 	}
 

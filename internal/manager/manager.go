@@ -171,6 +171,24 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	if err != nil {
 		return nil, err
 	}
+	if m.cfg.Hypervisor == "firecracker" {
+		for _, f := range fwds {
+			proto := f.Proto
+			if proto == "" {
+				proto = "tcp"
+			}
+			if proto != "tcp" {
+				return nil, fmt.Errorf("Firecracker publish is TCP-only (got %s for host %d → guest %d); use QEMU for UDP hostfwd",
+					proto, f.HostPort, f.GuestPort)
+			}
+		}
+		if len(opts.Mounts) > 0 {
+			return nil, fmt.Errorf("Firecracker does not support host mounts (9p/virtiofs); use QEMU or omit --volume")
+		}
+		if len(opts.SocketForwards) > 0 {
+			return nil, fmt.Errorf("Firecracker does not support --publish-socket (SSH streamlocal); use QEMU")
+		}
+	}
 	mounts, err := prepareMounts(opts.Mounts)
 	if err != nil {
 		return nil, err
@@ -582,10 +600,14 @@ func (m *Manager) configureFCGuestNet(ctx context.Context, inst *vm.Instance) er
 	return nil
 }
 
-// FCCreateTimePublishSpecs returns create-time -P mappings that still need a
-// host TCP proxy (not already present in live forwards). Pure helper for tests.
-func FCCreateTimePublishSpecs(forwards []vm.PortForward, live []vm.LiveForward) []vm.PortForward {
-	var out []vm.PortForward
+// FCCreateTimePublishSpecs returns TCP publish mappings that still need a host
+// TCP proxy (not already present in live forwards). Pure helper for tests.
+//
+// Includes create-time -P forwards plus optional SSH (host:22) and agent TCP
+// (host:7475) when those host ports are allocated. UDP is never included —
+// Firecracker publish is TCP-proxy only.
+func FCCreateTimePublishSpecs(forwards []vm.PortForward, live []vm.LiveForward, sshHostPort, agentHostPort int) []vm.PortForward {
+	var candidates []vm.PortForward
 	for _, f := range forwards {
 		if f.HostPort <= 0 || f.GuestPort <= 0 {
 			continue
@@ -595,9 +617,18 @@ func FCCreateTimePublishSpecs(forwards []vm.PortForward, live []vm.LiveForward) 
 			proto = "tcp"
 		}
 		if proto != "tcp" {
-			// TCP proxy only; UDP publishes stay unsupported on FC for now.
 			continue
 		}
+		candidates = append(candidates, f)
+	}
+	if sshHostPort > 0 {
+		candidates = append(candidates, vm.PortForward{HostPort: sshHostPort, GuestPort: 22, Proto: "tcp"})
+	}
+	if agentHostPort > 0 {
+		candidates = append(candidates, vm.PortForward{HostPort: agentHostPort, GuestPort: hypervisor.GuestAgentPort, Proto: "tcp"})
+	}
+	var out []vm.PortForward
+	for _, f := range candidates {
 		covered := false
 		for _, lf := range live {
 			if lf.HostPort == f.HostPort {
@@ -608,13 +639,25 @@ func FCCreateTimePublishSpecs(forwards []vm.PortForward, live []vm.LiveForward) 
 		if covered {
 			continue
 		}
+		// Dedupe by host port (SSH/agent vs accidental -P collision).
+		dup := false
+		for _, o := range out {
+			if o.HostPort == f.HostPort {
+				dup = true
+				break
+			}
+		}
+		if dup {
+			continue
+		}
 		out = append(out, f)
 	}
 	return out
 }
 
 // startFCCreateTimeProxies starts host TCP proxies for create-time -P publishes
-// after the guest has a reachable TAP IP. Same mechanism as grain fwd add.
+// and optional SSH/agent host ports after the guest has a reachable TAP IP.
+// Same mechanism as grain fwd add.
 func (m *Manager) startFCCreateTimeProxies(inst *vm.Instance) error {
 	if m.cfg.Hypervisor != "firecracker" || inst == nil {
 		return nil
@@ -622,7 +665,7 @@ func (m *Manager) startFCCreateTimeProxies(inst *vm.Instance) error {
 	if inst.IP == "" || inst.IP == "127.0.0.1" {
 		return fmt.Errorf("no guest IP for create-time publish proxies")
 	}
-	specs := FCCreateTimePublishSpecs(inst.Forwards, inst.LiveForwards)
+	specs := FCCreateTimePublishSpecs(inst.Forwards, inst.LiveForwards, inst.SSHPort, inst.AgentPort)
 	if len(specs) == 0 {
 		return nil
 	}
