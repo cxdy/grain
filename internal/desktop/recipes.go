@@ -3,9 +3,12 @@ package desktop
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/cxdy/grain/client"
+	"github.com/cxdy/grain/internal/cloudinit"
+	"github.com/cxdy/grain/internal/presets"
 	"github.com/cxdy/grain/internal/recipe"
 )
 
@@ -204,6 +207,89 @@ func (s *Service) AddOfficialRecipe(id string, overwrite bool) (RecipeInfo, erro
 	}, nil
 }
 
+// ExportSandboxRecipeToLibrary writes the exported recipe into the local library.
+func (s *Service) ExportSandboxRecipeToLibrary(ctx context.Context, name string, overwrite bool) (RecipeInfo, error) {
+	y, err := s.ExportSandboxRecipe(ctx, name)
+	if err != nil {
+		return RecipeInfo{}, err
+	}
+	id := strings.TrimSpace(name)
+	ent, err := recipe.SaveLibrary(recipe.DefaultLibraryDir(), []byte(y), recipe.SaveOptions{
+		Overwrite: overwrite,
+		ID:        id,
+	})
+	if err != nil {
+		return RecipeInfo{}, err
+	}
+	return RecipeInfo{
+		ID: ent.ID, Path: ent.Path, Name: ent.Name, Description: ent.Description,
+		Image: ent.Image, HasBootstrap: ent.HasBootstrap, InLibrary: true, Source: "library",
+	}, nil
+}
+
+// DeployPreflight is a pre-create check for recipe deploy UX.
+type DeployPreflight struct {
+	OK            bool     `json:"ok"`
+	Image         string   `json:"image,omitempty"`
+	ImageReady    bool     `json:"image_ready"`
+	MissingMounts []string `json:"missing_mounts,omitempty"`
+	Warnings      []string `json:"warnings,omitempty"`
+	ActiveHost    string   `json:"active_host,omitempty"`
+	Remote        bool     `json:"remote"`
+	Message       string   `json:"message,omitempty"`
+}
+
+// RecipeDeployPreflight validates image readiness and mount host paths.
+func (s *Service) RecipeDeployPreflight(recipeID string) (DeployPreflight, error) {
+	var out DeployPreflight
+	rf, err := recipe.LoadResolved(recipe.DefaultLibraryDir(), recipeID)
+	if err != nil {
+		return out, err
+	}
+	c, err := rf.Compile()
+	if err != nil {
+		return out, err
+	}
+	out.Image = c.Image
+	if conn, err := s.ActiveConnection(); err == nil {
+		out.ActiveHost = conn.Name
+		out.Remote = !conn.IsLocal()
+		if out.Remote {
+			out.Warnings = append(out.Warnings,
+				fmt.Sprintf("Creating on host %q — mount host paths must exist on that machine, not this Desktop client.", conn.Name))
+		}
+	}
+	if c.Image != "" && s.Config.DataDir != "" {
+		for _, img := range ListImages(s.Config.DataDir) {
+			if img.ID == c.Image && img.Ready {
+				out.ImageReady = true
+				break
+			}
+		}
+		if !out.ImageReady {
+			out.Warnings = append(out.Warnings, fmt.Sprintf("image %q is not ready locally — pull before deploy", c.Image))
+		}
+	} else if c.Image == "" {
+		out.ImageReady = true // daemon default
+	}
+	for _, m := range c.Mounts {
+		if m.Host == "" || m.Host == "." || strings.HasPrefix(m.Host, "./") {
+			continue
+		}
+		if _, err := os.Stat(m.Host); err != nil {
+			out.MissingMounts = append(out.MissingMounts, m.Host)
+		}
+	}
+	if len(out.MissingMounts) > 0 {
+		out.Warnings = append(out.Warnings, "some mount host paths are missing on this machine")
+	}
+	out.OK = out.ImageReady && len(out.MissingMounts) == 0
+	if !out.OK && out.Message == "" {
+		out.Message = "fix preflight issues before deploy (or proceed if you know mounts exist on the daemon host)"
+	}
+	return out, nil
+}
+
 // DeployRecipe creates a sandbox from a library recipe (name override + wait).
 func (s *Service) DeployRecipe(ctx context.Context, opts DeployRecipeOpts) (*Sandbox, error) {
 	rpath := strings.TrimSpace(opts.Recipe)
@@ -234,11 +320,29 @@ func (s *Service) DeployRecipe(ctx context.Context, opts DeployRecipeOpts) (*San
 		timeout = compiled.Timeout
 	}
 
+	userdata := compiled.Userdata
+	cpus, mem := compiled.CPUs, compiled.MemoryMB
+	if p := strings.TrimSpace(compiled.Preset); p != "" {
+		ud, err := expandPresetUserdata(p, userdata)
+		if err != nil {
+			return nil, err
+		}
+		userdata = ud
+		if dc, dm := presets.DefaultResources(p); dc > 0 || dm > 0 {
+			if cpus <= 0 {
+				cpus = dc
+			}
+			if mem <= 0 {
+				mem = dm
+			}
+		}
+	}
+
 	co := CreateOpts{
 		Name: name, Image: compiled.Image, Persistent: compiled.Persistent,
-		CPUs: compiled.CPUs, MemoryMB: compiled.MemoryMB, DiskGB: compiled.DiskGB,
+		CPUs: cpus, MemoryMB: mem, DiskGB: compiled.DiskGB,
 		Wait: wait, Timeout: timeout, Arch: compiled.Arch, GPU: compiled.GPU,
-		Network: compiled.Network, Userdata: compiled.Userdata,
+		Network: compiled.Network, Userdata: userdata,
 	}
 	// mounts/forwards via Publish/Mounts string forms
 	var pubs []string
@@ -254,4 +358,15 @@ func (s *Service) DeployRecipe(ctx context.Context, opts DeployRecipeOpts) (*San
 	}
 	co.Mounts = strings.Join(mts, "\n")
 	return s.CreateSandbox(ctx, co)
+}
+
+func expandPresetUserdata(preset, existing string) (string, error) {
+	ud, err := presets.Get(preset)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(existing) == "" {
+		return ud, nil
+	}
+	return cloudinit.MergeUserData(ud, existing)
 }

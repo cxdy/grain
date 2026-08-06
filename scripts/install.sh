@@ -592,12 +592,18 @@ install_desktop() {
     if just desktop-build; then
       if [[ -d desktop/build/bin/Grain.app ]]; then
         ok "built desktop/build/bin/Grain.app"
-        info "run:  ./bin/Grain   or   open desktop/build/bin/Grain.app"
-        info "docs: https://grainvm.com/guides/desktop/"
+        info "run:  ./bin/grain-desktop  or  open desktop/build/bin/Grain.app"
+        info "docs: https://grainvm.com/docs/main/guides/desktop/"
+        return 0
+      fi
+      if [[ -x bin/grain-desktop-bin ]]; then
+        ok "built Desktop binary bin/grain-desktop-bin"
+        info "run:  ./bin/grain-desktop-bin"
         return 0
       fi
       if [[ -x bin/grain-desktop ]] || [[ -x bin/Grain ]]; then
         ok "built Desktop launcher under bin/"
+        info "run:  ./bin/grain-desktop"
         return 0
       fi
     fi
@@ -610,10 +616,10 @@ Build from source (developers):
   git clone https://github.com/${REPO}.git && cd grain
   go install github.com/wailsapp/wails/v2/cmd/wails@latest
   just desktop-build
-  open desktop/build/bin/Grain.app   # macOS
-  # Linux: ./bin/grain-desktop after build (WebKitGTK required; see desktop/README.md)
+  # macOS: open desktop/build/bin/Grain.app  or  ./bin/grain-desktop
+  # Linux: ./bin/grain-desktop-bin  (WebKitGTK 4.1; -tags webkit2_41)
 
-Docs: https://grainvm.com/guides/desktop/
+Docs: https://grainvm.com/docs/main/guides/desktop/
 EOF
   # Non-fatal for combined install; fatal only when --desktop is exclusive intent.
   return 1

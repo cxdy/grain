@@ -1,0 +1,19 @@
+# Docker Engine in a sandbox (uses built-in docker preset).
+#
+#   grain recipe add docker-lab   # or from this file
+#   grain new --recipe docker-lab
+#   grain sh docker-lab -- docker ps
+#
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: docker-lab
+  description: grain-ubuntu with Docker Engine (preset docker)
+spec:
+  image: grain-ubuntu
+  cpus: 2
+  memory_mb: 4096
+  disk_gb: 20
+  ready_timeout: 15m
+  preset: docker
+  wait: userdata

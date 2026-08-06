@@ -1989,18 +1989,55 @@
     }
   }
 
-  function openDeployRecipeModal() {
+  async function openDeployRecipeModal() {
     const id = state.selectedRecipe;
     if (!id) return;
     const meta = (state.recipes || []).find((r) => r.id === id);
     $("#recipe-deploy-id").textContent = `Recipe: ${id}`;
     $("#recipe-deploy-name").value = meta?.name || id;
     const warn = $("#recipe-deploy-warn");
+    const pfEl = $("#recipe-deploy-preflight");
+    const pullBtn = $("#recipe-deploy-pull");
+    const hostEl = $("#recipe-deploy-host");
     if (meta?.has_bootstrap && warn) {
       warn.hidden = false;
-      warn.textContent = "This recipe runs bootstrap scripts inside the guest until ready.";
+      warn.textContent = "This recipe runs bootstrap/userdata in the guest until ready.";
     } else if (warn) {
       warn.hidden = true;
+    }
+    if (pullBtn) pullBtn.hidden = true;
+    state.deployPreflightImage = "";
+    try {
+      const pf = await call("RecipeDeployPreflight", id);
+      if (hostEl) {
+        if (pf?.remote) {
+          hostEl.hidden = false;
+          hostEl.textContent = `Active host: ${pf.active_host || "remote"} — mounts are paths on that host.`;
+        } else {
+          hostEl.hidden = true;
+        }
+      }
+      if (pfEl) {
+        const lines = [];
+        if (pf?.image) lines.push(`Image: ${pf.image} (${pf.image_ready ? "ready" : "not ready"})`);
+        if (pf?.missing_mounts?.length) lines.push(`Missing mounts:\n  - ${pf.missing_mounts.join("\n  - ")}`);
+        if (pf?.warnings?.length) lines.push(pf.warnings.join("\n"));
+        if (!lines.length) lines.push("Preflight OK");
+        pfEl.hidden = false;
+        pfEl.textContent = lines.join("\n");
+        pfEl.classList.toggle("warn", !pf?.ok);
+        pfEl.classList.toggle("ok", !!pf?.ok);
+      }
+      if (pullBtn && pf?.image && !pf.image_ready) {
+        pullBtn.hidden = false;
+        state.deployPreflightImage = pf.image;
+      }
+    } catch (e) {
+      if (pfEl) {
+        pfEl.hidden = false;
+        pfEl.textContent = String(e);
+        pfEl.classList.add("warn");
+      }
     }
     openModal("modal-recipe-deploy");
   }
@@ -2631,6 +2668,56 @@
     $$(".ws-tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 
     $("#btn-recipe-import-file")?.addEventListener("click", () => importRecipeFile());
+    $("#btn-recipe-new-form")?.addEventListener("click", () => {
+      $("#rf-err").hidden = true;
+      openModal("modal-recipe-form");
+    });
+    $("#recipe-form-builder")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = {
+        id: $("#rf-id")?.value?.trim() || "",
+        name: $("#rf-name")?.value?.trim() || $("#rf-id")?.value?.trim() || "",
+        description: $("#rf-desc")?.value?.trim() || "",
+        image: $("#rf-image")?.value?.trim() || "grain-ubuntu",
+        preset: $("#rf-preset")?.value || "",
+        cpus: parseInt($("#rf-cpus")?.value || "0", 10) || 0,
+        memory_mb: parseInt($("#rf-mem")?.value || "0", 10) || 0,
+        disk_gb: parseInt($("#rf-disk")?.value || "0", 10) || 0,
+        persistent: !!$("#rf-persist")?.checked,
+        mount_host: $("#rf-mhost")?.value?.trim() || "",
+        mount_guest: $("#rf-mguest")?.value?.trim() || "",
+        guest_port: parseInt($("#rf-gport")?.value || "0", 10) || 0,
+        bootstrap_run: $("#rf-boot")?.value || "",
+      };
+      try {
+        const ent = await act("save recipe form", () => call("SaveRecipeForm", form, false), {
+          target: form.id,
+        });
+        toast(`Saved ${ent?.id || form.id}`);
+        closeModal("modal-recipe-form");
+        state.selectedRecipe = ent?.id;
+        await loadRecipesPage();
+        if (ent?.id) openRecipe(ent.id);
+      } catch (err) {
+        const el = $("#rf-err");
+        if (el) {
+          el.hidden = false;
+          el.textContent = String(err);
+        }
+        toast(String(err), true);
+      }
+    });
+    $("#recipe-deploy-pull")?.addEventListener("click", async () => {
+      const img = state.deployPreflightImage;
+      if (!img) return;
+      try {
+        await act("pull image", () => call("PullImage", img), { target: img });
+        toast(`Pulled ${img}`);
+        await openDeployRecipeModal();
+      } catch (e) {
+        toast(String(e), true);
+      }
+    });
     $("#btn-recipe-import-url")?.addEventListener("click", () => {
       resetRecipeURLModal();
       openModal("modal-recipe-url");
@@ -2752,6 +2839,30 @@
             toast(`Exported recipe for ${name}`);
           }
           return;
+        }
+        if (actName === "export-recipe-lib") {
+          let overwrite = false;
+          try {
+            const ent = await act(
+              "save library recipe",
+              () => call("ExportSandboxRecipeToLibrary", name, overwrite),
+              { target: name, summary: `saved ${name} to recipe library` }
+            );
+            toast(`Library recipe: ${ent?.id || name}`);
+            return;
+          } catch (e) {
+            const msg = String(e);
+            if (msg.includes("already exists") && confirm(`${name} already in library. Overwrite?`)) {
+              const ent = await act(
+                "save library recipe",
+                () => call("ExportSandboxRecipeToLibrary", name, true),
+                { target: name }
+              );
+              toast(`Overwrote library recipe: ${ent?.id || name}`);
+              return;
+            }
+            throw e;
+          }
         }
         if (actName === "start") {
           await act("start", () => call("StartSandbox", name), {

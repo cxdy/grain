@@ -131,6 +131,18 @@ Each agent has its **own** config file and schema. Pick a host, choose **stdio**
 
 Sandbox **recipe library** tools are listed under Lifecycle above (`grain_recipe_*`). See [Sandbox recipes](../get-started/recipe/).
 
+### Recipe library agent sketch
+
+```text
+1. grain_recipe_search          # list official ids (index only)
+2. grain_recipe_add  source=git-lab
+3. grain_recipe_list
+4. grain_recipe_create recipe=git-lab name=lab-1
+# or grain_create_vm with recipe=git-lab
+```
+
+Import/add **never** creates a VM. Create is always an explicit second step.
+
 ### Create parameters (high level)
 
 | Field | Notes |

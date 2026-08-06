@@ -1,0 +1,23 @@
+# GitHub Actions via nektos/act in a microVM (preset act).
+#
+# Prefer: grain act   (CLI helper). This recipe is the portable form.
+#
+#   grain new --recipe act-lab
+#   grain sh act-lab -- act -l
+#
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: act-lab
+  description: Docker + nektos/act for local GitHub Actions (preset act)
+spec:
+  image: grain-ubuntu
+  cpus: 4
+  memory_mb: 8192
+  disk_gb: 40
+  ready_timeout: 20m
+  preset: act
+  wait: userdata
+  mounts:
+    - host: .
+      guest: /work

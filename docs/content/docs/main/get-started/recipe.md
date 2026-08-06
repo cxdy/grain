@@ -79,6 +79,7 @@ Install recipes once, then create by **name** (CLI, Desktop, MCP):
 ```bash
 # Import (never creates a VM)
 grain recipe add ./git-lab.recipe.yaml          # → ~/.grain/recipes/git-lab.yaml
+grain recipe preview https://example.com/lab.yaml  # validate + summary, no install
 grain recipe add https://example.com/lab.yaml   # http(s) YAML
 grain recipe search                             # official catalog index only
 grain recipe add git-lab                        # pull one official body into the library
@@ -89,6 +90,24 @@ grain recipe validate git-lab
 grain new --recipe git-lab                      # name resolves under ~/.grain/recipes
 grain recipe delete git-lab                     # library file only — not sandboxes
 ```
+
+### Official catalog recipes
+
+In-repo under [`recipes/`](https://github.com/cxdy/grain/tree/main/recipes) (index: `recipes/catalog.json`):
+
+| id | Notes |
+|----|--------|
+| `git-lab` | Minimal bootstrap (git) |
+| `node-dev` | Repo mount + git/curl |
+| `python-dev` | python3/pip/venv bootstrap |
+| `docker-lab` | Preset `docker` |
+| `k3s-lab` | Preset `k3s` + publish 6443 |
+| `act-lab` | Preset `act` + mount `.` → `/work` |
+| `remote-coding` | Persistent 4 vCPU / 8 GiB coding lab |
+
+**Contributing official recipes:** open a PR that adds `recipes/<id>.yaml` and updates `catalog.json` (sha256 of the file). No accounts or marketplace backend — GitHub PRs only.
+
+**Download counts (no extra infra):** when recipe bundles ship as GitHub Release assets, use the Releases API `download_count` per asset (`gh api repos/cxdy/grain/releases` / browser on the release page). The catalog itself is git-sourced until a release pin is published.
 
 **Desktop:** **Recipes** tab → Import file / URL / Browse official → Edit YAML (valid-only save) → **Deploy…** (name override + wait until ready).
 

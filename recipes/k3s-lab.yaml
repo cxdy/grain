@@ -1,0 +1,21 @@
+# Single-node k3s lab (uses built-in k3s preset + API port).
+#
+#   grain new --recipe k3s-lab
+#   grain sh k3s-lab -- kubectl get nodes
+#
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: k3s-lab
+  description: Persistent k3s single-node lab (preset k3s, publish 6443)
+spec:
+  image: grain-ubuntu
+  cpus: 4
+  memory_mb: 8192
+  disk_gb: 32
+  persistent: true
+  ready_timeout: 20m
+  preset: k3s
+  wait: userdata
+  forwards:
+    - guest_port: 6443
