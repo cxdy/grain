@@ -23,7 +23,7 @@ CLI-first path: install → `grain up` → `grain new` → `grain sh`.
 | **Sandboxes** | List, create, start/stop/remove, multi-select bulk actions, right-side inspector |
 | **Inspector** | Overview · Shell · Logs — in-app shell plus **open in new window**; **More → Export as recipe…** writes a portable [`grain/v1` Sandbox recipe](../get-started/recipe/) (create options, mounts, forwards — not bootstrap/userdata) |
 | **Images** | Catalog ready/missing, pull with progress |
-| **Recipes** | Local library (`~/.grain/recipes`), import file/URL, browse official catalog (index-only until Add), YAML edit (valid-only save), **Deploy…** with name override + wait until ready. Import never auto-creates a VM. |
+| **Recipes** | Local library (`~/.grain/recipes`), **New from form…**, import file/URL (URL is preview→add), browse official catalog, YAML edit (valid-only save), **Deploy…** with preflight (image ready / mounts / remote host) + name override + wait. **More → Save as library recipe** from a sandbox. Import never auto-creates a VM. |
 | **MCP** | Status, enable in config, copy IDE snippets, ensure-running (local) |
 | **Doctor** | Host tool + daemon checks with fix hints |
 | **Settings** | Preferences summary, hosts, Advanced config.yaml (strict validate) |

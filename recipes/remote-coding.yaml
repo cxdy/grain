@@ -1,0 +1,21 @@
+# Durable remote coding lab defaults (aligned with profile remote-coding).
+#
+#   grain new --recipe remote-coding -n work
+#   grain sh work
+#
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: work
+  description: Persistent coding sandbox (4 vCPU / 8 GiB / 32 GiB, grain-ubuntu)
+spec:
+  image: grain-ubuntu
+  cpus: 4
+  memory_mb: 8192
+  disk_gb: 32
+  persistent: true
+  wait: agent
+  ready_timeout: 5m
+  mounts:
+    - host: .
+      guest: /work

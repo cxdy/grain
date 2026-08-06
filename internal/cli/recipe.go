@@ -26,14 +26,21 @@ Library (default ~/.grain/recipes/<name>.yaml):
   grain recipe validate git-lab
   grain recipe delete git-lab
 
+Preview without installing:
+  grain recipe preview ./lab.yaml
+  grain recipe preview https://example.com/lab.yaml
+
 Create from a library name or path:
   grain new --recipe git-lab
   grain new --recipe ./lab.yaml
+
+Official recipes live in the grain repo (recipes/) and are added via PR only.
 `,
 	}
 	c.AddCommand(cmdRecipeList())
 	c.AddCommand(cmdRecipeAdd())
 	c.AddCommand(cmdRecipeSearch())
+	c.AddCommand(cmdRecipePreview())
 	c.AddCommand(cmdRecipeValidate())
 	c.AddCommand(cmdRecipeShow())
 	c.AddCommand(cmdRecipeDelete())
@@ -171,6 +178,86 @@ func cmdRecipeDelete() *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "deleted  %s\n", args[0])
+			return nil
+		},
+	}
+}
+
+func cmdRecipePreview() *cobra.Command {
+	return &cobra.Command{
+		Use:   "preview <file|url|name>",
+		Short: "Validate and summarize a recipe without installing or creating a VM",
+		Long: `Fetch (if URL) or load a recipe and print a human summary: image, resources,
+mounts, forwards, bootstrap steps, and trust warnings. Does not write the library.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			src := strings.TrimSpace(args[0])
+			w := cmd.OutOrStdout()
+			var prev recipe.RecipePreview
+			var err error
+			switch {
+			case strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://"):
+				if strings.HasPrefix(src, "http://") {
+					fmt.Fprintln(cmd.ErrOrStderr(), "warning: cleartext HTTP")
+				}
+				prev, err = recipe.PreviewFromURL(nil, src, "")
+			default:
+				// file or library name
+				var f *recipe.File
+				if fileExists(src) || strings.Contains(src, string(os.PathSeparator)) || strings.HasPrefix(src, "./") {
+					f, err = recipe.Load(src)
+				} else {
+					f, err = loadRecipeArg(src)
+				}
+				if err != nil {
+					return err
+				}
+				b, rerr := os.ReadFile(f.SourcePath)
+				if rerr != nil {
+					// Parse already validated; re-marshal for preview body
+					b, err = f.MarshalYAML()
+					if err != nil {
+						return err
+					}
+				}
+				prev, err = recipe.PreviewFromYAML(b)
+				if err != nil {
+					return err
+				}
+				if prev.SuggestedID == "" {
+					prev.SuggestedID = f.Metadata.Name
+				}
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(w, "id:             %s\n", emptyDash(prev.SuggestedID))
+			fmt.Fprintf(w, "name:           %s\n", emptyDash(prev.Name))
+			fmt.Fprintf(w, "description:    %s\n", emptyDash(prev.Description))
+			fmt.Fprintf(w, "image:          %s\n", emptyDash(prev.Image))
+			fmt.Fprintf(w, "cpus:           %d\n", prev.CPUs)
+			fmt.Fprintf(w, "memory_mb:      %d\n", prev.MemoryMB)
+			fmt.Fprintf(w, "disk_gb:        %d\n", prev.DiskGB)
+			fmt.Fprintf(w, "persistent:     %v\n", prev.Persistent)
+			fmt.Fprintf(w, "bootstrap:      %v\n", prev.HasBootstrap)
+			if len(prev.BootstrapSteps) > 0 {
+				fmt.Fprintf(w, "steps:          %s\n", strings.Join(prev.BootstrapSteps, ", "))
+			}
+			fmt.Fprintf(w, "mounts:         %d\n", len(prev.Mounts))
+			for _, m := range prev.Mounts {
+				fmt.Fprintf(w, "  %s\n", m)
+			}
+			fmt.Fprintf(w, "forwards:       %d\n", len(prev.Forwards))
+			for _, f := range prev.Forwards {
+				fmt.Fprintf(w, "  %s\n", f)
+			}
+			if len(prev.Warnings) > 0 {
+				fmt.Fprintln(w, "warnings:")
+				for _, warn := range prev.Warnings {
+					fmt.Fprintf(w, "  - %s\n", warn)
+				}
+			}
+			fmt.Fprintln(cmd.ErrOrStderr(), "tip: grain recipe add <src>  # install to library (does not create a VM)")
 			return nil
 		},
 	}

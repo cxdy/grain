@@ -709,7 +709,7 @@ func (a *App) ExportSandboxRecipe(name string) (desktop.ExportRecipeResult, erro
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export sandbox recipe",
-		DefaultFilename: strings.TrimSpace(name) + ".recipe.yaml",
+		DefaultFilename: strings.TrimSpace(name) + ".yaml",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "Recipe YAML (*.yaml)", Pattern: "*.yaml"},
 			{DisplayName: "YAML (*.yml)", Pattern: "*.yml"},
@@ -727,6 +727,19 @@ func (a *App) ExportSandboxRecipe(name string) (desktop.ExportRecipeResult, erro
 	}
 	out.Path = path
 	return out, nil
+}
+
+// ExportSandboxRecipeToLibrary exports create-shaped config into ~/.grain/recipes.
+func (a *App) ExportSandboxRecipeToLibrary(name string, overwrite bool) (desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeInfo{}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.ExportSandboxRecipeToLibrary(ctx, name, overwrite)
 }
 
 // ListLibraryRecipes returns installed recipes under ~/.grain/recipes.
@@ -852,6 +865,29 @@ func (a *App) DeployRecipe(opts desktop.DeployRecipeOpts) (*desktop.Sandbox, err
 		ctx = context.Background()
 	}
 	return svc.DeployRecipe(ctx, opts)
+}
+
+// RecipeDeployPreflight returns image/mount/host checks before deploy.
+func (a *App) RecipeDeployPreflight(recipeID string) (desktop.DeployPreflight, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.DeployPreflight{}, err
+	}
+	return svc.RecipeDeployPreflight(recipeID)
+}
+
+// SaveRecipeForm builds a recipe from the simple form and saves to the library.
+func (a *App) SaveRecipeForm(form desktop.RecipeForm, overwrite bool) (desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeInfo{}, err
+	}
+	return svc.SaveRecipeForm(form, overwrite)
+}
+
+// PreviewRecipeForm returns YAML for the form without saving.
+func (a *App) PreviewRecipeForm(form desktop.RecipeForm) (string, error) {
+	return desktop.BuildRecipeYAML(form)
 }
 
 // EnableSandboxMetrics sets metrics_enabled on the VM meta (host data_dir) and

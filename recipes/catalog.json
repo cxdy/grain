@@ -2,24 +2,80 @@
   "apiVersion": "grain.recipes/v1",
   "recipes": [
     {
+      "id": "act-lab",
+      "title": "act-lab",
+      "description": "Docker + nektos/act for local GitHub Actions (preset act)",
+      "tags": [
+        "official",
+        "act"
+      ],
+      "path": "act-lab.yaml",
+      "sha256": "f30f01068bde27e2e7d7a400d7df609da7b56f8af9ae758154cd63d701fc95bc"
+    },
+    {
+      "id": "docker-lab",
+      "title": "docker-lab",
+      "description": "grain-ubuntu with Docker Engine (preset docker)",
+      "tags": [
+        "official",
+        "docker"
+      ],
+      "path": "docker-lab.yaml",
+      "sha256": "12b47abea414bd5d57e5dc42b78c81d492febb0ca9b539749172368b5e68b173"
+    },
+    {
       "id": "git-lab",
       "title": "git-lab",
       "description": "Ubuntu sandbox with git installed before ready",
       "tags": [
-        "official"
+        "official",
+        "bootstrap"
       ],
       "path": "git-lab.yaml",
       "sha256": "d0ecc98424a1a7acc0f1adce6fae519e0a1dc35cdbe0d36fe6275a38492203d5"
+    },
+    {
+      "id": "k3s-lab",
+      "title": "k3s-lab",
+      "description": "Persistent k3s single-node lab (preset k3s, publish 6443)",
+      "tags": [
+        "official",
+        "k3s"
+      ],
+      "path": "k3s-lab.yaml",
+      "sha256": "35aa88075a257eff9f15ff85026e06ebbb060cfcfbe3b0f549747798a2639e03"
     },
     {
       "id": "node-dev",
       "title": "node-dev",
       "description": "Repo mount + git/curl for node-ish workflows",
       "tags": [
-        "official"
+        "official",
+        "bootstrap"
       ],
       "path": "node-dev.yaml",
       "sha256": "e4c68abc0fe042805ce7db832683d3abb90471a40fe1d2f104f8decf5232de4b"
+    },
+    {
+      "id": "python-dev",
+      "title": "python-dev",
+      "description": "Ubuntu with python3, pip, venv, and git ready",
+      "tags": [
+        "official",
+        "bootstrap"
+      ],
+      "path": "python-dev.yaml",
+      "sha256": "983c5dacb2a6deda7620f173e64cc49cd51c45c89af680785c15d90330e0a670"
+    },
+    {
+      "id": "remote-coding",
+      "title": "work",
+      "description": "Persistent coding sandbox (4 vCPU / 8 GiB / 32 GiB, grain-ubuntu)",
+      "tags": [
+        "official"
+      ],
+      "path": "remote-coding.yaml",
+      "sha256": "1864f97311c69ef8e541a8e6fa8f5ebadf1b0a648d7d0e77990c25439ea5a21e"
     }
   ]
 }

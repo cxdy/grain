@@ -223,6 +223,7 @@
               <div class="view-head">
                 <h2>Recipes</h2>
                 <div class="btn-row">
+                  <button type="button" class="btn btn-primary btn-sm" id="btn-recipe-new-form">New from form…</button>
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-import-file">Import file…</button>
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-import-url">Import URL…</button>
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-browse">Browse official</button>
@@ -411,6 +412,7 @@
                       <li><button type="button" class="dropdown-item" data-act="logs">Logs</button></li>
                       <li><button type="button" class="dropdown-item" data-act="edit">Config</button></li>
                       <li><button type="button" class="dropdown-item" data-act="export-recipe">Export as recipe…</button></li>
+                      <li><button type="button" class="dropdown-item" data-act="export-recipe-lib">Save as library recipe</button></li>
                       <li><button type="button" class="dropdown-item" data-act="term">Open in Terminal</button></li>
                       <li id="more-agent-item" hidden>
                         <button type="button" class="dropdown-item" data-act="deploy-agent">Install / update agent</button>
@@ -633,14 +635,64 @@
         </div>
         <form id="recipe-deploy-form" class="modal-body">
           <p class="hint" id="recipe-deploy-id"></p>
+          <p class="hint" id="recipe-deploy-host" hidden></p>
           <label class="field"><span>Sandbox name</span>
             <input class="input" name="name" id="recipe-deploy-name" required autocomplete="off" />
           </label>
           <label class="check-label"><input type="checkbox" id="recipe-deploy-wait" checked /> Wait until ready</label>
+          <div id="recipe-deploy-preflight" class="recipe-preflight" hidden></div>
           <p class="hint" id="recipe-deploy-warn" hidden></p>
           <div class="modal-foot no-select">
+            <button type="button" class="btn btn-ghost btn-sm" id="recipe-deploy-pull" hidden>Pull image</button>
             <button type="button" class="btn btn-ghost" data-close="modal-recipe-deploy">Cancel</button>
-            <button type="submit" class="btn btn-primary">Create sandbox</button>
+            <button type="submit" class="btn btn-primary" id="recipe-deploy-submit">Create sandbox</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="modal-recipe-form" hidden>
+      <div class="modal" role="dialog">
+        <div class="modal-head no-select">
+          <strong>New recipe from form</strong>
+          <button type="button" class="btn-icon" data-close="modal-recipe-form" aria-label="Close">×</button>
+        </div>
+        <form id="recipe-form-builder" class="modal-body">
+          <p class="hint">Builds a grain/v1 YAML recipe. Advanced bootstrap still works best in the YAML editor.</p>
+          <div class="field-grid">
+            <label class="field"><span>Library id</span><input class="input" name="id" id="rf-id" required placeholder="my-lab" /></label>
+            <label class="field"><span>Sandbox name</span><input class="input" name="name" id="rf-name" placeholder="my-lab" /></label>
+          </div>
+          <label class="field"><span>Description</span><input class="input" name="description" id="rf-desc" /></label>
+          <div class="field-grid">
+            <label class="field"><span>Image</span><input class="input" name="image" id="rf-image" value="grain-ubuntu" /></label>
+            <label class="field"><span>Preset</span>
+              <select class="input" id="rf-preset">
+                <option value="">(none)</option>
+                <option value="docker">docker</option>
+                <option value="k3s">k3s</option>
+                <option value="act">act</option>
+              </select>
+            </label>
+          </div>
+          <div class="field-grid">
+            <label class="field"><span>vCPUs</span><input class="input" type="number" min="1" id="rf-cpus" value="2" /></label>
+            <label class="field"><span>Memory MiB</span><input class="input" type="number" min="256" id="rf-mem" value="4096" /></label>
+            <label class="field"><span>Disk GiB</span><input class="input" type="number" min="1" id="rf-disk" value="20" /></label>
+          </div>
+          <label class="check-label"><input type="checkbox" id="rf-persist" /> Persistent</label>
+          <div class="field-grid">
+            <label class="field"><span>Mount host</span><input class="input" id="rf-mhost" placeholder="." /></label>
+            <label class="field"><span>Mount guest</span><input class="input" id="rf-mguest" placeholder="/work" /></label>
+          </div>
+          <label class="field"><span>Publish guest port</span><input class="input" type="number" id="rf-gport" placeholder="optional" /></label>
+          <label class="field"><span>Bootstrap shell (optional)</span>
+            <textarea class="input recipe-yaml" id="rf-boot" rows="4" placeholder="apt-get install -y git"></textarea>
+          </label>
+          <p class="error-text" id="rf-err" hidden></p>
+          <div class="modal-foot no-select">
+            <button type="button" class="btn btn-ghost" data-close="modal-recipe-form">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save to library</button>
           </div>
         </form>
       </div>

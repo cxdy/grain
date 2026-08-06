@@ -98,6 +98,44 @@ spec:
 	}
 }
 
+func TestRecipePreviewCLI(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GRAIN_HOME", home)
+	src := filepath.Join(t.TempDir(), "p.yaml")
+	body := []byte(`
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: prev
+spec:
+  image: grain-ubuntu
+  cpus: 1
+  mounts:
+    - host: /nope
+      guest: /work
+`)
+	if err := os.WriteFile(src, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := Root("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"recipe", "preview", src})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err, out.String())
+	}
+	s := out.String()
+	if !strings.Contains(s, "grain-ubuntu") || !strings.Contains(s, "prev") {
+		t.Fatalf("%q", s)
+	}
+	// preview must not install
+	lib := filepath.Join(home, "recipes")
+	if ents, err := os.ReadDir(lib); err == nil && len(ents) != 0 {
+		t.Fatalf("preview wrote library: %v", ents)
+	}
+}
+
 func TestRecipeLibraryCLI_C_URLAndCatalog(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GRAIN_HOME", home)

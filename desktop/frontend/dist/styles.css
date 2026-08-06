@@ -737,3 +737,20 @@ a:hover { text-decoration: underline; }
   font-size: 0.85rem;
 }
 .recipe-warn-list:empty { display: none; }
+.recipe-preflight {
+  margin: 0.5rem 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+}
+.recipe-preflight.warn {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--border));
+  color: var(--warn);
+}
+.recipe-preflight.ok {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+  color: var(--brand);
+}
