@@ -86,9 +86,7 @@ func TeardownFCNet(st FCNetState) error {
 			first = err
 		}
 	}
-	if err := removeHostToGuestSNAT(st.FCNetPlan); err != nil && first == nil {
-		first = err
-	}
+	removeHostToGuestSNAT(st.FCNetPlan)
 	if st.TapName != "" {
 		if err := deleteTAP(st.TapName); err != nil && first == nil {
 			first = err
@@ -154,15 +152,14 @@ func ensureHostToGuestSNAT(plan FCNetPlan) error {
 	return runIPTables(addArgs...)
 }
 
-func removeHostToGuestSNAT(plan FCNetPlan) error {
+func removeHostToGuestSNAT(plan FCNetPlan) {
 	if plan.TapName == "" || plan.HostIP == "" {
-		return nil
+		return
 	}
 	rule := HostToGuestSNATRule(plan)
 	delArgs := append([]string{"-t", "nat", "-D", "POSTROUTING"}, rule...)
 	// Best-effort: rule may already be gone.
 	_ = runIPTables(delArgs...)
-	return nil
 }
 
 func ensureForwardFilter(plan FCNetPlan) error {
