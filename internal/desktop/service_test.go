@@ -349,6 +349,55 @@ func TestInstanceToSandboxNil(t *testing.T) {
 	}
 }
 
+func TestWithinAgentProbeGrace(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	if !withinAgentProbeGrace("", now) {
+		t.Fatal("empty created_at should grace")
+	}
+	if !withinAgentProbeGrace(now.Add(-30*time.Second).Format(time.RFC3339), now) {
+		t.Fatal("30s old should grace")
+	}
+	if withinAgentProbeGrace(now.Add(-3*time.Minute).Format(time.RFC3339), now) {
+		t.Fatal("3m old should not grace")
+	}
+}
+
+func TestApplyAgentProbeGraceLeavesUnset(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /vms/{name}/agent/health", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not ready", http.StatusBadGateway)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c, err := client.DialHTTP(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb := &Sandbox{
+		Name:          "young",
+		HasAgentImage: true,
+		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
+	}
+	applyAgentProbe(context.Background(), c, sb, "young", time.Now().UTC().Format(time.RFC3339))
+	if sb.AgentOK != nil {
+		t.Fatalf("young agent image should leave AgentOK unset (checking), got %v", *sb.AgentOK)
+	}
+	// After grace → false
+	sb.CreatedAt = time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339)
+	applyAgentProbe(context.Background(), c, sb, "young", time.Now().UTC().Format(time.RFC3339))
+	if sb.AgentOK == nil || *sb.AgentOK {
+		t.Fatalf("after grace want AgentOK=false, got %v", sb.AgentOK)
+	}
+	// Non-agent image → false immediately
+	sb2 := &Sandbox{Name: "cloud", HasAgentImage: false, CreatedAt: time.Now().UTC().Format(time.RFC3339)}
+	applyAgentProbe(context.Background(), c, sb2, "cloud", time.Now().UTC().Format(time.RFC3339))
+	if sb2.AgentOK == nil || *sb2.AgentOK {
+		t.Fatalf("cloud image want AgentOK=false, got %v", sb2.AgentOK)
+	}
+}
+
 func TestServiceConnections(t *testing.T) {
 	svc := NewService(Defaults())
 	conns := svc.Connections()

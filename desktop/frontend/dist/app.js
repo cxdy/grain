@@ -462,10 +462,18 @@
       const ver = vm.agent_version || "ok";
       return `<span class="badge-agent ok" title="guest agent ${escapeHtml(ver)}">${escapeHtml(ver)}</span>`;
     }
-    if ((vm.status || "").toLowerCase() === "running") {
+    if ((vm.status || "").toLowerCase() !== "running") {
+      return `<span class="badge-agent no">—</span>`;
+    }
+    // agent_ok false = health failed after probe grace (or non-agent image).
+    // agent_ok null/undefined = still waiting on /health (boot / grace) — not a lie about install.
+    if (vm.agent_ok === false) {
+      if (imageHasAgent(vm)) {
+        return `<span class="badge-agent no error agent-tip" title="guest agent not responding — try grain agent deploy ${escapeHtml(vm.name)}">not responding</span>`;
+      }
       return `<span class="badge-agent no error agent-tip" title="grain agent deploy ${escapeHtml(vm.name)} to install guest-agent">not installed</span>`;
     }
-    return `<span class="badge-agent no">—</span>`;
+    return `<span class="badge-agent muted" title="waiting for guest agent /health">checking…</span>`;
   }
 
   function updateBulkBar() {
@@ -594,7 +602,12 @@
   }
 
   function agentLabel(vm) {
-    if (!imageHasAgent(vm)) return "n/a (image has no guest agent)";
+    if (!imageHasAgent(vm)) {
+      if (vm.agent_ok === true) return vm.agent_version ? `ok · ${vm.agent_version}` : "ok";
+      if (isRunning(vm.status) && vm.agent_ok === false) return "not installed (use Install / update agent)";
+      if (isRunning(vm.status)) return "checking…";
+      return "n/a (image has no guest agent)";
+    }
     if (vm.agent_ok === true) return vm.agent_version ? `ok · ${vm.agent_version}` : "ok";
     if (vm.agent_ok === false) return "not responding (use Install / update agent)";
     if (isRunning(vm.status)) return "checking…";
@@ -1323,8 +1336,9 @@
       const vm = await call("GetSandbox", name);
       const fromList = state.sandboxes.find((s) => s.name === name);
       if (fromList) {
-        if (vm.agent_ok == null && fromList.agent_ok != null) vm.agent_ok = fromList.agent_ok;
-        if (!vm.agent_version && fromList.agent_version) vm.agent_version = fromList.agent_version;
+        // Prefer this GetSandbox probe for agent_ok (includes "checking" as null).
+        if (!vm.agent_version && fromList.agent_version && vm.agent_ok === true)
+          vm.agent_version = fromList.agent_version;
         if (!vm.agent_checked_at && fromList.agent_checked_at) vm.agent_checked_at = fromList.agent_checked_at;
         if (!vm.disk_gb && fromList.disk_gb) vm.disk_gb = fromList.disk_gb;
         if (vm.has_agent_image == null && fromList.has_agent_image != null)
@@ -1397,10 +1411,11 @@
         const vm = state.sandboxes.find((s) => s.name === state.selected);
         if (vm) {
           // Keep richer fields from last GetSandbox when list is thinner.
+          // Do not sticky-copy agent_ok: list probe is authoritative (null = checking).
           if (state._selectedVM && state._selectedVM.name === vm.name) {
             const prev = state._selectedVM;
-            if (vm.agent_ok == null && prev.agent_ok != null) vm.agent_ok = prev.agent_ok;
-            if (!vm.agent_version && prev.agent_version) vm.agent_version = prev.agent_version;
+            if (!vm.agent_version && prev.agent_version && vm.agent_ok === true)
+              vm.agent_version = prev.agent_version;
             if (!vm.created_at && prev.created_at) vm.created_at = prev.created_at;
             if (!vm.network && prev.network) vm.network = prev.network;
             if (!vm.arch && prev.arch) vm.arch = prev.arch;

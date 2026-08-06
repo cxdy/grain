@@ -74,7 +74,7 @@ a:hover { text-decoration: underline; }
 .status-ok, .badge-agent.ok, .badge-status.running { color: var(--brand); background: var(--brand-soft); }
 .status-err, .badge-agent.no.error, .badge-status.error { color: var(--danger); background: var(--danger-soft); }
 .status-warn, .badge-status.creating { color: var(--warn); background: var(--warn-soft); }
-.status-muted, .badge-status.stopped, .badge-status.suspended { color: var(--muted); background: var(--bg-soft); }
+.status-muted, .badge-status.stopped, .badge-status.suspended, .badge-agent.muted { color: var(--muted); background: var(--bg-soft); }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;

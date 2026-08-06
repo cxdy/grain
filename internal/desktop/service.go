@@ -265,15 +265,7 @@ func (s *Service) ListSandboxes(ctx context.Context) ([]Sandbox, error) {
 			}
 		}
 		if inst.Status == client.StatusRunning {
-			actx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
-			h, aerr := c.AgentHealth(actx, inst.Name)
-			cancel()
-			ok := aerr == nil
-			sb.AgentOK = &ok
-			sb.AgentCheckedAt = checkedAt
-			if h != nil && h.AgentVersion != "" {
-				sb.AgentVersion = h.AgentVersion
-			}
+			applyAgentProbe(ctx, c, &sb, inst.Name, checkedAt)
 		}
 		out = append(out, sb)
 	}
@@ -547,15 +539,7 @@ func (s *Service) GetSandbox(ctx context.Context, name string) (*Sandbox, error)
 		}
 	}
 	if inst.Status == client.StatusRunning {
-		actx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
-		h, aerr := c.AgentHealth(actx, name)
-		cancel()
-		ok := aerr == nil
-		sb.AgentOK = &ok
-		sb.AgentCheckedAt = time.Now().UTC().Format(time.RFC3339)
-		if h != nil && h.AgentVersion != "" {
-			sb.AgentVersion = h.AgentVersion
-		}
+		applyAgentProbe(ctx, c, &sb, name, time.Now().UTC().Format(time.RFC3339))
 	}
 	return &sb, nil
 }
@@ -818,4 +802,58 @@ func ImageSupportsAgent(imageID string) bool {
 		return false
 	}
 	return strings.HasPrefix(id, "grain-ubuntu")
+}
+
+// agentProbeGrace is how long after CreatedAt a failed health check stays
+// "still probing" (AgentOK omitted) for agent-capable images. Avoids Desktop
+// flashing "not installed" while the guest is still booting to grain-agent.
+const agentProbeGrace = 2 * time.Minute
+
+// applyAgentProbe sets AgentOK / AgentVersion / AgentCheckedAt on a running sandbox.
+//
+//   - success → AgentOK=true
+//   - failure on non-agent image → AgentOK=false (need deploy or no agent)
+//   - failure on agent image within grace of CreatedAt → leave AgentOK unset (UI: checking…)
+//   - failure on agent image after grace → AgentOK=false
+func applyAgentProbe(ctx context.Context, c *client.Client, sb *Sandbox, name, checkedAt string) {
+	if sb == nil || c == nil {
+		return
+	}
+	actx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
+	h, aerr := c.AgentHealth(actx, name)
+	cancel()
+	sb.AgentCheckedAt = checkedAt
+	if aerr == nil {
+		ok := true
+		sb.AgentOK = &ok
+		if h != nil && h.AgentVersion != "" {
+			sb.AgentVersion = h.AgentVersion
+		}
+		return
+	}
+	// Probe failed.
+	if !sb.HasAgentImage {
+		ok := false
+		sb.AgentOK = &ok
+		return
+	}
+	// Agent-capable image: during early boot treat as still checking, not "not installed".
+	if withinAgentProbeGrace(sb.CreatedAt, time.Now()) {
+		sb.AgentOK = nil
+		return
+	}
+	ok := false
+	sb.AgentOK = &ok
+}
+
+func withinAgentProbeGrace(createdAtRFC3339 string, now time.Time) bool {
+	if strings.TrimSpace(createdAtRFC3339) == "" {
+		// Unknown age — prefer "checking" over a false negative for agent images.
+		return true
+	}
+	t, err := time.Parse(time.RFC3339, createdAtRFC3339)
+	if err != nil {
+		return true
+	}
+	return now.Sub(t) < agentProbeGrace
 }
