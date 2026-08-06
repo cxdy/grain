@@ -38,9 +38,15 @@ check_updates: true          # stderr note when a newer GitHub Release exists (C
 mcp:
   enabled: false             # true = grain up starts MCP Streamable HTTP
   listen: 127.0.0.1:7476     # MCP endpoint http://LISTEN/mcp
+
+warm_pool:
+  template: ""               # persistent stopped/suspended golden (e.g. after grain suspend)
+  size: 0                    # ready pre-clones to keep (0–32; 0 = disabled)
 ```
 
 Or one-shot: `grain up --mcp`. Stdio for IDE hosts: `grain mcp`. See [MCP server](../../mcp/).
+
+**Warm pool:** set `template` + `size` > 0, then `grain pool fill` (or restart the daemon — fill runs in the background). Claim with `grain new --from-pool` / `grain pool claim`. Members are suspended/stopped clones (disk only). See [lifecycle](../../guides/lifecycle/).
 
 Upgrade notices (not `grain update` itself) can also be disabled with env:
 

@@ -22,7 +22,9 @@ import (
 type CreateRequest struct {
 	Name string `json:"name,omitempty"`
 	// From spawns from a stopped/suspended template (clone + start; -loadvm when snapshotted).
-	From           string             `json:"from,omitempty"`
+	From string `json:"from,omitempty"`
+	// FromPool claims a warm-pool member and starts it (mutually exclusive with From).
+	FromPool       bool               `json:"from_pool,omitempty"`
 	Persistent     bool               `json:"persistent"`
 	CPUs           int                `json:"cpus,omitempty"`
 	MemoryMB       int                `json:"memory_mb,omitempty"`
@@ -40,6 +42,20 @@ type CreateRequest struct {
 	Wait string `json:"-"`
 	// Timeout is an optional Go duration string for create readiness (e.g. "30s").
 	Timeout string `json:"-"`
+}
+
+// PoolStatus is GET /pool.
+type PoolStatus struct {
+	Enabled  bool     `json:"enabled"`
+	Template string   `json:"template,omitempty"`
+	Desired  int      `json:"desired"`
+	Ready    int      `json:"ready"`
+	Members  []string `json:"members,omitempty"`
+}
+
+// PoolClaimRequest is POST /pool/claim body.
+type PoolClaimRequest struct {
+	Name string `json:"name,omitempty"`
 }
 
 // createVMsURL builds POST /vms with stream, wait, and timeout query params.
@@ -327,6 +343,97 @@ func (c *Client) Restore(ctx context.Context, name string) (*vm.Instance, error)
 		return nil, err
 	}
 	return &inst, nil
+}
+
+// PoolStatus returns warm-pool inventory (GET /pool).
+func (c *Client) PoolStatus(ctx context.Context) (*PoolStatus, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Base+"/pool", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var st PoolStatus
+	if err := json.NewDecoder(res.Body).Decode(&st); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// PoolFill clones template until ready == warm_pool.size (POST /pool/fill).
+func (c *Client) PoolFill(ctx context.Context) (*PoolStatus, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/pool/fill", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var st PoolStatus
+	if err := json.NewDecoder(res.Body).Decode(&st); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// PoolClaim renames a ready member and starts it (POST /pool/claim).
+func (c *Client) PoolClaim(ctx context.Context, name string) (*vm.Instance, error) {
+	b, err := json.Marshal(PoolClaimRequest{Name: name})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/pool/claim", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var inst vm.Instance
+	if err := json.NewDecoder(res.Body).Decode(&inst); err != nil {
+		return nil, err
+	}
+	return &inst, nil
+}
+
+// PoolDrain deletes all warm-pool members (POST /pool/drain).
+func (c *Client) PoolDrain(ctx context.Context) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/pool/drain", nil)
+	if err != nil {
+		return 0, err
+	}
+	res, err := c.http().Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return 0, decodeAPIError(res)
+	}
+	var out struct {
+		Drained int `json:"drained"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return 0, err
+	}
+	return out.Drained, nil
 }
 
 // AddForwardRequest is the JSON body for POST /vms/{name}/forwards.

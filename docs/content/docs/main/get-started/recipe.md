@@ -109,9 +109,9 @@ In-repo under [`recipes/`](https://github.com/cxdy/grain/tree/main/recipes) (ind
 
 **Download counts (no extra infra):** when recipe bundles ship as GitHub Release assets, use the Releases API `download_count` per asset (`gh api repos/cxdy/grain/releases` / browser on the release page). The catalog itself is git-sourced until a release pin is published.
 
-### Fast sandboxes (snapshot spawn)
+### Fast sandboxes (snapshot spawn + warm pool)
 
-Cold `grain new --wait agent` is ~seconds (guest boot). For sub-second labs:
+Cold `grain new --wait agent` is ~seconds (guest boot). For fast labs:
 
 ```bash
 # One-time template
@@ -119,12 +119,22 @@ grain new -i grain-ubuntu -n golden -p --wait agent
 # ... optional setup ...
 grain suspend golden          # qcow2 savevm grain-suspend when possible
 
-# Fast copies (clone disk + -loadvm when snapshotted)
+# On-demand fast copies (clone disk + -loadvm when snapshotted)
 grain new --from golden -n work1
 grain new --from golden -n work2
+
+# Warm pool: pre-clone suspended members, claim without re-cloning
+# ~/.grain/config.yaml:
+#   warm_pool:
+#     template: golden
+#     size: 2
+grain pool fill
+grain new --from-pool -n work3   # or: grain pool claim -n work3
+grain pool status
 ```
 
-API: `POST /vms` with `{"from":"golden","name":"work1","persistent":true}`.
+API: `POST /vms` with `{"from":"golden","name":"work1"}` or `{"from_pool":true,"name":"work3"}`.
+Also `GET /pool`, `POST /pool/fill|claim|drain`. See [lifecycle](../guides/lifecycle/).
 
 **Desktop:** **Recipes** tab → Import file / URL / Browse official → Edit YAML (valid-only save) → **Deploy…** (name override + wait until ready).
 

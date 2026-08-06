@@ -52,6 +52,12 @@ type Manager struct {
 	createMu sync.Mutex
 	creating map[string]struct{}
 
+	// poolMu serializes warm-pool fill/claim/drain so concurrent claims do not
+	// hand out the same pre-cloned member.
+	poolMu sync.Mutex
+	// poolBG tracks async refill goroutines (claim path); WaitPoolBackground for tests.
+	poolBG sync.WaitGroup
+
 	// overlayWarnOnce emits a single multi-tenant isolation warning per Manager
 	// when any VM is created with network: overlay.
 	overlayWarnOnce sync.Once
