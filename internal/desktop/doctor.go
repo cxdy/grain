@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/cxdy/grain/internal/hostbin"
@@ -155,4 +156,53 @@ func DoctorSummary(checks []DoctorCheck) (pass, fail int) {
 		}
 	}
 	return pass, fail
+}
+
+// RepairResult is output from a safe Doctor repair command.
+type RepairResult struct {
+	Command string `json:"command"`
+	OK      bool   `json:"ok"`
+	Output  string `json:"output"`
+}
+
+// allowedRepairCommands are the only commands Doctor may execute.
+var allowedRepairCommands = map[string][]string{
+	"grain up":      {"up"},
+	"grain up --mcp": {"up", "--mcp"},
+}
+
+// DoctorRepair runs an allowlisted repair command via the grain binary on PATH.
+func DoctorRepair(ctx context.Context, command string, runner CommandRunner) (RepairResult, error) {
+	cmd := strings.TrimSpace(command)
+	args, ok := allowedRepairCommands[cmd]
+	if !ok {
+		// Also accept bare forms without "grain " prefix
+		if a, ok2 := allowedRepairCommands["grain "+cmd]; ok2 {
+			args = a
+			cmd = "grain " + cmd
+			ok = true
+		}
+	}
+	if !ok {
+		return RepairResult{Command: cmd}, fmt.Errorf("repair not allowed for %q (only: grain up, grain up --mcp)", command)
+	}
+	if runner == nil {
+		runner = ExecRunner{}
+	}
+	grain, err := runner.LookPath("grain")
+	if err != nil {
+		return RepairResult{Command: cmd}, fmt.Errorf("grain not on PATH")
+	}
+	// Use StartBackground for long-lived grain up; capture is limited — run via exec for output.
+	out, err := exec.CommandContext(ctx, grain, args...).CombinedOutput()
+	res := RepairResult{Command: cmd, Output: strings.TrimSpace(string(out))}
+	if err != nil {
+		res.OK = false
+		if res.Output == "" {
+			res.Output = err.Error()
+		}
+		return res, fmt.Errorf("%s: %w", res.Output, err)
+	}
+	res.OK = true
+	return res, nil
 }

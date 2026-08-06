@@ -50,3 +50,22 @@ func TestRunDoctorChecksMissingDataDir(t *testing.T) {
 		t.Fatal("expected data dir failure")
 	}
 }
+
+func TestDoctorRepairRejectsUnknown(t *testing.T) {
+	_, err := DoctorRepair(context.Background(), "rm -rf /", nil)
+	if err == nil {
+		t.Fatal("want reject")
+	}
+}
+
+func TestImageVersionLabel(t *testing.T) {
+	if imageVersionLabel("x", false) != "" {
+		t.Fatal("not ready")
+	}
+	if imageVersionLabel("grain-ubuntu", true) != "24.04" {
+		t.Fatal(imageVersionLabel("grain-ubuntu", true))
+	}
+	if imageVersionLabel("custom", true) != "installed" {
+		t.Fatal(imageVersionLabel("custom", true))
+	}
+}

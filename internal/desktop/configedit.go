@@ -3,6 +3,7 @@ package desktop
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/names"
+	"gopkg.in/yaml.v3"
 )
 
 // ValidateSandboxName checks VM names (same rules as the daemon).
@@ -98,6 +100,126 @@ type SaveConfigResult struct {
 	Path            string `json:"path"`
 	DaemonRestarted bool   `json:"daemon_restarted"`
 	Message         string `json:"message"`
+}
+
+// TokenActionResult is returned after generate/revoke of api_token.
+type TokenActionResult struct {
+	Token   string `json:"token,omitempty"` // only on generate, show once
+	Message string `json:"message"`
+	HasToken bool  `json:"has_token"`
+}
+
+// GenerateAPIToken creates a new random token, writes api_token to config, returns plaintext once.
+func GenerateAPIToken(configPath string) (TokenActionResult, error) {
+	var res TokenActionResult
+	tok, err := randomToken(32)
+	if err != nil {
+		return res, err
+	}
+	if err := setConfigStringKey(configPath, "api_token", tok); err != nil {
+		return res, err
+	}
+	res.Token = tok
+	res.HasToken = true
+	res.Message = "API token written to config — copy it now; it will not be shown again"
+	return res, nil
+}
+
+// RevokeAPIToken clears api_token (and auth_token) in config.
+func RevokeAPIToken(configPath string) (TokenActionResult, error) {
+	var res TokenActionResult
+	if err := deleteConfigKeys(configPath, "api_token", "auth_token"); err != nil {
+		return res, err
+	}
+	res.HasToken = false
+	res.Message = "API token removed from config"
+	return res, nil
+}
+
+func randomToken(n int) (string, error) {
+	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, n)
+	if _, err := randRead(b); err != nil {
+		return "", err
+	}
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return string(b), nil
+}
+
+func randRead(b []byte) (int, error) {
+	return rand.Read(b)
+}
+
+func setConfigStringKey(configPath, key, value string) error {
+	if configPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		configPath = filepath.Join(home, ".grain", "config.yaml")
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var doc map[string]interface{}
+	if len(raw) > 0 {
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return err
+		}
+	}
+	if doc == nil {
+		doc = map[string]interface{}{}
+	}
+	doc[key] = value
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		return err
+	}
+	if !strings.HasSuffix(string(out), "\n") {
+		out = append(out, '\n')
+	}
+	return os.WriteFile(configPath, out, 0o600)
+}
+
+func deleteConfigKeys(configPath string, keys ...string) error {
+	if configPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		configPath = filepath.Join(home, ".grain", "config.yaml")
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var doc map[string]interface{}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return err
+	}
+	if doc == nil {
+		return nil
+	}
+	for _, k := range keys {
+		delete(doc, k)
+	}
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	if !strings.HasSuffix(string(out), "\n") {
+		out = append(out, '\n')
+	}
+	return os.WriteFile(configPath, out, 0o600)
 }
 
 // SaveConfigFile validates content, writes path (0600), and restarts the local daemon

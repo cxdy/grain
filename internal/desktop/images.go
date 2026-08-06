@@ -16,6 +16,8 @@ type ImageInfo struct {
 	LocalOnly   bool   `json:"local_only"`
 	HasAgent    bool   `json:"has_agent"`
 	Pullable    bool   `json:"pullable"`
+	// Version is a short installed label when ready, else empty (UI shows —).
+	Version string `json:"version,omitempty"`
 }
 
 // ListImages returns catalog entries with ready status under dataDir.
@@ -31,13 +33,15 @@ func ListImages(dataDir string) []ImageInfo {
 	seen := map[string]struct{}{}
 	for _, id := range ids {
 		spec := cat[id]
+		ready := m.Ready(id)
 		out = append(out, ImageInfo{
 			ID:          id,
 			Description: spec.Description,
-			Ready:       m.Ready(id),
+			Ready:       ready,
 			LocalOnly:   spec.LocalOnly,
 			HasAgent:    m.ImageHasAgent(id),
 			Pullable:    !spec.LocalOnly && spec.URL != "",
+			Version:     imageVersionLabel(id, ready),
 		})
 		seen[id] = struct{}{}
 	}
@@ -54,9 +58,27 @@ func ListImages(dataDir string) []ImageInfo {
 			LocalOnly:   true,
 			HasAgent:    m.ImageHasAgent(id),
 			Pullable:    false,
+			Version:     "installed",
 		})
 	}
 	return out
+}
+
+func imageVersionLabel(id string, ready bool) string {
+	if !ready {
+		return ""
+	}
+	// Known catalog version strings (honest labels when on disk).
+	switch id {
+	case "ubuntu-cloud", "grain-ubuntu":
+		return "24.04"
+	case "alpine-cloud":
+		return "3.24"
+	case "grain-ubuntu-fc", "fc-kernel":
+		return "fc"
+	default:
+		return "installed"
+	}
 }
 
 // PullImage downloads a catalog image into dataDir (local host).

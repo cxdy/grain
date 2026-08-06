@@ -45,6 +45,30 @@ func TestCheckConfigContentUnknownKey(t *testing.T) {
 	}
 }
 
+func TestGenerateAndRevokeAPIToken(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("hypervisor: qemu\napi: 127.0.0.1:7474\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := GenerateAPIToken(path)
+	if err != nil || res.Token == "" || !res.HasToken {
+		t.Fatalf("%+v %v", res, err)
+	}
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), "api_token:") {
+		t.Fatalf("%s", b)
+	}
+	res2, err := RevokeAPIToken(path)
+	if err != nil || res2.HasToken {
+		t.Fatalf("%+v %v", res2, err)
+	}
+	b2, _ := os.ReadFile(path)
+	if strings.Contains(string(b2), "api_token:") {
+		t.Fatalf("token still present: %s", b2)
+	}
+}
+
 func TestSaveConfigTrailingNewline(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

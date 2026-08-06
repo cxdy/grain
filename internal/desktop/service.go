@@ -56,7 +56,9 @@ type HealthStatus struct {
 	Local      bool   `json:"local"`
 	Message    string `json:"message"`
 	API        string `json:"api,omitempty"`
-	WarnHTTP   bool   `json:"warn_cleartext_http"`
+	// Version is daemon/grain version from GET /info when healthy.
+	Version  string `json:"version,omitempty"`
+	WarnHTTP bool   `json:"warn_cleartext_http"`
 }
 
 // Service is the Desktop backend: dials the grain API and applies local policy.
@@ -172,6 +174,16 @@ func (s *Service) Health(ctx context.Context) (HealthStatus, error) {
 	}
 	st.Healthy = true
 	st.Message = "ok"
+	if c, err := s.ensureClient(); err == nil {
+		if info, err := c.Info(ctx); err == nil && info != nil {
+			if v := strings.TrimSpace(info["version"]); v != "" {
+				if !strings.HasPrefix(v, "v") {
+					v = "v" + v
+				}
+				st.Version = v
+			}
+		}
+	}
 	return st, nil
 }
 

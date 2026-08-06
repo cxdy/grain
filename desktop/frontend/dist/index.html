@@ -12,7 +12,6 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <!-- Splash -->
     <div id="splash" class="splash" hidden>
       <div class="splash-card">
         <img class="logo" src="./logo.png" width="64" height="64" alt="Grain" />
@@ -22,64 +21,82 @@
       </div>
     </div>
 
-    <!-- Shell-only window -->
     <div id="shell-only" class="shell-only" hidden>
       <header class="shell-only-bar">
         <img class="logo sm" src="./logo.png" width="20" height="20" alt="" />
         <strong id="shell-only-title">Shell</strong>
-        <button type="button" class="btn-icon" id="shell-only-reconnect" title="Reconnect">↻</button>
+        <button type="button" class="btn-icon" id="shell-only-reconnect" title="Reconnect" aria-label="Reconnect">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M20 4v5h-5M4 20v-5h5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+        </button>
       </header>
       <div id="xterm-only" class="xterm-host fill"></div>
     </div>
 
     <div id="app" class="app" hidden>
-      <!-- Top bar -->
-      <header class="topbar">
-        <div class="topbar-brand">
+      <header class="topbar no-select">
+        <div class="topbar-brand no-select">
           <img class="logo sm" src="./logo.png" width="26" height="26" alt="" />
           <span class="brand-title">Grain</span>
         </div>
-        <label class="host-select">
-          <span class="label-quiet">Host</span>
-          <select id="conn-select" aria-label="Host connection"></select>
-        </label>
-        <div class="health-pill" id="health-pill" title="Daemon health">
-          <span id="health-dot" class="dot"></span>
-          <span id="health-label">—</span>
+
+        <!-- Custom host menu -->
+        <div class="host-menu" id="host-menu">
+          <button type="button" class="host-btn" id="host-btn" aria-haspopup="listbox" aria-expanded="false">
+            <span id="host-btn-label">Host</span>
+            <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+          </button>
+          <div class="host-popover" id="host-popover" hidden role="listbox">
+            <div class="host-section-label">Available</div>
+            <div id="host-available"></div>
+            <div class="host-section-label" id="host-unavail-label" hidden>Unavailable</div>
+            <div id="host-unavailable"></div>
+            <div class="host-divider"></div>
+            <button type="button" class="host-item action" id="host-add">Add host…</button>
+          </div>
         </div>
+
+        <div class="health-pill" id="health-pill">
+          <span id="health-dot" class="dot"></span>
+          <span id="health-label" class="selectable">—</span>
+        </div>
+
         <div class="topbar-spacer"></div>
-        <a class="docs-link" href="https://grainvm.com" target="_blank" rel="noreferrer">Docs</a>
-        <button type="button" class="btn-icon" id="btn-activity" title="Activity" aria-label="Activity">
-          🔔<span id="activity-badge" class="badge-count" hidden>0</span>
+
+        <button type="button" class="btn btn-primary btn-sm" id="btn-new" hidden>New sandbox</button>
+
+        <button type="button" class="btn-icon" id="btn-doctor" title="Doctor" aria-label="Doctor">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 7h8M9 12h6M10 17h4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><rect x="5" y="4" width="14" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
         </button>
-        <button type="button" class="btn-icon" id="btn-theme" title="Theme" aria-label="Toggle theme"><span id="theme-icon">☀</span></button>
-        <button type="button" class="btn btn-ghost" id="btn-refresh" title="Refresh current view">Refresh</button>
+
+        <button type="button" class="btn-icon" id="btn-activity" title="Activity" aria-label="Activity">
+          <svg class="ico bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v2.5c0 .8-.3 1.5-.8 2.1L5 14.5h14l-1.2-1.9c-.5-.6-.8-1.3-.8-2.1V8a5 5 0 0 0-5-5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10 18a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <span id="activity-badge" class="badge-count" hidden>0</span>
+        </button>
+
+        <button type="button" class="btn-icon" id="btn-theme" title="Theme" aria-label="Theme">
+          <span id="theme-icon">☀</span>
+        </button>
+
+        <a class="docs-link" href="https://grainvm.com" target="_blank" rel="noreferrer">Docs</a>
       </header>
 
       <div class="body-layout">
-        <!-- Sidebar -->
-        <nav class="sidebar" aria-label="Primary">
+        <nav class="sidebar no-select" aria-label="Primary">
           <button type="button" class="nav-item active" data-view="sandboxes">Sandboxes</button>
           <button type="button" class="nav-item" data-view="images">Images</button>
-          <button type="button" class="nav-item" data-view="mcp">MCP</button>
-          <button type="button" class="nav-item" data-view="doctor">Doctor</button>
           <button type="button" class="nav-item" data-view="settings">Settings</button>
         </nav>
 
-        <!-- Main + inspector -->
         <div class="content-row">
           <main class="main" id="main">
             <!-- Sandboxes -->
             <section id="view-sandboxes" class="view">
               <div class="view-head">
                 <h2>Sandboxes</h2>
-                <div class="view-head-actions">
-                  <div id="bulk-bar" class="bulk-bar" hidden>
-                    <button type="button" class="btn btn-ghost btn-sm" id="bulk-start">Start</button>
-                    <button type="button" class="btn btn-ghost btn-sm" id="bulk-stop">Stop</button>
-                    <button type="button" class="btn btn-danger-ghost btn-sm" id="bulk-rm">Remove</button>
-                  </div>
-                  <button type="button" class="btn btn-primary" id="btn-new">New sandbox</button>
+                <div id="bulk-bar" class="bulk-bar" hidden>
+                  <button type="button" class="btn btn-ghost btn-sm" id="bulk-start">Start</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="bulk-stop">Stop</button>
+                  <button type="button" class="btn btn-danger-ghost btn-sm" id="bulk-rm">Remove</button>
                 </div>
               </div>
               <div class="table-wrap">
@@ -97,6 +114,37 @@
                   <tbody id="vm-tbody"></tbody>
                 </table>
               </div>
+
+              <!-- Center workspace when sandbox selected -->
+              <div id="workspace" class="workspace" hidden>
+                <div class="workspace-tabs" role="tablist">
+                  <button type="button" class="ws-tab active" data-tab="overview" role="tab">Overview</button>
+                  <button type="button" class="ws-tab" data-tab="shell" role="tab">Shell</button>
+                  <button type="button" class="ws-tab" data-tab="logs" role="tab">Logs</button>
+                </div>
+                <div id="tab-overview" class="tab-panel" role="tabpanel">
+                  <dl class="meta" id="detail-meta"></dl>
+                </div>
+                <div id="tab-shell" class="tab-panel" role="tabpanel" hidden>
+                  <div class="shell-toolbar">
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-shell-reconnect">Reconnect</button>
+                    <button type="button" class="btn-icon" id="btn-shell-pop" title="Open in new window" aria-label="Open in new window">
+                      <svg class="ico" viewBox="0 0 24 24"><path d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6v6M10 14L20 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    </button>
+                  </div>
+                  <div id="xterm" class="xterm-host"></div>
+                </div>
+                <div id="tab-logs" class="tab-panel" role="tabpanel" hidden>
+                  <div class="btn-row mb">
+                    <select id="log-source" class="input sm">
+                      <option value="serial">serial.log</option>
+                      <option value="qemu">qemu log</option>
+                    </select>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-reload-logs">Reload</button>
+                  </div>
+                  <pre id="log-view" class="log-view selectable"></pre>
+                </div>
+              </div>
             </section>
 
             <!-- Images -->
@@ -105,114 +153,96 @@
               <div class="table-wrap">
                 <table class="data-table">
                   <thead>
-                    <tr><th>ID</th><th>Status</th><th>Agent</th><th>Description</th><th></th></tr>
+                    <tr><th>ID</th><th>Status</th><th>Version</th><th>Agent</th><th>Description</th><th></th></tr>
                   </thead>
                   <tbody id="images-tbody"></tbody>
                 </table>
               </div>
             </section>
 
-            <!-- MCP -->
-            <section id="view-mcp" class="view" hidden>
-              <div class="view-head"><h2>MCP</h2></div>
-              <div class="panel">
-                <div class="panel-row">
-                  <div>
-                    <div class="panel-label">Status</div>
-                    <div id="mcp-status-text" class="panel-value">—</div>
-                  </div>
-                  <span id="mcp-pill" class="status-pill">—</span>
-                </div>
-                <div class="panel-row">
-                  <div>
-                    <div class="panel-label">Listen</div>
-                    <div id="mcp-listen" class="panel-value mono">—</div>
-                  </div>
-                </div>
-                <div class="form-row mt">
-                  <label class="check-label">
-                    <input type="checkbox" id="mcp-enabled" />
-                    Enable MCP in config
-                  </label>
-                </div>
-                <div class="form-row">
-                  <label class="field">
-                    <span>Listen address</span>
-                    <input type="text" id="mcp-listen-input" class="input" placeholder="127.0.0.1:7476" />
-                  </label>
-                </div>
-                <div class="btn-row">
-                  <button type="button" class="btn btn-primary" id="mcp-save">Save config</button>
-                  <button type="button" class="btn btn-ghost" id="mcp-ensure">Ensure running</button>
-                </div>
-                <p class="hint" id="mcp-hint">Local only: Desktop can start MCP with <code>grain up --mcp</code>.</p>
-                <div class="snippet-block">
-                  <div class="snippet-head"><span>Cursor</span><button type="button" class="btn btn-ghost btn-sm" data-copy="mcp-cursor">Copy</button></div>
-                  <pre id="mcp-cursor" class="snippet selectable"></pre>
-                </div>
-                <div class="snippet-block">
-                  <div class="snippet-head"><span>Claude</span><button type="button" class="btn btn-ghost btn-sm" data-copy="mcp-claude">Copy</button></div>
-                  <pre id="mcp-claude" class="snippet selectable"></pre>
-                </div>
-                <div class="snippet-block">
-                  <div class="snippet-head"><span>Generic</span><button type="button" class="btn btn-ghost btn-sm" data-copy="mcp-generic">Copy</button></div>
-                  <pre id="mcp-generic" class="snippet selectable"></pre>
-                </div>
-              </div>
-            </section>
-
-            <!-- Doctor -->
-            <section id="view-doctor" class="view" hidden>
-              <div class="view-head">
-                <h2>Doctor</h2>
-                <button type="button" class="btn btn-ghost" id="btn-doctor-run">Run checks</button>
-              </div>
-              <div id="doctor-list" class="doctor-list">
-                <p class="muted">Run checks to inspect host tools and daemon health.</p>
-              </div>
-            </section>
-
             <!-- Settings -->
             <section id="view-settings" class="view" hidden>
               <div class="view-head"><h2>Settings</h2></div>
-              <div class="panel">
-                <h3 class="panel-title">Preferences</h3>
+              <div class="settings-segments no-select" role="tablist">
+                <button type="button" class="seg active" data-seg="general">General</button>
+                <button type="button" class="seg" data-seg="connections">Connections</button>
+                <button type="button" class="seg" data-seg="mcp">MCP</button>
+                <button type="button" class="seg" data-seg="advanced">Advanced</button>
+              </div>
+
+              <div id="seg-general" class="panel settings-seg">
                 <form id="settings-form">
-                  <label class="field">
-                    <span>Default connection</span>
+                  <label class="field"><span>Default connection</span>
                     <select class="input" id="set-default-conn" name="default_connection"></select>
                   </label>
                   <label class="check-label">
-                    <input type="checkbox" id="set-start-local" name="start_local_daemon" />
-                    Start local daemon on launch
+                    <input type="checkbox" id="set-start-local" /> Start local daemon on launch
                   </label>
-                  <label class="field">
-                    <span>Data dir</span>
-                    <input class="input mono" id="set-data-dir" name="data_dir" spellcheck="false" />
+                  <label class="field"><span>Data dir</span>
+                    <input class="input mono selectable" id="set-data-dir" spellcheck="false" />
                   </label>
-                  <label class="field">
-                    <span>API listen (daemon)</span>
-                    <input class="input mono" id="set-api" name="api" placeholder="127.0.0.1:7474" spellcheck="false" />
+                  <label class="field"><span>API listen (daemon)</span>
+                    <input class="input mono selectable" id="set-api" placeholder="127.0.0.1:7474" spellcheck="false" />
                   </label>
-                  <label class="field">
-                    <span>API URL (client dial override)</span>
-                    <input class="input mono" id="set-api-url" name="api_url" placeholder="optional" spellcheck="false" />
+                  <label class="field"><span>API URL (client dial override)</span>
+                    <input class="input mono selectable" id="set-api-url" placeholder="optional" spellcheck="false" />
                   </label>
-                  <p class="hint" id="settings-path-hint">Config file: —</p>
+                  <h3 class="panel-title mt">API token</h3>
+                  <p class="hint" id="token-status">Token: —</p>
                   <div class="btn-row">
-                    <button type="submit" class="btn btn-primary" id="btn-settings-save">Save preferences</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-token-gen">Generate / rotate</button>
+                    <button type="button" class="btn btn-danger-ghost btn-sm" id="btn-token-revoke">Revoke</button>
+                  </div>
+                  <p id="token-once" class="token-once selectable" hidden></p>
+                  <p class="hint" id="settings-path-hint"></p>
+                  <div class="btn-row mt">
+                    <button type="submit" class="btn btn-primary">Save preferences</button>
                   </div>
                 </form>
                 <p id="settings-form-error" class="config-error" hidden></p>
+              </div>
 
-                <h3 class="panel-title mt">Connections</h3>
+              <div id="seg-connections" class="panel settings-seg" hidden>
                 <div id="connections-list" class="connections-list"></div>
-                <div class="btn-row mt-sm">
-                  <button type="button" class="btn btn-ghost" id="btn-add-host">Add host</button>
+                <div class="btn-row mt">
+                  <button type="button" class="btn btn-primary" id="btn-add-host">Add host</button>
                 </div>
+              </div>
 
-                <h3 class="panel-title mt">Advanced</h3>
-                <p class="hint">Raw <code>config.yaml</code> — validated with strict unknown-key checks before save.</p>
+              <div id="seg-mcp" class="panel settings-seg" hidden>
+                <div class="panel-row">
+                  <div>
+                    <div class="panel-label">Status</div>
+                    <div id="mcp-status-text" class="panel-value selectable">—</div>
+                  </div>
+                  <span id="mcp-pill" class="status-pill">—</span>
+                </div>
+                <label class="check-label"><input type="checkbox" id="mcp-enabled" /> Enable MCP in config</label>
+                <label class="field"><span>Listen address</span>
+                  <input class="input mono selectable" id="mcp-listen-input" placeholder="127.0.0.1:7476" />
+                </label>
+                <div class="btn-row">
+                  <button type="button" class="btn btn-primary" id="mcp-save">Save</button>
+                  <button type="button" class="btn btn-ghost" id="mcp-ensure">Ensure running</button>
+                </div>
+                <p class="hint" id="mcp-hint"></p>
+                <h3 class="panel-title mt">Agent config</h3>
+                <div class="agent-tabs no-select" role="tablist">
+                  <button type="button" class="agent-tab active" data-agent="cursor">Cursor</button>
+                  <button type="button" class="agent-tab" data-agent="claude">Claude</button>
+                  <button type="button" class="agent-tab" data-agent="generic">Generic</button>
+                </div>
+                <div class="snippet-block">
+                  <div class="snippet-head">
+                    <span id="mcp-agent-label">Cursor</span>
+                    <button type="button" class="btn btn-ghost btn-sm" id="mcp-copy">Copy</button>
+                  </div>
+                  <pre class="snippet selectable"><code id="mcp-snippet" class="language-json"></code></pre>
+                </div>
+              </div>
+
+              <div id="seg-advanced" class="panel settings-seg" hidden>
+                <p class="hint">Raw <code>config.yaml</code> — strict unknown-key validation on save.</p>
                 <div class="config-box">
                   <div class="config-box-head">
                     <span class="muted">config.yaml</span>
@@ -234,7 +264,7 @@
             </section>
           </main>
 
-          <!-- Right inspector (sandboxes) -->
+          <!-- Inspector: meta + actions only -->
           <aside id="inspector" class="inspector" hidden>
             <div class="inspector-empty" id="inspector-empty">
               <p class="muted">Select a sandbox</p>
@@ -242,12 +272,14 @@
             <div id="inspector-body" hidden>
               <div class="inspector-head">
                 <div>
-                  <strong id="detail-name">—</strong>
+                  <strong id="detail-name" class="selectable">—</strong>
                   <span id="detail-status-pill"></span>
                 </div>
-                <div class="inspector-actions" id="detail-actions">
+                <div class="inspector-actions no-select" id="detail-actions">
                   <button type="button" class="btn btn-primary btn-sm" data-act="shell">Shell</button>
-                  <button type="button" class="btn-icon" data-act="window" title="Open in new window" aria-label="Open in new window">⧉</button>
+                  <button type="button" class="btn-icon" data-act="window" title="Open in new window" aria-label="Open in new window">
+                    <svg class="ico" viewBox="0 0 24 24"><path d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6v6M10 14L20 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                  </button>
                   <button type="button" class="btn btn-ghost btn-sm" data-act="start" id="btn-start">Start</button>
                   <button type="button" class="btn btn-ghost btn-sm" data-act="stop" id="btn-stop" hidden>Stop</button>
                   <div class="dropdown">
@@ -255,38 +287,14 @@
                     <ul class="dropdown-menu" id="more-menu">
                       <li><button type="button" class="dropdown-item" data-act="logs">Logs</button></li>
                       <li><button type="button" class="dropdown-item" data-act="edit">Config</button></li>
-                      <li><button type="button" class="dropdown-item" data-act="term">Terminal.app</button></li>
+                      <li><button type="button" class="dropdown-item" data-act="term">Open in Terminal</button></li>
                       <li class="dropdown-divider"></li>
                       <li><button type="button" class="dropdown-item danger" data-act="rm">Remove</button></li>
                     </ul>
                   </div>
                 </div>
               </div>
-              <div class="inspector-tabs" role="tablist">
-                <button type="button" class="insp-tab active" data-tab="overview" role="tab">Overview</button>
-                <button type="button" class="insp-tab" data-tab="shell" role="tab">Shell</button>
-                <button type="button" class="insp-tab" data-tab="logs" role="tab">Logs</button>
-              </div>
-              <div id="tab-overview" class="tab-panel" role="tabpanel">
-                <dl class="meta" id="detail-meta"></dl>
-              </div>
-              <div id="tab-shell" class="tab-panel" role="tabpanel" hidden>
-                <div class="shell-toolbar">
-                  <button type="button" class="btn btn-ghost btn-sm" id="btn-shell-reconnect">Reconnect</button>
-                  <button type="button" class="btn-icon" id="btn-shell-pop" title="Open in new window" aria-label="Open in new window">⧉</button>
-                </div>
-                <div id="xterm" class="xterm-host"></div>
-              </div>
-              <div id="tab-logs" class="tab-panel" role="tabpanel" hidden>
-                <div class="btn-row mb">
-                  <select id="log-source" class="input sm">
-                    <option value="serial">serial.log</option>
-                    <option value="qemu">qemu log</option>
-                  </select>
-                  <button type="button" class="btn btn-ghost btn-sm" id="btn-reload-logs">Reload</button>
-                </div>
-                <pre id="log-view" class="log-view selectable"></pre>
-              </div>
+              <dl class="meta insp-meta" id="inspector-meta"></dl>
             </div>
           </aside>
         </div>
@@ -296,7 +304,7 @@
     <!-- Activity drawer -->
     <div id="activity-drawer" class="drawer" hidden>
       <div class="drawer-panel">
-        <div class="drawer-head">
+        <div class="drawer-head no-select">
           <strong>Activity</strong>
           <div class="btn-row">
             <button type="button" class="btn btn-ghost btn-sm" id="btn-activity-clear">Clear</button>
@@ -309,19 +317,17 @@
 
     <!-- Create modal -->
     <div class="modal-backdrop" id="modal-create" hidden>
-      <div class="modal" role="dialog" aria-labelledby="create-title">
-        <div class="modal-head">
-          <strong id="create-title">New sandbox</strong>
+      <div class="modal" role="dialog">
+        <div class="modal-head no-select">
+          <strong>New sandbox</strong>
           <button type="button" class="btn-icon" data-close="modal-create" aria-label="Close">×</button>
         </div>
         <form id="create-form" class="modal-body">
-          <label class="field">
-            <span>Name</span>
+          <label class="field"><span>Name</span>
             <input class="input" name="name" placeholder="auto if empty" autocomplete="off" />
             <span class="field-hint" id="name-hint">Lowercase letters, digits, hyphens; start with a letter.</span>
           </label>
-          <label class="field">
-            <span>Image</span>
+          <label class="field"><span>Image</span>
             <select class="input" name="image" id="create-image"></select>
             <input class="input mt-sm" name="image_custom" id="create-image-custom" placeholder="custom id or path" hidden />
           </label>
@@ -330,7 +336,7 @@
             <label class="field"><span>Memory (MiB)</span><input class="input" name="memory_mb" type="number" min="256" step="256" /></label>
             <label class="field"><span>Disk (GiB)</span><input class="input" name="disk_gb" type="number" min="1" /></label>
           </div>
-          <label class="check-label"><input type="checkbox" name="persistent" id="create-persistent" /> Persistent disk</label>
+          <label class="check-label"><input type="checkbox" name="persistent" /> Persistent disk</label>
           <details class="adv">
             <summary>Advanced</summary>
             <div class="field-grid mt-sm">
@@ -345,14 +351,14 @@
               </label>
             </div>
             <label class="field mt-sm"><span>Wait</span>
-              <select class="input" name="wait"><option value="auto">auto</option><option value="agent">agent</option><option value="ssh">ssh</option><option value="userdata">userdata</option><option value="bootstrap">bootstrap</option></select>
+              <select class="input" name="wait"><option value="auto">auto</option><option value="agent">agent</option><option value="ssh">ssh</option></select>
             </label>
             <label class="field"><span>Timeout</span><input class="input" name="timeout" placeholder="e.g. 3m" /></label>
             <label class="field"><span>Publish ports</span><input class="input" name="publish" placeholder="8080:80" /></label>
-            <label class="field"><span>Mounts</span><textarea class="input mono" name="mounts" rows="2" placeholder="/Users/me/proj:/work"></textarea></label>
-            <label class="field"><span>Cloud-init userdata</span><textarea class="input mono" name="userdata" rows="3"></textarea></label>
+            <label class="field"><span>Mounts</span><textarea class="input mono" name="mounts" rows="2"></textarea></label>
+            <label class="field"><span>Userdata</span><textarea class="input mono" name="userdata" rows="3"></textarea></label>
           </details>
-          <div class="modal-foot">
+          <div class="modal-foot no-select">
             <button type="button" class="btn btn-ghost" data-close="modal-create">Cancel</button>
             <button type="submit" class="btn btn-primary" id="create-submit">Create</button>
           </div>
@@ -364,31 +370,34 @@
     <!-- Host modal -->
     <div class="modal-backdrop" id="modal-host" hidden>
       <div class="modal sm" role="dialog">
-        <div class="modal-head">
-          <strong>Add host</strong>
+        <div class="modal-head no-select">
+          <strong id="host-modal-title">Add host</strong>
           <button type="button" class="btn-icon" data-close="modal-host" aria-label="Close">×</button>
         </div>
         <form id="host-form" class="modal-body">
-          <label class="field"><span>Name</span><input class="input" name="name" required /></label>
-          <label class="field"><span>API endpoint</span><input class="input" name="api" placeholder="http://127.0.0.1:7474" required /></label>
-          <label class="field"><span>API token</span><input class="input" name="token" type="password" /></label>
+          <input type="hidden" name="edit_original" id="host-edit-original" value="" />
+          <label class="field"><span>Name</span><input class="input" name="name" id="host-name" required /></label>
+          <label class="field"><span>API endpoint</span><input class="input" name="api" id="host-api" placeholder="http://127.0.0.1:7474" required /></label>
+          <label class="field"><span>API token</span><input class="input" name="token" id="host-token" type="password" /></label>
           <label class="check-label"><input type="checkbox" id="host-mcp" name="mcp_enabled" /> Remote MCP server</label>
           <div id="host-mcp-fields" hidden>
-            <label class="field"><span>MCP endpoint</span><input class="input" name="mcp_listen" placeholder="127.0.0.1:7476" /></label>
+            <label class="field"><span>MCP endpoint</span><input class="input" name="mcp_listen" id="host-mcp-listen" placeholder="127.0.0.1:7476" /></label>
           </div>
-          <div class="modal-foot">
+          <p id="host-test-result" class="hint" hidden></p>
+          <div class="modal-foot no-select">
+            <button type="button" class="btn btn-ghost" id="host-test">Test connection</button>
             <button type="button" class="btn btn-ghost" data-close="modal-host">Cancel</button>
-            <button type="submit" class="btn btn-primary">Save host</button>
+            <button type="submit" class="btn btn-primary" id="host-save" disabled>Save host</button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- Sandbox config modal -->
+    <!-- Sandbox config -->
     <div class="modal-backdrop" id="modal-sbox" hidden>
       <div class="modal sm" role="dialog">
-        <div class="modal-head">
-          <strong>Sandbox config — <span id="sbox-edit-name"></span></strong>
+        <div class="modal-head no-select">
+          <strong>Sandbox config — <span id="sbox-edit-name" class="selectable"></span></strong>
           <button type="button" class="btn-icon" data-close="modal-sbox" aria-label="Close">×</button>
         </div>
         <form id="sbox-form" class="modal-body">
@@ -399,8 +408,8 @@
           </div>
           <label class="field"><span>Image</span><input class="input" name="image" /></label>
           <label class="check-label"><input type="checkbox" name="persistent" id="sbox-p" /> Persistent</label>
-          <p class="hint">Increasing disk runs <code>qemu-img resize</code> (sandbox must be stopped). Guest FS may still need grow.</p>
-          <div class="modal-foot">
+          <p class="hint">Increasing disk runs qemu-img resize (sandbox must be stopped).</p>
+          <div class="modal-foot no-select">
             <button type="button" class="btn btn-ghost" data-close="modal-sbox">Cancel</button>
             <button type="submit" class="btn btn-primary">Save</button>
           </div>
@@ -408,12 +417,33 @@
       </div>
     </div>
 
-    <!-- Confirm -->
+    <!-- Doctor modal -->
+    <div class="modal-backdrop" id="modal-doctor" hidden>
+      <div class="modal" role="dialog">
+        <div class="modal-head no-select">
+          <strong>Doctor</strong>
+          <button type="button" class="btn-icon" data-close="modal-doctor" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="btn-row mb">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-doctor-run">Run checks</button>
+          </div>
+          <div id="doctor-list" class="doctor-list">
+            <p class="muted">Run checks to inspect host tools and daemon health.</p>
+          </div>
+          <pre id="doctor-repair-out" class="log-view selectable" hidden></pre>
+        </div>
+        <div class="modal-foot no-select">
+          <button type="button" class="btn btn-ghost" data-close="modal-doctor">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-backdrop" id="modal-confirm" hidden>
       <div class="modal sm" role="dialog">
         <div class="modal-body">
-          <p id="confirm-msg"></p>
-          <div class="modal-foot">
+          <p id="confirm-msg" class="selectable"></p>
+          <div class="modal-foot no-select">
             <button type="button" class="btn btn-ghost" id="confirm-later">Later</button>
             <button type="button" class="btn btn-primary" id="confirm-yes">Yes</button>
           </div>
@@ -421,12 +451,13 @@
       </div>
     </div>
 
-    <div id="toast" class="toast" hidden></div>
+    <div id="toast" class="toast selectable" hidden></div>
 
     <script src="./vendor/xterm.js"></script>
     <script src="./vendor/addon-fit.js"></script>
     <script src="./vendor/highlight.min.js"></script>
     <script src="./vendor/languages/yaml.min.js"></script>
+    <script src="./vendor/languages/json.min.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

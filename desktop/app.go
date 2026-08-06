@@ -598,3 +598,72 @@ func (a *App) EnsureMCPLocal() (desktop.MCPStatus, error) {
 	}
 	return st, nil
 }
+
+// ProbeHosts returns reachability for all configured connections.
+func (a *App) ProbeHosts() ([]desktop.HostProbe, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dial := svc.Dial
+	if dial == nil {
+		dial = desktop.DialConnection
+	}
+	return desktop.ProbeConnections(ctx, svc.Config, dial), nil
+}
+
+// TestHostConnection probes an explicit API endpoint (Settings add/edit).
+func (a *App) TestHostConnection(api, token string) (desktop.HostProbe, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return desktop.TestConnection(ctx, api, token)
+}
+
+// GenerateAPIToken rotates api_token in config and returns it once.
+func (a *App) GenerateAPIToken() (desktop.TokenActionResult, error) {
+	a.mu.Lock()
+	path := a.configPath
+	a.mu.Unlock()
+	res, err := desktop.GenerateAPIToken(path)
+	if err != nil {
+		return res, err
+	}
+	_ = a.reloadService()
+	return res, nil
+}
+
+// RevokeAPIToken clears api_token from config.
+func (a *App) RevokeAPIToken() (desktop.TokenActionResult, error) {
+	a.mu.Lock()
+	path := a.configPath
+	a.mu.Unlock()
+	res, err := desktop.RevokeAPIToken(path)
+	if err != nil {
+		return res, err
+	}
+	_ = a.reloadService()
+	return res, nil
+}
+
+// DoctorRepair runs an allowlisted repair command (e.g. grain up).
+func (a *App) DoctorRepair(command string) (desktop.RepairResult, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RepairResult{}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	runner := svc.Runner
+	if runner == nil {
+		runner = desktop.ExecRunner{}
+	}
+	return desktop.DoctorRepair(ctx, command, runner)
+}
