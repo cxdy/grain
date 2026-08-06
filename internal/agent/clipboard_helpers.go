@@ -9,8 +9,8 @@ import (
 
 // Guest clipboard helpers emit OSC 52 on /dev/tty so grain sh (local or remote)
 // can intercept and write the client host clipboard. Sandboxes have no
-// pbcopy/xclip/wl-copy; TUIs like Grok Build then report "clipboard unavailable"
-// and never emit OSC 52 themselves.
+// pbcopy/xclip/wl-copy; guest TUIs then report clipboard unavailable and never
+// emit OSC 52 themselves.
 
 const clipboardBinDir = "/var/lib/grain/bin"
 

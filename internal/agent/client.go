@@ -413,9 +413,8 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 		rawOut = os.Stdout
 	}
 	stdout := rawOut
-	// Host-side OSC 52 intercept so tools in the guest (Grok Build, etc.) can
-	// set the *local* clipboard over grain sh / remote API shell. Disable with
-	// GRAIN_OSC52_CLIPBOARD=0.
+	// Host-side OSC 52 intercept so guest tools can set the local clipboard
+	// over grain sh / remote API shell. Disable with GRAIN_OSC52_CLIPBOARD=0.
 	if osc52.Enabled() {
 		stdout = osc52.NewWriter(stdout)
 	}
@@ -478,8 +477,9 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 		return fmt.Errorf("shell dial: %w", err)
 	}
 	defer func() { _ = conn.CloseNow() }()
-	// Interactive shells can produce large bursts (e.g. cat of big files).
-	conn.SetReadLimit(8 << 20)
+	// PTY bursts + large clipboard_get replies (screenshots as base64).
+	// Must match agent handleShell; default WS limit is only 32KiB.
+	conn.SetReadLimit(ShellWebSocketReadLimit)
 
 	// Raw mode for local TTY. On exit always restore cooked mode and clear
 	// private modes (alt screen, mouse, etc.) so a daemon restart mid-session

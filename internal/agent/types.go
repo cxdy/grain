@@ -203,6 +203,11 @@ var ShellEnvQueryKeys = []string{
 	"lc_ctype",
 }
 
+// ShellWebSocketReadLimit is the max WebSocket message size for grain sh.
+// coder/websocket defaults to 32KiB, which rejects screenshot paste replies
+// (host clipboard PNG/JPEG base64 in a clipboard control frame).
+const ShellWebSocketReadLimit = 16 << 20 // 16 MiB
+
 // ShellControl is a JSON text WebSocket frame for PTY control messages.
 //
 // Types:

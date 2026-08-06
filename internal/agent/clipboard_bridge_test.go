@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -186,13 +187,21 @@ func TestRegisterShellClipboard(t *testing.T) {
 			t.Error(err)
 			return
 		}
+		conn.SetReadLimit(ShellWebSocketReadLimit)
 		unreg := s2.registerShellClipboard(conn)
 		close(registered)
 		// keep connection open until client closes
 		ctx := r.Context()
 		for {
-			if _, _, err := conn.Read(ctx); err != nil {
+			typ, data, err := conn.Read(ctx)
+			if err != nil {
 				break
+			}
+			if typ == websocket.MessageText {
+				var ctrl ShellControl
+				if json.Unmarshal(data, &ctrl) == nil && ctrl.Type == "clipboard" {
+					s2.handleShellClipboardControl(ctrl)
+				}
 			}
 		}
 		unreg()
@@ -248,6 +257,156 @@ func TestRegisterShellClipboard(t *testing.T) {
 	if rerr == nil && !strings.Contains(string(msg), "clipboard_get") {
 		t.Logf("ws msg %s", msg)
 	}
+}
+
+// TestShellClipboardLargeImageReply ensures screenshot-sized paste replies are
+// accepted on the shell WebSocket. Default coder/websocket limit is 32KiB;
+// production sets ShellWebSocketReadLimit so Cmd/Ctrl+V image paste works when
+// the guest reads host clipboard via GET /clipboard.
+func TestShellClipboardLargeImageReply(t *testing.T) {
+	t.Parallel()
+	s := NewServer("127.0.0.1:0", nil)
+
+	// Synthetic "screenshot": well over 32KiB when base64-framed as ShellControl.
+	img := make([]byte, 80*1024)
+	img[0], img[1], img[2], img[3] = 0x89, 'P', 'N', 'G'
+	for i := 4; i < len(img); i++ {
+		img[i] = byte(i)
+	}
+
+	done := make(chan []byte, 1)
+	up := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		// Production path: raise limit (without this, Read fails at 32KiB).
+		conn.SetReadLimit(ShellWebSocketReadLimit)
+		defer func() { _ = conn.CloseNow() }()
+
+		unreg := s.registerShellClipboard(conn)
+		defer unreg()
+
+		ctx := r.Context()
+		// Mimic guest pbpaste → bridge.request while client replies with large clipboard.
+		go func() {
+			data, err := s.clip.request(ctx)
+			if err != nil {
+				t.Errorf("request: %v", err)
+				done <- nil
+				return
+			}
+			done <- data
+		}()
+
+		for {
+			typ, data, err := conn.Read(ctx)
+			if err != nil {
+				return
+			}
+			if typ != websocket.MessageText {
+				continue
+			}
+			var ctrl ShellControl
+			if json.Unmarshal(data, &ctrl) != nil {
+				continue
+			}
+			if ctrl.Type == "clipboard" {
+				s.handleShellClipboardControl(ctrl)
+				return
+			}
+		}
+	})
+	hs := httptest.NewServer(up)
+	t.Cleanup(hs.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cli, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(hs.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cli.Close(websocket.StatusNormalClosure, "") }()
+
+	// Client: wait for clipboard_get (like grain sh), reply with large image.
+	_, msg, err := cli.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var get ShellControl
+	if err := json.Unmarshal(msg, &get); err != nil || get.Type != "clipboard_get" {
+		t.Fatalf("want clipboard_get, got %s err=%v", msg, err)
+	}
+	reply := ShellControl{
+		Type: "clipboard",
+		Id:   get.Id,
+		Data: base64.StdEncoding.EncodeToString(img),
+	}
+	payload, _ := json.Marshal(reply)
+	if len(payload) < 40*1024 {
+		t.Fatalf("test payload too small (%d) to exercise limit", len(payload))
+	}
+	if err := cli.Write(ctx, websocket.MessageText, payload); err != nil {
+		t.Fatalf("write large clipboard: %v", err)
+	}
+
+	select {
+	case got := <-done:
+		if len(got) != len(img) {
+			t.Fatalf("got %d bytes want %d", len(got), len(img))
+		}
+		if got[0] != 0x89 || got[1] != 'P' {
+			t.Fatalf("bad magic %x", got[:4])
+		}
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for large clipboard delivery")
+	}
+}
+
+// TestShellClipboardDefaultLimitTooSmall documents the pre-fix failure mode:
+// without SetReadLimit, a ~80KiB image reply is rejected at 32KiB.
+func TestShellClipboardDefaultLimitTooSmall(t *testing.T) {
+	t.Parallel()
+	up := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		// Intentionally NO SetReadLimit — default 32768.
+		defer func() { _ = conn.CloseNow() }()
+		ctx := r.Context()
+		_ = conn.Write(ctx, websocket.MessageText, []byte(`{"type":"clipboard_get","id":"x"}`))
+		_, _, err = conn.Read(ctx)
+		if err == nil {
+			t.Error("expected default limit to reject large clipboard frame")
+			return
+		}
+		if !strings.Contains(err.Error(), "message too big") && !strings.Contains(err.Error(), "read limited") {
+			t.Errorf("want message-too-big style error, got %v", err)
+		}
+	})
+	hs := httptest.NewServer(up)
+	t.Cleanup(hs.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cli, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(hs.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cli.Close(websocket.StatusNormalClosure, "") }()
+
+	_, _, _ = cli.Read(ctx) // clipboard_get
+	big := make([]byte, 50*1024)
+	reply, _ := json.Marshal(ShellControl{
+		Type: "clipboard",
+		Id:   "x",
+		Data: base64.StdEncoding.EncodeToString(big),
+	})
+	_ = cli.Write(ctx, websocket.MessageText, reply)
+	time.Sleep(100 * time.Millisecond)
 }
 
 func TestHandleShellClipboardControl(t *testing.T) {
