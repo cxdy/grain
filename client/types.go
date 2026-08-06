@@ -108,7 +108,7 @@ type CreateRequest struct {
 	Wait string `json:"-"`
 	// Timeout is an optional Go duration string for create readiness (e.g. "3m").
 	Timeout string `json:"-"`
-	// MetricsEnabled opt-in guest stats sampling on the host (default false).
+	// MetricsEnabled guest stats sampling on the host (default true via daemon config).
 	MetricsEnabled bool `json:"metrics_enabled,omitempty"`
 }
 

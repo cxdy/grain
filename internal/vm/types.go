@@ -98,7 +98,7 @@ type Instance struct {
 	// (not persisted to meta.json).
 	LoadVM string `json:"-"`
 	// MetricsEnabled turns on host-side sampling of guest stats into metrics.ring.
-	// Default false; opt-in per sandbox or via config default for new creates.
+	// Default true for new creates (config sandbox_metrics_enabled); set false to opt out.
 	MetricsEnabled bool `json:"metrics_enabled,omitempty"`
 }
 

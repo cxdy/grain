@@ -49,7 +49,7 @@ type Config struct {
 	// MetricsAddr is Prometheus scrape address (empty = disabled).
 	MetricsAddr string `yaml:"metrics_addr"`
 	// SandboxMetricsEnabled is the default for new sandboxes (guest stats ring on host).
-	// Per-VM opt-in via create metrics_enabled; default false.
+	// Per-VM override via create metrics_enabled; default true (samples to data_dir/vms/<name>/metrics.ring).
 	SandboxMetricsEnabled bool `yaml:"sandbox_metrics_enabled"`
 	// SandboxMetricsInterval is how often to sample guest /stats into the ring (default 15s).
 	SandboxMetricsInterval time.Duration `yaml:"sandbox_metrics_interval"`
@@ -433,7 +433,7 @@ func Defaults() Config {
 		Socket:                 filepath.Join(dir, "grain.sock"),
 		API:                    "127.0.0.1:7474",
 		MetricsAddr:            "127.0.0.1:9091",
-		SandboxMetricsEnabled:  false,
+		SandboxMetricsEnabled:  true, // host ring + background sampler; opt out per-VM or config
 		SandboxMetricsInterval: 15 * time.Second,
 		SandboxMetricsPoints:   5760, // ~24h at 15s
 		DefaultCPUs:            2,

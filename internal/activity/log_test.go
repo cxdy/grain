@@ -46,3 +46,29 @@ func TestListSince(t *testing.T) {
 		t.Fatalf("%+v", since)
 	}
 }
+
+func TestOpenPersistReload(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := dir + "/activity.json"
+	l, err := activity.Open(path, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Record(activity.Event{Action: "create", Target: "a", Source: "cli"})
+	l.Record(activity.Event{Action: "stop", Target: "a", Source: "desktop"})
+
+	l2, err := activity.Open(path, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := l2.List(0)
+	if len(list) != 2 || list[0].Action != "stop" || list[1].Target != "a" {
+		t.Fatalf("%+v", list)
+	}
+	// new ids continue past reloaded seq
+	e := l2.Record(activity.Event{Action: "start", Target: "b"})
+	if e.ID == list[0].ID {
+		t.Fatalf("id collision %s", e.ID)
+	}
+}
