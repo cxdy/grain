@@ -191,6 +191,90 @@ func (s *Service) SearchOfficialRecipes() ([]RecipeInfo, error) {
 	return out, nil
 }
 
+// PreviewOfficialRecipe fetches official recipe YAML without installing.
+// Online: downloads body (sha256-checked when catalog pins it).
+// Offline / network error: falls back to local library YAML if installed;
+// otherwise returns index metadata only (description) with a warning and empty YAML.
+func (s *Service) PreviewOfficialRecipe(id string) (RecipeURLPreview, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return RecipeURLPreview{}, fmt.Errorf("recipe id is required")
+	}
+	cat, err := recipe.FetchCatalog(nil, recipe.CatalogURL(), recipe.CatalogCachePath())
+	if err != nil {
+		// No index at all — try library-only preview.
+		return s.previewLibraryAsURLPreview(id, fmt.Sprintf("catalog unavailable: %v", err))
+	}
+	entry, entryErr := cat.LookupCatalogEntry(id)
+	prev, err := recipe.PreviewFromCatalog(nil, cat, id)
+	if err == nil {
+		out := RecipeURLPreview{
+			URL: prev.URL, SuggestedID: prev.SuggestedID, Name: prev.Name,
+			Description: prev.Description, Image: prev.Image, CPUs: prev.CPUs,
+			MemoryMB: prev.MemoryMB, DiskGB: prev.DiskGB, Persistent: prev.Persistent,
+			HasBootstrap: prev.HasBootstrap, BootstrapSteps: prev.BootstrapSteps,
+			Mounts: prev.Mounts, Forwards: prev.Forwards, Warnings: prev.Warnings,
+			YAML: prev.YAML, SHA256: prev.SHA256,
+		}
+		if strings.TrimSpace(out.Description) == "" && entryErr == nil {
+			out.Description = entry.Description
+		}
+		if strings.TrimSpace(out.Name) == "" && entryErr == nil {
+			out.Name = entry.Title
+		}
+		if out.SuggestedID == "" {
+			out.SuggestedID = id
+		}
+		return out, nil
+	}
+
+	// Network / body fetch failed: library copy, else index-only summary.
+	if libPrev, libErr := s.previewLibraryAsURLPreview(id, fmt.Sprintf("could not fetch recipe body (%v); showing local library copy", err)); libErr == nil {
+		return libPrev, nil
+	}
+
+	out := RecipeURLPreview{
+		SuggestedID: id,
+		Warnings: []string{
+			fmt.Sprintf("could not fetch recipe YAML (offline or network error): %v", err),
+			"connect to the internet to preview full YAML, or Add when online",
+		},
+	}
+	if entryErr == nil {
+		out.Name = entry.Title
+		out.Description = entry.Description
+		out.SHA256 = entry.SHA256
+		if out.Name == "" {
+			out.Name = entry.ID
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) previewLibraryAsURLPreview(id, warn string) (RecipeURLPreview, error) {
+	yamlText, err := s.GetLibraryRecipeYAML(id)
+	if err != nil {
+		return RecipeURLPreview{}, err
+	}
+	prev, err := recipe.PreviewFromYAML([]byte(yamlText))
+	if err != nil {
+		return RecipeURLPreview{}, err
+	}
+	out := RecipeURLPreview{
+		SuggestedID: id, Name: prev.Name, Description: prev.Description,
+		Image: prev.Image, CPUs: prev.CPUs, MemoryMB: prev.MemoryMB, DiskGB: prev.DiskGB,
+		Persistent: prev.Persistent, HasBootstrap: prev.HasBootstrap,
+		BootstrapSteps: prev.BootstrapSteps, Mounts: prev.Mounts, Forwards: prev.Forwards,
+		YAML: prev.YAML, SHA256: prev.SHA256,
+	}
+	if warn != "" {
+		out.Warnings = append([]string{warn}, prev.Warnings...)
+	} else {
+		out.Warnings = prev.Warnings
+	}
+	return out, nil
+}
+
 // AddOfficialRecipe installs one catalog id into the library.
 func (s *Service) AddOfficialRecipe(id string, overwrite bool) (RecipeInfo, error) {
 	cat, err := recipe.FetchCatalog(nil, recipe.CatalogURL(), recipe.CatalogCachePath())

@@ -587,6 +587,36 @@ a:hover { text-decoration: underline; }
 }
 .modal.sm { width: min(26rem, 100%); }
 #modal-doctor .modal { width: min(36rem, 96vw); }
+/* New-recipe form: wide enough to avoid vertical scroll on typical laptop heights */
+.modal.modal-recipe-form {
+  width: min(46rem, 96vw);
+  max-height: min(92vh, 52rem);
+  /* visible so host-style preset popover is not clipped */
+  overflow: visible;
+}
+.recipe-form-body { overflow: visible; }
+.recipe-form-body .field { margin-bottom: 0.55rem; }
+.recipe-form-body .field-grid { margin-bottom: 0.55rem; }
+.recipe-form-body .hint { margin: 0 0 0.65rem; }
+.recipe-form-body .check-label { margin: 0.15rem 0 0.55rem; }
+.recipe-form-body .field-compact { margin-bottom: 0.35rem; }
+.recipe-form-body .modal-foot { margin-top: 0.35rem; padding-top: 0.75rem; }
+.field-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.field-grid-3-persist { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.recipe-yaml-sm {
+  min-height: 4.5rem !important;
+  max-height: 7rem;
+  resize: vertical;
+}
+.rf-preset-menu { max-width: none; }
+.rf-preset-menu .host-btn {
+  font-weight: 400;
+  background: var(--bg);
+  border-color: var(--border-strong);
+}
+.rf-preset-menu .host-popover {
+  z-index: 90;
+}
 .modal-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: 0.85rem 1.15rem; border-bottom: 1px solid var(--border);
@@ -682,7 +712,9 @@ a:hover { text-decoration: underline; }
 
 @media (max-width: 900px) {
   .inspector { width: 15rem; }
-  .field-grid { grid-template-columns: 1fr; }
+  .field-grid,
+  .field-grid-2,
+  .field-grid-3-persist { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
   .body-layout { flex-direction: column; }
@@ -692,15 +724,24 @@ a:hover { text-decoration: underline; }
 }
 
 /* Recipes tab */
+.recipes-section-title {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.recipes-section-title:first-of-type { margin-top: 0.35rem; }
 .recipes-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  gap: 1rem;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
   align-items: start;
-  min-height: 12rem;
+}
+.recipes-layout.has-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  min-height: 10rem;
 }
 @media (max-width: 900px) {
-  .recipes-layout { grid-template-columns: 1fr; }
+  .recipes-layout.has-detail { grid-template-columns: 1fr; }
 }
 .recipes-detail {
   border: 1px solid var(--border);
@@ -717,13 +758,56 @@ a:hover { text-decoration: underline; }
   resize: vertical;
   tab-size: 2;
 }
+.recipe-yaml-pre {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  max-height: 22rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: var(--bg-soft, var(--bg));
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre;
+  tab-size: 2;
+  color: var(--text);
+}
 .recipes-catalog {
-  margin-top: 1.25rem;
+  margin-top: 1.5rem;
   border-top: 1px solid var(--border);
-  padding-top: 1rem;
+  padding-top: 0.75rem;
+}
+.recipes-catalog .view-head { margin-bottom: 0.15rem; }
+.recipes-table th:nth-child(2),
+.recipes-table td:nth-child(2) { width: 50%; }
+.catalog-table th:nth-child(2),
+.catalog-table td.catalog-summary {
+  width: auto;
+  max-width: 28rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.catalog-table tbody tr {
+  cursor: pointer;
+}
+.catalog-table tbody tr:hover { background: var(--brand-soft, rgba(0,0,0,0.04)); }
+.catalog-table tbody tr td.no-select { cursor: default; }
+.recipes-list .data-table { width: 100%; }
+.modal-wide { max-width: min(42rem, 94vw); }
+#recipe-import-dropdown .dropdown-menu {
+  left: 0;
+  right: auto;
+  min-width: 9rem;
 }
 .error-text { color: var(--danger, #e35); font-size: 0.85rem; margin-top: 0.35rem; }
-.empty-hint { padding: 1rem 0.25rem; }
+/* Inside .table-wrap bordered card — keep clear inset from the edge */
+.empty-hint {
+  margin: 0;
+  padding: 0.9rem 1.15rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
 .field-label { display: block; font-size: 0.8rem; font-weight: 500; margin: 0.5rem 0 0.25rem; }
 .recipe-url-preview {
   margin-top: 0.75rem;

@@ -1768,6 +1768,8 @@
   async function loadRecipesPage() {
     const tbody = $("#recipes-tbody");
     const empty = $("#recipes-empty");
+    const layout = $("#recipes-layout");
+    const table = $("#recipes-table");
     if (!tbody) return;
     try {
       const list = (await call("ListLibraryRecipes")) || [];
@@ -1775,10 +1777,15 @@
       tbody.innerHTML = "";
       if (!list.length) {
         if (empty) empty.hidden = false;
-        $("#recipes-detail").hidden = true;
+        if (table) table.hidden = true;
+        const detail = $("#recipes-detail");
+        if (detail) detail.hidden = true;
+        layout?.classList.remove("has-detail");
+        await loadOfficialCatalog();
         return;
       }
       if (empty) empty.hidden = true;
+      if (table) table.hidden = false;
       for (const r of list) {
         const tr = document.createElement("tr");
         tr.dataset.id = r.id;
@@ -1800,16 +1807,24 @@
         })
       );
       if (state.selectedRecipe) openRecipe(state.selectedRecipe);
+      else {
+        layout?.classList.remove("has-detail");
+        const detail = $("#recipes-detail");
+        if (detail) detail.hidden = true;
+      }
     } catch (e) {
       toast(String(e), true);
     }
+    await loadOfficialCatalog();
   }
 
   async function openRecipe(id) {
     state.selectedRecipe = id;
     const detail = $("#recipes-detail");
+    const layout = $("#recipes-layout");
     if (!detail) return;
     detail.hidden = false;
+    layout?.classList.add("has-detail");
     $("#recipe-detail-title").textContent = id;
     $("#recipe-yaml-err").hidden = true;
     try {
@@ -1852,6 +1867,7 @@
       await act("delete recipe", () => call("DeleteLibraryRecipe", id), { target: id });
       state.selectedRecipe = null;
       $("#recipes-detail").hidden = true;
+      $("#recipes-layout")?.classList.remove("has-detail");
       toast(`Deleted ${id}`);
       await loadRecipesPage();
     } catch (e) {
@@ -1943,49 +1959,202 @@
   }
 
   async function loadOfficialCatalog() {
-    const panel = $("#recipes-catalog");
     const tbody = $("#catalog-tbody");
     const err = $("#catalog-err");
-    if (!panel || !tbody) return;
-    panel.hidden = false;
+    if (!tbody) return;
     if (err) err.hidden = true;
     tbody.innerHTML = `<tr><td colspan="4" class="muted">Loading catalog…</td></tr>`;
     try {
       const list = (await call("SearchOfficialRecipes")) || [];
+      state.catalogRecipes = list;
       tbody.innerHTML = "";
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="4" class="muted">Catalog empty or unavailable.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" class="muted">Catalog empty or unavailable (check network or cache).</td></tr>`;
         return;
       }
       for (const r of list) {
+        const summary = r.description || (r.title && r.title !== r.id ? r.title : "") || "—";
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td class="selectable">${escapeHtml(r.id)}</td>
-          <td>${escapeHtml(r.title || r.description || "")}</td>
+        tr.dataset.catalogId = r.id;
+        tr.innerHTML = `<td class="selectable"><code>${escapeHtml(r.id)}</code></td>
+          <td class="catalog-summary selectable">${escapeHtml(summary)}</td>
           <td>${r.in_library ? "yes" : "no"}</td>
           <td class="no-select"><button type="button" class="btn btn-ghost btn-sm" data-catalog-add="${escapeHtml(r.id)}" ${r.in_library ? "disabled" : ""}>${r.in_library ? "Installed" : "Add"}</button></td>`;
+        tr.addEventListener("click", (e) => {
+          if (e.target.closest("button")) return;
+          openCatalogPreview(r.id);
+        });
         tbody.appendChild(tr);
       }
       $$("[data-catalog-add]").forEach((b) =>
-        b.addEventListener("click", async () => {
+        b.addEventListener("click", async (e) => {
+          e.stopPropagation();
           try {
-            const ent = await act("add official recipe", () => call("AddOfficialRecipe", b.dataset.catalogAdd, false), {
-              target: b.dataset.catalogAdd,
-            });
-            toast(`Added ${ent?.id || b.dataset.catalogAdd}`);
-            await loadRecipesPage();
-            await loadOfficialCatalog();
-            if (ent?.id) openRecipe(ent.id);
-          } catch (e) {
-            toast(String(e), true);
+            await addOfficialRecipe(b.dataset.catalogAdd);
+          } catch (err) {
+            toast(String(err), true);
           }
         })
       );
     } catch (e) {
-      tbody.innerHTML = "";
+      tbody.innerHTML = `<tr><td colspan="4" class="muted">Catalog unavailable.</td></tr>`;
       if (err) {
         err.hidden = false;
         err.textContent = String(e);
       }
+    }
+  }
+
+  async function addOfficialRecipe(id) {
+    const ent = await act("add official recipe", () => call("AddOfficialRecipe", id, false), { target: id });
+    toast(`Added ${ent?.id || id}`);
+    state.selectedRecipe = ent?.id || id;
+    await loadRecipesPage();
+    if (ent?.id) openRecipe(ent.id);
+    return ent;
+  }
+
+  function resetCatalogPreview() {
+    state.catalogPreview = null;
+    state.catalogPreviewID = null;
+    const kv = $("#catalog-preview-kv");
+    if (kv) kv.innerHTML = "";
+    const warn = $("#catalog-preview-warn");
+    if (warn) warn.innerHTML = "";
+    const err = $("#catalog-preview-err");
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    const yaml = $("#catalog-preview-yaml");
+    if (yaml) {
+      yaml.textContent = "Loading…";
+      yaml.classList.add("muted");
+    }
+    const desc = $("#catalog-preview-desc");
+    if (desc) desc.textContent = "";
+    const addBtn = $("#catalog-preview-add");
+    if (addBtn) {
+      addBtn.disabled = false;
+      addBtn.hidden = false;
+      addBtn.textContent = "Add to library";
+    }
+    const openBtn = $("#catalog-preview-open-lib");
+    if (openBtn) openBtn.hidden = true;
+  }
+
+  async function openCatalogPreview(id) {
+    resetCatalogPreview();
+    state.catalogPreviewID = id;
+    const row = (state.catalogRecipes || []).find((r) => r.id === id);
+    $("#catalog-preview-title").textContent = id;
+    if (row?.description) {
+      $("#catalog-preview-desc").textContent = row.description;
+    } else if (row?.title && row.title !== id) {
+      $("#catalog-preview-desc").textContent = row.title;
+    }
+    const inLib = !!row?.in_library;
+    const openBtn = $("#catalog-preview-open-lib");
+    const addBtn = $("#catalog-preview-add");
+    if (openBtn) openBtn.hidden = !inLib;
+    if (addBtn) {
+      if (inLib) {
+        addBtn.hidden = true;
+      } else {
+        addBtn.hidden = false;
+        addBtn.disabled = true; // enable after preview loads (or when YAML present)
+      }
+    }
+    openModal("modal-recipe-catalog-preview");
+    try {
+      const p = await act("preview official recipe", () => call("PreviewOfficialRecipe", id), { target: id });
+      state.catalogPreview = p;
+      const longDesc = p.description || row?.description || "";
+      if (longDesc) $("#catalog-preview-desc").textContent = longDesc;
+      const rows = [
+        ["ID", p.suggested_id || id],
+        ["Name", p.name || "—"],
+        ["Image", p.image || "—"],
+        ["Resources", p.image || p.cpus
+          ? `${p.cpus || "—"} vCPU / ${p.memory_mb || "—"} MiB` + (p.disk_gb ? ` / ${p.disk_gb} GiB` : "")
+          : "—"],
+        ["Persistent", p.persistent ? "yes" : "no"],
+        ["Bootstrap", p.has_bootstrap ? (p.bootstrap_steps || []).join(", ") || "yes" : "no"],
+        ["Mounts", (p.mounts || []).length ? (p.mounts || []).join("; ") : "—"],
+        ["Forwards", (p.forwards || []).length ? (p.forwards || []).join("; ") : "—"],
+        ["Local", inLib ? "yes" : "no"],
+      ];
+      setKV($("#catalog-preview-kv"), rows);
+      const warn = $("#catalog-preview-warn");
+      if (warn) {
+        warn.innerHTML = (p.warnings || []).map((w) => `<li>${escapeHtml(w)}</li>`).join("");
+      }
+      const yamlEl = $("#catalog-preview-yaml");
+      if (yamlEl) {
+        if (p.yaml) {
+          yamlEl.textContent = p.yaml;
+          yamlEl.classList.remove("muted");
+          if (window.hljs) {
+            try {
+              yamlEl.innerHTML = window.hljs.highlight(p.yaml, { language: "yaml" }).value;
+            } catch (_) {
+              yamlEl.textContent = p.yaml;
+            }
+          }
+        } else {
+          yamlEl.textContent =
+            "YAML not available offline. Connect to the internet to fetch the recipe body, or install when online.";
+          yamlEl.classList.add("muted");
+        }
+      }
+      if (addBtn && !inLib) {
+        addBtn.disabled = false;
+        // Prefer ConfirmRecipeYAML when we have body (no second network hop); else AddOfficialRecipe.
+        addBtn.dataset.mode = p.yaml ? "yaml" : "fetch";
+      }
+    } catch (e) {
+      const errEl = $("#catalog-preview-err");
+      if (errEl) {
+        errEl.hidden = false;
+        errEl.textContent = String(e);
+      }
+      const yamlEl = $("#catalog-preview-yaml");
+      if (yamlEl) {
+        yamlEl.textContent = "Could not load preview.";
+        yamlEl.classList.add("muted");
+      }
+      if (addBtn && !inLib) {
+        addBtn.disabled = false;
+        addBtn.dataset.mode = "fetch";
+      }
+    }
+  }
+
+  async function confirmCatalogPreviewAdd() {
+    const id = state.catalogPreviewID;
+    if (!id) return;
+    const p = state.catalogPreview;
+    const mode = $("#catalog-preview-add")?.dataset?.mode || "fetch";
+    try {
+      let ent;
+      if (mode === "yaml" && p?.yaml) {
+        ent = await act(
+          "add recipe to library",
+          () => call("ConfirmRecipeYAML", p.yaml, p.suggested_id || id, false),
+          { target: id }
+        );
+      } else {
+        ent = await addOfficialRecipe(id);
+        closeModal("modal-recipe-catalog-preview");
+        return;
+      }
+      toast(`Added ${ent?.id || id}`);
+      closeModal("modal-recipe-catalog-preview");
+      state.selectedRecipe = ent?.id || id;
+      await loadRecipesPage();
+      if (ent?.id) openRecipe(ent.id);
+    } catch (e) {
+      toast(String(e), true);
     }
   }
 
@@ -2658,6 +2827,7 @@
     document.addEventListener("click", (e) => {
       if (!$("#host-menu")?.contains(e.target)) closeHostMenu();
       if (!$("#set-default-conn-menu")?.contains(e.target)) closeDefaultConnMenu();
+      if (!$("#rf-preset-menu")?.contains(e.target)) closePresetMenu();
     });
     $("#host-add")?.addEventListener("click", () => {
       closeHostMenu();
@@ -2667,9 +2837,45 @@
     $$(".nav-item").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.view)));
     $$(".ws-tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 
-    $("#btn-recipe-import-file")?.addEventListener("click", () => importRecipeFile());
+    function closePresetMenu() {
+      const pop = $("#rf-preset-popover");
+      const btn = $("#rf-preset-btn");
+      if (pop) pop.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    }
+    function setPresetValue(val) {
+      const v = val || "";
+      const hidden = $("#rf-preset");
+      const label = $("#rf-preset-label");
+      if (hidden) hidden.value = v;
+      if (label) label.textContent = v || "(none)";
+      $$("#rf-preset-popover .host-item").forEach((item) => {
+        item.classList.toggle("active", (item.getAttribute("data-preset") || "") === v);
+      });
+    }
+    $("#rf-preset-btn")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const pop = $("#rf-preset-popover");
+      const btn = $("#rf-preset-btn");
+      if (!pop) return;
+      const open = pop.hidden;
+      pop.hidden = !open;
+      btn?.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    $$("#rf-preset-popover .host-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setPresetValue(item.getAttribute("data-preset") || "");
+        closePresetMenu();
+      });
+    });
+
     $("#btn-recipe-new-form")?.addEventListener("click", () => {
       $("#rf-err").hidden = true;
+      setPresetValue("");
+      closePresetMenu();
       openModal("modal-recipe-form");
     });
     $("#recipe-form-builder")?.addEventListener("submit", async (e) => {
@@ -2718,15 +2924,35 @@
         toast(String(e), true);
       }
     });
-    $("#btn-recipe-import-url")?.addEventListener("click", () => {
-      resetRecipeURLModal();
-      openModal("modal-recipe-url");
+    const importMenu = $("#recipe-import-menu");
+    $("#btn-recipe-import")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      importMenu?.classList.toggle("show");
+      $("#btn-recipe-import")?.setAttribute("aria-expanded", importMenu?.classList.contains("show") ? "true" : "false");
     });
-    $("#btn-recipe-browse")?.addEventListener("click", () => loadOfficialCatalog());
+    importMenu?.querySelectorAll("[data-import]").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        importMenu.classList.remove("show");
+        $("#btn-recipe-import")?.setAttribute("aria-expanded", "false");
+        const kind = item.getAttribute("data-import");
+        if (kind === "file") importRecipeFile();
+        else if (kind === "url") {
+          resetRecipeURLModal();
+          openModal("modal-recipe-url");
+        }
+      });
+    });
+    document.addEventListener("click", () => {
+      importMenu?.classList.remove("show");
+      $("#btn-recipe-import")?.setAttribute("aria-expanded", "false");
+    });
     $("#btn-recipe-refresh")?.addEventListener("click", () => loadRecipesPage());
-    $("#btn-recipe-catalog-close")?.addEventListener("click", () => {
-      const p = $("#recipes-catalog");
-      if (p) p.hidden = true;
+    $("#catalog-preview-add")?.addEventListener("click", () => confirmCatalogPreviewAdd());
+    $("#catalog-preview-open-lib")?.addEventListener("click", () => {
+      const id = state.catalogPreviewID;
+      closeModal("modal-recipe-catalog-preview");
+      if (id) openRecipe(id);
     });
     $("#btn-recipe-save")?.addEventListener("click", () => saveSelectedRecipe());
     $("#btn-recipe-delete")?.addEventListener("click", () => deleteSelectedRecipe());
