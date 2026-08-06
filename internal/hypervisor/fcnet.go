@@ -1,7 +1,7 @@
 package hypervisor
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -85,15 +85,17 @@ func FCNetSlotForName(name string) int {
 }
 
 // FCTapName returns a short TAP device name (IFNAMSIZ-safe, max 15).
+// Hash is non-cryptographic naming only (device name uniqueness).
 func FCTapName(name string) string {
-	sum := sha1.Sum([]byte(strings.TrimSpace(name)))
+	sum := sha256.Sum256([]byte(strings.TrimSpace(name)))
 	// "tg" + 10 hex chars = 12 < 15.
 	return "tg" + hex.EncodeToString(sum[:5])
 }
 
 // FCGuestMAC returns a locally-administered unicast MAC derived from name.
+// Hash is non-cryptographic naming only (stable guest MAC).
 func FCGuestMAC(name string) string {
-	sum := sha1.Sum([]byte("grain-fc-mac:" + strings.TrimSpace(name)))
+	sum := sha256.Sum256([]byte("grain-fc-mac:" + strings.TrimSpace(name)))
 	// Locally administered (0x02), unicast.
 	return fmt.Sprintf("02:fc:%02x:%02x:%02x:%02x", sum[0], sum[1], sum[2], sum[3])
 }

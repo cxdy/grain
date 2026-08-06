@@ -101,11 +101,11 @@ type fcNetworkInterface struct {
 
 // fcConfig is the full Firecracker --config-file document.
 type fcConfig struct {
-	BootSource         fcBootSource          `json:"boot-source"`
-	Drives             []fcDrive             `json:"drives"`
-	MachineConfig      fcMachineConfig       `json:"machine-config"`
-	Vsock              *fcVsock              `json:"vsock,omitempty"`
-	NetworkInterfaces  []fcNetworkInterface  `json:"network-interfaces,omitempty"`
+	BootSource        fcBootSource         `json:"boot-source"`
+	Drives            []fcDrive            `json:"drives"`
+	MachineConfig     fcMachineConfig      `json:"machine-config"`
+	Vsock             *fcVsock             `json:"vsock,omitempty"`
+	NetworkInterfaces []fcNetworkInterface `json:"network-interfaces,omitempty"`
 }
 
 // BuildFCConfig builds a Firecracker config JSON document.
