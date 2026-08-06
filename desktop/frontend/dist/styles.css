@@ -656,9 +656,11 @@ a:hover { text-decoration: underline; }
 .splash {
   position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
   background: var(--bg);
+  /* Never steal clicks if something goes wrong with [hidden] on WebKitGTK */
+  pointer-events: none;
 }
 .splash[hidden] { display: none !important; }
-.splash-card { text-align: center; }
+.splash-card { text-align: center; pointer-events: auto; }
 .splash-card h1 { margin: 0.75rem 0 0.35rem; font-size: 1.4rem; letter-spacing: -0.03em; }
 .splash-bar {
   width: 10rem; height: 0.25rem; margin: 1rem auto 0; border-radius: 999px;

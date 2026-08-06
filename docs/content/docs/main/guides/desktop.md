@@ -62,13 +62,16 @@ When a Desktop release artifact is not published yet, `--desktop` builds from so
 ### Linux
 
 ```bash
-# WebKitGTK (Debian/Ubuntu example)
+# WebKitGTK 4.1 (Ubuntu 22.04+ / 24.04 / 26.04 — no 4.0 package)
 sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
-just desktop-build
-# unsigned binary / package under desktop/build/bin/
+just desktop-build          # uses -tags webkit2_41; no codesign
+./bin/grain-desktop-bin     # or ./bin/grain-desktop
+grain up                    # daemon must be up for list/create
 ```
 
-Linux system tray is best-effort; the window is the primary surface.
+`just desktop-build` on Linux skips macOS codesign/`ditto`/`sips` and builds with `-tags webkit2_41 -nopackage`.
+
+If the window paints but **nothing is clickable**: ensure you rebuilt after the Linux fixes (splash no longer blocks the UI; Wails bindings resolve lazily). Also run from a terminal and check for JS/console errors; start the daemon with `grain up` first.
 
 ## UI map
 

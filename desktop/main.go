@@ -16,6 +16,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -90,6 +91,14 @@ func main() {
 				Title:   "Grain",
 				Message: "Linux microVM sandboxes on your hardware.",
 			},
+		},
+		// Explicit Linux options: when Linux is nil Wails defaults GpuPolicyNever
+		// (blank-window workaround). Never still works; OnDemand helps some GPUs.
+		// Window must not be translucent or WebKitGTK often eats clicks.
+		Linux: &linux.Options{
+			ProgramName:         "Grain",
+			WindowIsTranslucent: false,
+			WebviewGpuPolicy:    linux.WebviewGpuPolicyNever,
 		},
 	})
 	if err != nil {

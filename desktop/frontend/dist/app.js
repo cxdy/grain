@@ -6,7 +6,11 @@
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-  const go = window.go?.main?.App;
+  // Resolve Wails bindings at call time — capturing window.go at script load
+  // is often undefined on Linux WebKitGTK (bindings inject after first paint).
+  function appAPI() {
+    return window.go?.main?.App || null;
+  }
 
   const EVENTS_KEY = "grain-desktop-activity-v2";
   const THEME_KEY = "grain-desktop-theme";
@@ -43,7 +47,16 @@
   }
 
   async function call(name, ...args) {
-    if (!go || typeof go[name] !== "function") throw new Error(`binding ${name} unavailable`);
+    const go = appAPI();
+    if (!go || typeof go[name] !== "function") {
+      // Brief wait for late binding injection (common on Linux).
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        const g = appAPI();
+        if (g && typeof g[name] === "function") return g[name](...args);
+      }
+      throw new Error(`binding ${name} unavailable`);
+    }
     return go[name](...args);
   }
 
@@ -3001,6 +3014,18 @@
     });
   }
 
+  function showMainUI() {
+    const splash = $("#splash");
+    const app = $("#app");
+    if (splash) splash.hidden = true;
+    if (app) app.hidden = false;
+    // Focus into the webview so Linux/X11 WebKitGTK receives keyboard/clicks.
+    try {
+      document.body?.focus?.();
+      $("#btn-new")?.focus?.({ preventScroll: true });
+    } catch (_) {}
+  }
+
   async function boot() {
     let shellVM = "";
     try {
@@ -3021,27 +3046,25 @@
       return;
     }
 
-    $("#splash").hidden = false;
-    $("#app").hidden = true;
+    // Show main UI immediately so a slow/hung daemon never leaves a full-screen
+    // splash blocking all clicks (common on Linux when grain is not on PATH).
+    showMainUI();
+    $("#btn-new").hidden = false;
+    showInspector(false);
+    if ($("#splash-msg")) $("#splash-msg").textContent = "Connecting…";
+
     try {
       const splash = await call("EnsureReady");
-      $("#splash-msg").textContent = splash.message || "Ready";
+      if ($("#splash-msg")) $("#splash-msg").textContent = splash.message || "Ready";
       if (splash.health) setHealth(splash.health);
       if (splash.error) toast(splash.error, true, { action: "ensure ready" });
       await loadHostMenu();
       await refreshList();
-      showInspector(false);
-      $("#btn-new").hidden = false;
-      $("#splash").hidden = true;
-      $("#app").hidden = false;
       state.pollTimer = setInterval(async () => {
-        // Refresh active host health + list first; host menu probes secondaries only
         await refreshList();
         await loadHostMenu();
       }, 5000);
     } catch (e) {
-      $("#splash").hidden = true;
-      $("#app").hidden = false;
       try {
         await loadHostMenu();
         await refreshList();
@@ -3060,6 +3083,8 @@
     }
     updateActivityBadge();
     wire();
+    // Unblock UI before async boot (covers binding race + long EnsureReady).
+    showMainUI();
     boot();
   });
 })();
