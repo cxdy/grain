@@ -388,6 +388,17 @@ func cmdFwdLs(cfgPath *string) *cobra.Command {
 					any = true
 				}
 				for _, f := range inst.Forwards {
+					// Skip create-time maps already served by a live proxy (FC path).
+					covered := false
+					for _, lf := range inst.LiveForwards {
+						if lf.HostPort == f.HostPort && f.HostPort > 0 {
+							covered = true
+							break
+						}
+					}
+					if covered {
+						continue
+					}
 					proto := f.Proto
 					if proto == "" {
 						proto = "tcp"
@@ -396,8 +407,13 @@ func cmdFwdLs(cfgPath *string) *cobra.Command {
 					if f.HostPort > 0 {
 						host = fmt.Sprintf(":%d", f.HostPort)
 					}
+					note := "slirp"
+					if inst.IP != "" && inst.IP != "127.0.0.1" {
+						// Firecracker create-time -P becomes a TCP proxy after agent.
+						note = "publish"
+					}
 					fmt.Printf("%-12s %-6s %-10s %-10d %s\n",
-						inst.Name, proto, host, f.GuestPort, "slirp")
+						inst.Name, proto, host, f.GuestPort, note)
 					any = true
 				}
 				for _, f := range inst.LiveForwards {

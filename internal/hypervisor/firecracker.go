@@ -231,13 +231,16 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 		if err := AllocateForwardPorts(inst.Forwards); err != nil {
 			return err
 		}
-		st, err := SetupFCNet(plan, sshPort, agentPort, inst.Forwards)
+		// TAP + guest addressing only. Create-time -P / live fwd use host TCP
+		// proxies (manager) — OUTPUT DNAT of 127.0.0.1 never reaches the TAP.
+		st, err := SetupFCNet(plan, 0, 0, nil)
 		if err != nil {
 			return err
 		}
 		netState = st
 		netPlan = &plan
 		inst.IP = plan.GuestIP
+		// Host ports allocated for UX / create-time TCP proxies after guest eth0 is up.
 		inst.SSHPort = sshPort
 		inst.AgentPort = agentPort
 		if err := WriteFCNetState(vmDir, netState); err != nil {

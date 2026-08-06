@@ -40,7 +40,8 @@ var runSysctl = func(key, val string) error {
 	return nil
 }
 
-// SetupFCNet creates the TAP, addresses it, enables forwarding/MASQUERADE, and applies DNAT.
+// SetupFCNet creates the TAP, addresses it, enables forwarding/MASQUERADE,
+// host→guest SNAT (for loopback clients), and applies DNAT publishes.
 // Returns state for persistence and cleanup. Requires CAP_NET_ADMIN.
 func SetupFCNet(plan FCNetPlan, hostSSH, hostAgent int, fwds []vm.PortForward) (FCNetState, error) {
 	st := FCNetState{FCNetPlan: plan}
@@ -54,6 +55,11 @@ func SetupFCNet(plan FCNetPlan, hostSSH, hostAgent int, fwds []vm.PortForward) (
 	if err := ensureMASQUERADE(plan); err != nil {
 		_ = deleteTAP(plan.TapName)
 		return st, PrivilegeErrorHint("masquerade", err)
+	}
+	// SNAT loopback-origin DNATed packets to HostIP so the guest can reply.
+	if err := ensureHostToGuestSNAT(plan); err != nil {
+		_ = deleteTAP(plan.TapName)
+		return st, PrivilegeErrorHint("host-to-guest snat", err)
 	}
 	if err := ensureForwardFilter(plan); err != nil {
 		_ = deleteTAP(plan.TapName)
@@ -72,13 +78,16 @@ func SetupFCNet(plan FCNetPlan, hostSSH, hostAgent int, fwds []vm.PortForward) (
 	return st, nil
 }
 
-// TeardownFCNet removes DNAT rules and the TAP device.
+// TeardownFCNet removes DNAT rules, host→guest SNAT, and the TAP device.
 func TeardownFCNet(st FCNetState) error {
 	var first error
 	for i := len(st.DNATRules) - 1; i >= 0; i-- {
 		if err := removeDNAT(st.DNATRules[i]); err != nil && first == nil {
 			first = err
 		}
+	}
+	if err := removeHostToGuestSNAT(st.FCNetPlan); err != nil && first == nil {
+		first = err
 	}
 	if st.TapName != "" {
 		if err := deleteTAP(st.TapName); err != nil && first == nil {
@@ -130,6 +139,32 @@ func ensureMASQUERADE(plan FCNetPlan) error {
 	return runIPTables("-t", "nat", "-A", "POSTROUTING", "-s", src, "!", "-o", plan.TapName, "-j", "MASQUERADE")
 }
 
+// ensureHostToGuestSNAT rewrites DNATed local-client packets so saddr is the
+// TAP host IP. Without this, guest replies to 127.0.0.1 never leave the guest.
+func ensureHostToGuestSNAT(plan FCNetPlan) error {
+	if plan.TapName == "" || plan.HostIP == "" {
+		return fmt.Errorf("empty tap or host IP for SNAT")
+	}
+	rule := HostToGuestSNATRule(plan)
+	checkArgs := append([]string{"-t", "nat", "-C", "POSTROUTING"}, rule...)
+	if exec.Command("iptables", checkArgs...).Run() == nil {
+		return nil
+	}
+	addArgs := append([]string{"-t", "nat", "-A", "POSTROUTING"}, rule...)
+	return runIPTables(addArgs...)
+}
+
+func removeHostToGuestSNAT(plan FCNetPlan) error {
+	if plan.TapName == "" || plan.HostIP == "" {
+		return nil
+	}
+	rule := HostToGuestSNATRule(plan)
+	delArgs := append([]string{"-t", "nat", "-D", "POSTROUTING"}, rule...)
+	// Best-effort: rule may already be gone.
+	_ = runIPTables(delArgs...)
+	return nil
+}
+
 func ensureForwardFilter(plan FCNetPlan) error {
 	// Allow traffic to/from the TAP.
 	for _, args := range [][]string{
@@ -150,15 +185,9 @@ func ensureForwardFilter(plan FCNetPlan) error {
 
 func applyDNAT(r FCDNATRule) error {
 	// OUTPUT chain for local (loopback) clients; PREROUTING for remote (rare for grain).
+	spec := DNATRuleArgs(r)
 	for _, chain := range []string{"OUTPUT", "PREROUTING"} {
-		args := []string{
-			"-t", "nat", "-A", chain,
-			"-p", r.Proto,
-			"-d", "127.0.0.1",
-			"--dport", fmt.Sprintf("%d", r.HostPort),
-			"-j", "DNAT",
-			"--to-destination", fmt.Sprintf("%s:%d", r.GuestIP, r.GuestPort),
-		}
+		args := append([]string{"-t", "nat", "-A", chain}, spec...)
 		if err := runIPTables(args...); err != nil {
 			return err
 		}
@@ -177,15 +206,9 @@ func applyDNAT(r FCDNATRule) error {
 
 func removeDNAT(r FCDNATRule) error {
 	var first error
+	spec := DNATRuleArgs(r)
 	for _, chain := range []string{"OUTPUT", "PREROUTING"} {
-		args := []string{
-			"-t", "nat", "-D", chain,
-			"-p", r.Proto,
-			"-d", "127.0.0.1",
-			"--dport", fmt.Sprintf("%d", r.HostPort),
-			"-j", "DNAT",
-			"--to-destination", fmt.Sprintf("%s:%d", r.GuestIP, r.GuestPort),
-		}
+		args := append([]string{"-t", "nat", "-D", chain}, spec...)
 		if err := runIPTables(args...); err != nil && first == nil {
 			first = err
 		}
