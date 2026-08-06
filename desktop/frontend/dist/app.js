@@ -37,6 +37,7 @@
     currentView: "sandboxes",
     hostTestedOK: false,
     sandboxFilter: "",
+    bulkBusy: false,
   };
 
   function escapeHtml(s) {
@@ -69,12 +70,65 @@
     const m = $(`#${id}`);
     if (m) m.hidden = true;
   }
-  function confirmDialog(msg) {
+  function confirmDialog(msg, opts) {
     return new Promise((resolve) => {
-      $("#confirm-msg").textContent = msg;
+      const msgEl = $("#confirm-msg");
+      if (msgEl) msgEl.textContent = msg;
+      const yes = $("#confirm-yes");
+      const no = $("#confirm-later");
+      if (yes) yes.textContent = opts?.yes || "Confirm";
+      if (no) no.textContent = opts?.no || "Cancel";
+      // Danger styling for destructive ops
+      if (yes) {
+        if (opts?.danger) {
+          yes.classList.remove("btn-primary");
+          yes.classList.add("btn-danger");
+        } else {
+          yes.classList.remove("btn-danger");
+          yes.classList.add("btn-primary");
+        }
+      }
       openModal("modal-confirm");
       state.confirm = resolve;
     });
+  }
+
+  function setBulkProgress(done, total, label) {
+    const bar = $("#bulk-progress");
+    const fill = $("#bulk-progress-fill");
+    const lab = $("#bulk-progress-label");
+    if (!bar) return;
+    if (total <= 0) {
+      bar.hidden = true;
+      return;
+    }
+    bar.hidden = false;
+    const pct = Math.min(100, Math.round((done / total) * 100));
+    if (fill) fill.style.width = pct + "%";
+    if (lab) lab.textContent = label || `${done} / ${total}`;
+  }
+
+  function clearBulkProgress() {
+    const bar = $("#bulk-progress");
+    if (bar) bar.hidden = true;
+    const fill = $("#bulk-progress-fill");
+    if (fill) fill.style.width = "0%";
+  }
+
+  /** Run async work over items with limited concurrency; onEach(i, item, result). */
+  async function mapPool(items, concurrency, worker) {
+    const list = [...items];
+    const out = new Array(list.length);
+    let next = 0;
+    async function runOne() {
+      while (next < list.length) {
+        const i = next++;
+        out[i] = await worker(list[i], i);
+      }
+    }
+    const n = Math.max(1, Math.min(concurrency || 4, list.length));
+    await Promise.all(Array.from({ length: n }, () => runOne()));
+    return out;
   }
 
   /* ── activity ── */
@@ -579,13 +633,60 @@
     const names = [...state.selectedSet].sort();
     if (names.length < 2) return;
     const hosts = $("#multi-ssh-hosts");
-    if (hosts) hosts.textContent = names.join(", ");
+    if (hosts) {
+      hosts.innerHTML = names
+        .map((n) => `<span class="mss-host">${escapeHtml(n)}</span>`)
+        .join('<span class="mss-host-sep"> · </span>');
+    }
     const out = $("#multi-ssh-out");
-    if (out) out.textContent = "";
+    if (out) {
+      out.innerHTML = `<div class="mss-line mss-muted">// ready — enter a command and press Run</div>`;
+    }
     const cmd = $("#multi-ssh-cmd");
     if (cmd) cmd.value = "";
     openModal("modal-multi-ssh");
     setTimeout(() => cmd?.focus(), 50);
+  }
+
+  function renderMultiSSHResults(results, command) {
+    const out = $("#multi-ssh-out");
+    if (!out) return;
+    const rows = [];
+    if (command) {
+      rows.push(
+        `<div class="mss-line mss-muted"><span class="mss-prompt">$</span> ${escapeHtml(command)}</div>`
+      );
+    }
+    for (const r of results || []) {
+      const name = r.name || "?";
+      const err = r.error;
+      let body = "";
+      if (err) {
+        body = "error: " + err;
+      } else if (r.line && r.line.startsWith(name + ": ")) {
+        body = r.line.slice(name.length + 2);
+      } else if (r.stdout) {
+        body = String(r.stdout).replace(/\r?\n$/, "");
+      } else if (r.stderr) {
+        body = String(r.stderr).replace(/\r?\n$/, "");
+      } else {
+        body = `(exit ${r.exit_code != null ? r.exit_code : "?"})`;
+      }
+      // Preserve multi-line output under the same host prefix
+      const lines = String(body).split(/\r?\n/);
+      lines.forEach((ln, i) => {
+        const host = i === 0 ? name : "";
+        const cls = err || (r.exit_code && r.exit_code !== 0) ? "mss-err" : "";
+        rows.push(
+          `<div class="mss-line ${cls}">` +
+            (host
+              ? `<span class="mss-host selectable">${escapeHtml(host)}</span><span class="mss-sep">: </span>`
+              : `<span class="mss-host-pad"></span>`) +
+            `<span class="mss-body selectable">${escapeHtml(ln)}</span></div>`
+        );
+      });
+    }
+    out.innerHTML = rows.join("") || `<div class="mss-line mss-muted">(no results)</div>`;
   }
 
   async function runMultiSSH(e) {
@@ -599,7 +700,10 @@
     }
     const out = $("#multi-ssh-out");
     const btn = $("#multi-ssh-run");
-    if (out) out.textContent = "Running…";
+    if (out) {
+      out.innerHTML = `<div class="mss-line mss-muted"><span class="mss-prompt">$</span> ${escapeHtml(command)}</div>` +
+        `<div class="mss-line mss-muted">// running on ${names.length} hosts…</div>`;
+    }
     if (btn) btn.disabled = true;
     try {
       const results = await act(
@@ -607,10 +711,11 @@
         () => call("BulkExec", names, command),
         { target: `${names.length} sandboxes`, summary: `ran “${command}” on ${names.length} sandboxes` }
       );
-      const lines = (results || []).map((r) => r.line || `${r.name}: (no output)`);
-      if (out) out.textContent = lines.join("\n") || "(no results)";
+      renderMultiSSHResults(results, command);
     } catch (err) {
-      if (out) out.textContent = String(err);
+      if (out) {
+        out.innerHTML = `<div class="mss-line mss-err">${escapeHtml(String(err))}</div>`;
+      }
       toast(String(err), true);
     } finally {
       if (btn) btn.disabled = false;
@@ -2859,18 +2964,86 @@
   }
 
   async function bulk(kind) {
-    const names = [...state.selectedSet];
+    const names = [...state.selectedSet].sort();
     if (names.length < 2) return;
-    if (kind === "rm" && !confirm(`Remove ${names.length} sandboxes?`)) return;
-    for (const name of names) {
-      try {
-        if (kind === "start") await act("start", () => call("StartSandbox", name), { target: name });
-        if (kind === "stop") await act("stop", () => call("StopSandbox", name), { target: name });
-        if (kind === "rm") await act("remove", () => call("RemoveSandbox", name), { target: name });
-      } catch (_) {}
+    if (state.bulkBusy) {
+      toast("A bulk operation is already running", true);
+      return;
     }
-    state.selectedSet.clear();
-    await refreshList();
+    const verbs = {
+      start: { title: "Start", gerund: "Starting", past: "Started", action: "start" },
+      stop: { title: "Stop", gerund: "Stopping", past: "Stopped", action: "stop" },
+      rm: { title: "Remove", gerund: "Removing", past: "Removed", action: "remove" },
+    };
+    const v = verbs[kind];
+    if (!v) return;
+    const n = names.length;
+    const preview = names.length <= 8 ? names.join(", ") : names.slice(0, 6).join(", ") + `… (+${n - 6} more)`;
+    const detail =
+      kind === "rm"
+        ? `Remove ${n} sandboxes?\n\n${preview}\n\nThis deletes them permanently (ephemeral disks are discarded).`
+        : `${v.title} ${n} sandboxes?\n\n${preview}`;
+    const ok = await confirmDialog(detail, {
+      yes: kind === "rm" ? "Remove" : v.title,
+      no: "Cancel",
+      danger: kind === "rm",
+    });
+    if (!ok) return;
+
+    state.bulkBusy = true;
+    $$("#bulk-bar button").forEach((b) => {
+      b.disabled = true;
+    });
+    let done = 0;
+    let failed = 0;
+    setBulkProgress(0, n, `${v.gerund} 0 / ${n}…`);
+    const callFor = {
+      start: (name) => call("StartSandbox", name),
+      stop: (name) => call("StopSandbox", name),
+      rm: (name) => call("RemoveSandbox", name),
+    }[kind];
+
+    try {
+      // Parallel with a small pool — sequential remove of 30 QEMUs feels broken.
+      await mapPool(names, 5, async (name) => {
+        try {
+          await act(v.action, () => callFor(name), {
+            target: name,
+            summary: `${v.past.toLowerCase()} ${name}`,
+          });
+          if (kind === "rm" && state.selected === name) {
+            state.selected = null;
+            state._selectedVM = null;
+          }
+        } catch (_) {
+          failed++;
+        } finally {
+          done++;
+          setBulkProgress(done, n, `${v.gerund} ${done} / ${n}: ${name}`);
+          // Keep list fresh so rows disappear as removes complete
+          if (kind === "rm" && done % 3 === 0) {
+            try {
+              await refreshList();
+            } catch (_) {}
+          }
+        }
+      });
+      state.selectedSet.clear();
+      if (kind === "rm" && !state.selected) showInspector(false);
+      await refreshList();
+      if (failed === 0) {
+        toast(`${v.past} ${n} sandbox${n === 1 ? "" : "es"}`);
+      } else {
+        toast(`${v.past} ${n - failed} · ${failed} failed`, true);
+      }
+    } finally {
+      state.bulkBusy = false;
+      $$("#bulk-bar button").forEach((b) => {
+        b.disabled = false;
+      });
+      clearBulkProgress();
+      updateBulkBar();
+    }
   }
 
   /* ── wire ── */
@@ -3101,18 +3274,29 @@
     $$("[data-close]").forEach((b) => b.addEventListener("click", () => closeModal(b.dataset.close)));
     $$(".modal-backdrop").forEach((bd) => {
       bd.addEventListener("click", (e) => {
-        if (e.target === bd) bd.hidden = true;
+        if (e.target !== bd) return;
+        // Resolve pending confirm as cancel so callers are not left hanging.
+        if (bd.id === "modal-confirm" && state.confirm) {
+          const r = state.confirm;
+          state.confirm = null;
+          bd.hidden = true;
+          r(false);
+          return;
+        }
+        bd.hidden = true;
       });
     });
     $("#confirm-yes")?.addEventListener("click", () => {
       closeModal("modal-confirm");
-      state.confirm?.(true);
+      const r = state.confirm;
       state.confirm = null;
+      r?.(true);
     });
     $("#confirm-later")?.addEventListener("click", () => {
       closeModal("modal-confirm");
-      state.confirm?.(false);
+      const r = state.confirm;
       state.confirm = null;
+      r?.(false);
     });
 
     const moreMenu = $("#more-menu");
@@ -3216,12 +3400,25 @@
           return;
         }
         if (actName === "rm") {
-          if (!confirm(`Remove ${name}?`)) return;
-          await act("remove", () => call("RemoveSandbox", name), { target: name });
-          state.selected = null;
-          state._selectedVM = null;
-          showInspector(false);
-          await refreshList();
+          // window.confirm is unreliable in Wails webviews — use in-app dialog.
+          const yes = await confirmDialog(`Remove sandbox “${name}”?`, {
+            yes: "Remove",
+            no: "Cancel",
+            danger: true,
+          });
+          if (!yes) return;
+          setBulkProgress(0, 1, `Removing ${name}…`);
+          try {
+            await act("remove", () => call("RemoveSandbox", name), { target: name });
+            toast(`Removed ${name}`);
+            state.selected = null;
+            state._selectedVM = null;
+            state.selectedSet.delete(name);
+            showInspector(false);
+            await refreshList();
+          } finally {
+            clearBulkProgress();
+          }
         }
       } catch (_) {}
     });
