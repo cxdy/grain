@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Firecracker vFC-2 partial net** — single-tenant TAP + create-time `-P`/`--publish` (iptables DNAT to guest IP), live `grain fwd add` via host TCP proxy (socat/python3), guest eth0 configured over agent after vsock. Overlay/mounts remain QEMU-only. Needs Linux CAP_NET_ADMIN + `/dev/net/tun`. Smoke: `scripts/smoke-fc-net.sh`.
 - **Firecracker catalog pull (`fc-latest`)** — `grain image pull fc-kernel` / `grain-ubuntu-fc` downloads from the `fc-latest` release (sidecar digests, fail-closed). Workflow **Bake Firecracker artifacts** rebuilds and rewrites that tag. `scripts/smoke-fc.sh` one-shot create→agent→destroy on Linux+KVM.
 - **Firecracker bake (`scripts/bake-fc.sh --all`)** — on Linux: fetch Firecracker CI `vmlinux` + Ubuntu squashfs, convert to raw ext4, inject **static** `grain-agent` (systemd, vsock :7475). Outputs `dist/fc/vmlinux-<arch>` + `grain-ubuntu-fc-<arch>.raw` (+ `.sha256`).
 - **Firecracker kernel/rootfs import + doctor** — `grain image import <vmlinux> --id fc-kernel` installs to `data_dir/kernels/vmlinux`; `import … --id grain-ubuntu-fc` stores **raw** `disk.raw` (not qcow2). Doctor **hard-fails** missing FC kernel and distinguishes default-path missing vs BYO `kernel_path` misconfig; soft notes when the default image is QEMU-oriented. Start errors use the same wording.
@@ -43,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
-- **Firecracker support policy (vFC-1 agent)** — docs label **FC agent production** (pull, doctor, create `--wait agent`, vsock UDS) vs **QEMU-only** SSH/hostfwd/`grain fwd`/overlay/mounts until vFC-2. Matrix/parity/FC guide updated; CLI root help notes publish/fwd are QEMU hostfwd. Bench: `scripts/bench-fc.sh`; smoke: `scripts/smoke-fc.sh`.
+- **Firecracker support policy** — **FC agent production (vFC-1)** plus **FC net partial (vFC-2)** for TAP publish/fwd; overlay/mounts stay QEMU-only. Matrix/parity/FC guide + CLI help updated. Bench: `scripts/bench-fc.sh`; smoke: `scripts/smoke-fc.sh` / `smoke-fc-net.sh`.
 
 ### Fixed
 
@@ -67,6 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`grain tray`** — menu bar / system tray helper. It required a CGO-enabled build (not available in portable release archives) or a separate binary; status and lifecycle stay on the CLI and API.
 
 ## [0.6.3] - 2026-08-06
+
+### Added
+
+- **Firecracker vFC-2 partial net** — single-tenant TAP + create-time `-P`/`--publish` (iptables DNAT to guest IP), live `grain fwd add` via host TCP proxy (socat/python3), guest eth0 configured over agent after vsock. Overlay/mounts remain QEMU-only. Needs Linux CAP_NET_ADMIN + `/dev/net/tun`. Smoke: `scripts/smoke-fc-net.sh`.
 
 ### Fixed
 
