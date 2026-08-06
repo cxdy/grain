@@ -86,12 +86,13 @@ func Dial(ctx context.Context, t Target) (*Client, error) {
 	}
 
 	if t.FirecrackerUDS != "" {
-		if c, err := dialFirecrackerUDS(ctx, t.FirecrackerUDS, DefaultVsockPort); err == nil {
-			return c, nil
-		} else if t.Port <= 0 && t.CID <= 0 {
+		// Always use FC UDS when set. Falling through to AgentPort TCP DNAT
+		// before guest eth0 is configured causes wait loops to hang on TCP.
+		c, err := dialFirecrackerUDS(ctx, t.FirecrackerUDS, DefaultVsockPort)
+		if err != nil {
 			return nil, fmt.Errorf("agent dial: firecracker vsock %s: %w", t.FirecrackerUDS, err)
 		}
-		// Fall through to AF_VSOCK / TCP if configured.
+		return c, nil
 	}
 
 	if t.CID > 0 {

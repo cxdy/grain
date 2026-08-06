@@ -403,13 +403,17 @@ func TestDialFirecrackerUDSError(t *testing.T) {
 	if _, err := Dial(context.Background(), Target{FirecrackerUDS: "/nope.sock"}); err == nil {
 		t.Fatal("expected error")
 	}
-	// UDS fail + TCP port: fall through to TCP.
-	c, err := Dial(context.Background(), Target{FirecrackerUDS: "/nope.sock", Port: 4242})
-	if err != nil {
-		t.Fatal(err)
+	// Sticky UDS: when FirecrackerUDS is set, do not fall through to AgentPort TCP
+	// (TCP DNAT can accept before guest eth0 is up and hang wait loops).
+	_, err := Dial(context.Background(), Target{FirecrackerUDS: "/nope.sock", Port: 4242})
+	if err == nil {
+		t.Fatal("expected UDS error even when Port is set (sticky FC UDS)")
 	}
-	if c.BaseURL != "http://127.0.0.1:4242" {
-		t.Fatalf("BaseURL %q", c.BaseURL)
+	if !strings.Contains(err.Error(), "firecracker vsock") {
+		t.Fatalf("want firecracker vsock error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "uds down") {
+		t.Fatalf("want wrapped uds down, got: %v", err)
 	}
 }
 

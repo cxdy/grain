@@ -215,7 +215,8 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 
 	var netPlan *FCNetPlan
 	var netState FCNetState
-	// Real TAP only on Linux hosts (tests may force runtimeGOOS=linux without CAP_NET_ADMIN).
+	// Real TAP only on actual Linux hosts. Tests that force runtimeGOOS=linux on
+	// macOS skip TAP; DisableNet skips TAP on Linux unit tests without CAP_NET_ADMIN.
 	if !f.DisableNet && runtime.GOOS == "linux" {
 		plan := PlanFCNet(inst.Name)
 		// Allocate host ports for SSH + optional agent TCP (publish UX parity).
