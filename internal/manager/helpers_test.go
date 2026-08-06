@@ -1055,6 +1055,7 @@ func TestListPromotesErrorWhenRunning(t *testing.T) {
 	}
 	if found == nil {
 		t.Fatal("missing")
+		return
 	}
 	if found.Status != vm.StatusRunning {
 		t.Fatalf("status %s want running", found.Status)

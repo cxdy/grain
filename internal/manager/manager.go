@@ -178,15 +178,15 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 				proto = "tcp"
 			}
 			if proto != "tcp" {
-				return nil, fmt.Errorf("Firecracker publish is TCP-only (got %s for host %d → guest %d); use QEMU for UDP hostfwd",
+				return nil, fmt.Errorf("firecracker publish is TCP-only (got %s for host %d → guest %d); use QEMU for UDP hostfwd",
 					proto, f.HostPort, f.GuestPort)
 			}
 		}
 		if len(opts.Mounts) > 0 {
-			return nil, fmt.Errorf("Firecracker does not support host mounts (9p/virtiofs); use QEMU or omit --volume")
+			return nil, fmt.Errorf("firecracker does not support host mounts (9p/virtiofs); use QEMU or omit --volume")
 		}
 		if len(opts.SocketForwards) > 0 {
-			return nil, fmt.Errorf("Firecracker does not support --publish-socket (SSH streamlocal); use QEMU")
+			return nil, fmt.Errorf("firecracker does not support --publish-socket (SSH streamlocal); use QEMU")
 		}
 	}
 	mounts, err := prepareMounts(opts.Mounts)

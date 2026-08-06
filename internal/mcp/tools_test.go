@@ -364,6 +364,7 @@ func textOf(t *testing.T, res *mcp.CallToolResult) string {
 	t.Helper()
 	if res == nil {
 		t.Fatal("nil result")
+		return ""
 	}
 	if res.IsError {
 		t.Fatalf("tool error: %+v", res.Content)
