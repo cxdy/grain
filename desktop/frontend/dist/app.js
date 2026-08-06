@@ -269,15 +269,22 @@
   function setHealth(hs) {
     const dot = $("#health-dot");
     const label = $("#health-label");
-    if (!dot) return;
+    if (!dot || !label) return;
+    // Only ever reflect the *active* connection — never another host's probe error.
     dot.classList.remove("ok", "bad");
     if (hs?.healthy) {
       dot.classList.add("ok");
       const ver = hs.version ? ` · ${hs.version}` : "";
       label.textContent = `${hs.connection || "host"}${ver}`;
+      label.title = "";
     } else {
       dot.classList.add("bad");
-      label.textContent = hs?.message || "unhealthy";
+      const msg = hs?.message || "unhealthy";
+      // Keep pill short; full error on hover
+      const short =
+        msg.length > 64 ? msg.slice(0, 60).replace(/\s+\S*$/, "") + "…" : msg;
+      label.textContent = short;
+      label.title = msg;
     }
   }
 
@@ -287,41 +294,47 @@
       const probes = (await call("ProbeHosts")) || [];
       state.hostProbes = probes;
       const active = await call("GetActiveConnection");
+      state.activeHost = active;
       const avail = probes.filter((p) => p.reachable);
       const unavail = probes.filter((p) => !p.reachable);
       const activeP = probes.find((p) => p.name === active);
       const btnLabel = $("#host-btn-label");
       if (btnLabel) {
-        if (activeP?.reachable && activeP.version) btnLabel.textContent = `${active} · ${activeP.version}`;
-        else if (activeP?.reachable) btnLabel.textContent = active;
-        else btnLabel.textContent = active || "Host";
+        if (activeP?.reachable && activeP.version) {
+          btnLabel.textContent = `${active} · ${activeP.version}`;
+          btnLabel.title = `${active} · ${activeP.version}`;
+        } else if (activeP?.reachable) {
+          btnLabel.textContent = active;
+          btnLabel.title = active;
+        } else if (activeP && !activeP.reachable) {
+          btnLabel.textContent = `${active} · offline`;
+          btnLabel.title = activeP.error || "unreachable";
+        } else {
+          btnLabel.textContent = active || "Host";
+          btnLabel.title = "";
+        }
       }
       const av = $("#host-available");
       const un = $("#host-unavailable");
       const unLab = $("#host-unavail-label");
       if (av) {
-        av.innerHTML = (avail.length ? avail : probes.filter((p) => p.local))
-          .filter((p) => p.reachable || (p.local && !avail.length))
-          .map((p) => {
-            // if nothing reachable, still show local disabled? better show all reachable only
-            return hostItemHTML(p, active);
-          })
-          .join("");
-        // only reachable
-        av.innerHTML = avail.map((p) => hostItemHTML(p, active)).join("") ||
+        av.innerHTML =
+          avail.map((p) => hostItemHTML(p, active)).join("") ||
           `<div class="host-item unavail" disabled>No reachable hosts</div>`;
       }
       if (un && unLab) {
         if (unavail.length) {
           unLab.hidden = false;
           un.innerHTML = unavail
-            .map(
-              (p) =>
-                `<button type="button" class="host-item unavail" disabled title="${escapeHtml(p.error || "unreachable")}">
-                  <span>${escapeHtml(p.name)}</span>
-                  <span class="host-err">${escapeHtml((p.error || "unreachable").slice(0, 48))}</span>
-                </button>`
-            )
+            .map((p) => {
+              const err = p.error || "unreachable";
+              const isActive = p.name === active;
+              // Active-but-down still listed under Unavailable (not selectable for switch)
+              return `<button type="button" class="host-item unavail ${isActive ? "active" : ""}" disabled title="${escapeHtml(err)}">
+                  <span>${escapeHtml(p.name)}${isActive ? " (current)" : ""}</span>
+                  <span class="host-err">${escapeHtml(err.slice(0, 56))}</span>
+                </button>`;
+            })
             .join("");
         } else {
           unLab.hidden = true;
@@ -385,12 +398,28 @@
   }
 
   function updateBulkBar() {
-    const multi = (state.sandboxes || []).length >= 2;
-    const selected = state.selectedSet.size >= 2;
+    const n = (state.sandboxes || []).length;
+    const multi = n >= 2;
+    // Require ≥2 existing AND ≥2 selected — never show with 0–1 sandboxes
+    const showBulk = multi && state.selectedSet.size >= 2;
     const bulk = $("#bulk-bar");
     const th = $("#th-check");
-    if (th) th.hidden = !multi;
-    if (bulk) bulk.hidden = !(multi && selected);
+    if (th) {
+      th.hidden = !multi;
+      if (!multi) th.setAttribute("hidden", "");
+      else th.removeAttribute("hidden");
+    }
+    if (bulk) {
+      bulk.hidden = !showBulk;
+      if (!showBulk) {
+        bulk.setAttribute("hidden", "");
+        bulk.style.display = "none";
+      } else {
+        bulk.removeAttribute("hidden");
+        bulk.style.display = "";
+      }
+    }
+    if (!multi) state.selectedSet.clear();
   }
 
   function renderTable() {
@@ -398,9 +427,11 @@
     if (!tb) return;
     const list = state.sandboxes || [];
     const multi = list.length >= 2;
+    if (!multi) state.selectedSet.clear();
     updateBulkBar();
 
     if (!list.length) {
+      updateBulkBar();
       tb.innerHTML = `<tr><td colspan="6" class="empty-cell">No sandboxes yet.<br/><br/>
         <button type="button" class="btn btn-primary" id="empty-new">New sandbox</button></td></tr>`;
       $("#empty-new")?.addEventListener("click", () => openCreate());
@@ -545,12 +576,18 @@
   }
 
   async function refreshList() {
+    // Health is only for the active host — never paint another host's dial error here.
     try {
       const hs = await call("Health");
       setHealth(hs);
+    } catch (e) {
+      setHealth({ healthy: false, message: String(e).replace(/^Error:\s*/i, "") });
+    }
+    try {
       state.sandboxes = (await call("ListSandboxes")) || [];
       const names = new Set(state.sandboxes.map((s) => s.name));
       for (const n of [...state.selectedSet]) if (!names.has(n)) state.selectedSet.delete(n);
+      if (state.sandboxes.length < 2) state.selectedSet.clear();
       renderTable();
       if (state.selected && names.has(state.selected)) {
         const vm = state.sandboxes.find((s) => s.name === state.selected);
@@ -567,13 +604,17 @@
         showInspector(false);
       } else showInspector(!!state.selected);
     } catch (e) {
-      setHealth({ healthy: false, message: String(e) });
+      // List failure is not health of another host — empty list + keep last health pill
+      state.sandboxes = [];
+      state.selectedSet.clear();
+      renderTable();
+      console.warn("ListSandboxes:", e);
     }
   }
 
   async function refreshAll() {
-    await loadHostMenu();
     await refreshList();
+    await loadHostMenu();
   }
 
   /* ── images ── */
@@ -709,23 +750,33 @@
                   : '<span class="act-error">unreachable</span>'
                 : "";
               const detail = c.local ? "local" : escapeHtml(c.api || "remote");
+              const err = pr && !pr.reachable && pr.error ? pr.error : "";
               const actions = c.local
                 ? '<span class="muted">built-in</span>'
                 : `<div class="btn-row">
                     <button type="button" class="btn btn-ghost btn-sm" data-edit-host="${escapeHtml(c.name)}">Edit</button>
                     <button type="button" class="btn btn-danger-ghost btn-sm" data-del-host="${escapeHtml(c.name)}">Remove</button>
                   </div>`;
-              return `<div class="conn-row">
-                <div>
+              return `<div class="conn-row ${err ? "clickable" : ""}" data-conn="${escapeHtml(c.name)}">
+                <div style="flex:1;min-width:0">
                   <div class="conn-name selectable">${escapeHtml(c.name)} ${reach}</div>
                   <div class="conn-meta selectable">${detail}</div>
+                  ${err ? `<div class="conn-error" hidden data-conn-err="${escapeHtml(c.name)}">${escapeHtml(err)}</div>` : ""}
                 </div>
                 ${actions}
               </div>`;
             })
             .join("");
+          $$(".conn-row.clickable").forEach((row) => {
+            row.addEventListener("click", (e) => {
+              if (e.target.closest("button")) return;
+              const errEl = row.querySelector("[data-conn-err]");
+              if (errEl) errEl.hidden = !errEl.hidden;
+            });
+          });
           $$("[data-del-host]").forEach((b) => {
-            b.addEventListener("click", async () => {
+            b.addEventListener("click", async (e) => {
+              e.stopPropagation();
               if (!confirm(`Remove host “${b.dataset.delHost}”?`)) return;
               try {
                 await act("delete host", () => call("DeleteHost", b.dataset.delHost), {
@@ -738,7 +789,10 @@
             });
           });
           $$("[data-edit-host]").forEach((b) => {
-            b.addEventListener("click", () => openHostModal(b.dataset.editHost, conns));
+            b.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openHostModal(b.dataset.editHost, conns);
+            });
           });
         }
       }
@@ -940,9 +994,29 @@
     });
     window.runtime.EventsOn("shell:close", (payload) => {
       const msg = typeof payload === "string" ? payload : payload?.error || "closed";
-      const line = `\r\n\x1b[90m// session closed ${msg}\x1b[0m\r\n`;
-      if (state.term) state.term.write(line);
-      if (state.termOnly) state.termOnly.write(line);
+      const normal =
+        /StatusNormalClosure|shell exited|logout|context canceled|close frame/i.test(String(msg));
+      // Pop-out shell window: close the window on normal exit
+      if (state.termOnly && normal && window.runtime?.Quit) {
+        try {
+          window.runtime.Quit();
+        } catch (_) {}
+        return;
+      }
+      if (state.termOnly) {
+        const line = normal
+          ? `\r\n\x1b[90m// session ended\x1b[0m\r\n`
+          : `\r\n\x1b[90m// session closed ${msg}\x1b[0m\r\n`;
+        state.termOnly.write(line);
+        return;
+      }
+      // In-app shell: normal exit → Overview; errors keep a short note then Overview
+      if (state.term) {
+        if (!normal) {
+          state.term.write(`\r\n\x1b[90m// session closed ${msg}\x1b[0m\r\n`);
+        }
+        switchTab("overview");
+      }
     });
   }
 
@@ -1270,9 +1344,27 @@
   }
 
   /* ── wire ── */
+  function openDocs(e) {
+    if (e) e.preventDefault();
+    // Prefer bound method (always works in Wails), then runtime helper, then window.open
+    if (typeof go?.OpenDocs === "function") {
+      go.OpenDocs().catch(() => {});
+      return;
+    }
+    try {
+      if (window.runtime?.BrowserOpenURL) {
+        window.runtime.BrowserOpenURL("https://grainvm.com");
+        return;
+      }
+    } catch (_) {}
+    window.open("https://grainvm.com", "_blank", "noopener,noreferrer");
+  }
+
   function wire() {
     $("#btn-theme")?.addEventListener("click", toggleTheme);
     $("#btn-new")?.addEventListener("click", openCreate);
+    // Wails webview: plain <a target=_blank> often no-ops — use BrowserOpenURL
+    $(".docs-link")?.addEventListener("click", openDocs);
     $("#btn-doctor")?.addEventListener("click", () => {
       openModal("modal-doctor");
       runDoctor();
@@ -1594,9 +1686,10 @@
       $("#splash").hidden = true;
       $("#app").hidden = false;
       state.pollTimer = setInterval(async () => {
+        // Refresh active host health + list first; host menu probes secondaries only
         await refreshList();
         await loadHostMenu();
-      }, 4000);
+      }, 5000);
     } catch (e) {
       $("#splash").hidden = true;
       $("#app").hidden = false;

@@ -651,6 +651,14 @@ func (a *App) RevokeAPIToken() (desktop.TokenActionResult, error) {
 	return res, nil
 }
 
+// OpenDocs opens the Grain docs site in the system browser.
+func (a *App) OpenDocs() {
+	if a.ctx == nil {
+		return
+	}
+	runtime.BrowserOpenURL(a.ctx, "https://grainvm.com")
+}
+
 // DoctorRepair runs an allowlisted repair command (e.g. grain up).
 func (a *App) DoctorRepair(command string) (desktop.RepairResult, error) {
 	svc, err := a.service()
