@@ -338,9 +338,8 @@ func handleSelectionRequest(
 		if e.Target == atoms.jpeg && isPNG(raw) {
 			typ = atoms.png
 		}
-		if !serveClipboardBytes(X, atoms, e, prop, typ, raw, maxDirect, pending, log, &reply) {
-			break
-		}
+		// On success sets reply.Property; on failure leaves Property=0 (refuse).
+		serveClipboardBytes(X, atoms, e, prop, typ, raw, maxDirect, pending, log, &reply)
 
 	case atoms.utf8, atoms.text, xproto.AtomString:
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -355,9 +354,7 @@ func handleSelectionRequest(
 			// they retry with image targets (arboard does this).
 			break
 		}
-		if !serveClipboardBytes(X, atoms, e, prop, e.Target, raw, maxDirect, pending, log, &reply) {
-			break
-		}
+		serveClipboardBytes(X, atoms, e, prop, e.Target, raw, maxDirect, pending, log, &reply)
 
 	default:
 		// Unknown target — refuse.
@@ -374,7 +371,7 @@ func handleSelectionRequest(
 }
 
 // serveClipboardBytes writes raw as a direct property or starts ICCCM INCR.
-// Returns false if the transfer could not be started (caller should refuse).
+// On success sets reply.Property = prop; on failure leaves it unset (refuse).
 func serveClipboardBytes(
 	X *xgb.Conn,
 	atoms *x11Atoms,
@@ -386,15 +383,15 @@ func serveClipboardBytes(
 	pending map[uint64]*incrTransfer,
 	log *slog.Logger,
 	reply *xproto.SelectionNotifyEvent,
-) bool {
+) {
 	if len(raw) <= maxDirect {
 		if err := xproto.ChangePropertyChecked(X, xproto.PropModeReplace, e.Requestor, prop,
 			typ, 8, uint32(len(raw)), raw).Check(); err != nil {
 			log.Debug("clipboard x11 direct ChangeProperty failed", "err", err, "bytes", len(raw))
-			return false
+			return
 		}
 		reply.Property = prop
-		return true
+		return
 	}
 
 	// ICCCM INCR: property type INCR, format 32, value = total size.
@@ -404,7 +401,7 @@ func serveClipboardBytes(
 	if err := xproto.ChangePropertyChecked(X, xproto.PropModeReplace, e.Requestor, prop,
 		atoms.incr, 32, 1, sizeBuf).Check(); err != nil {
 		log.Debug("clipboard x11 INCR start ChangeProperty failed", "err", err, "bytes", len(raw))
-		return false
+		return
 	}
 	// Need PropertyNotify when requestor deletes the property.
 	_ = xproto.ChangeWindowAttributesChecked(X, e.Requestor, xproto.CwEventMask,
@@ -419,7 +416,6 @@ func serveClipboardBytes(
 	}
 	log.Debug("clipboard x11 INCR start", "bytes", len(raw), "max_direct", maxDirect)
 	reply.Property = prop
-	return true
 }
 
 func handlePropertyNotify(
