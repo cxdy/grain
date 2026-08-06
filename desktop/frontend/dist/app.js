@@ -272,6 +272,8 @@
         localStorage.setItem(THEME_KEY, pref);
       } catch (_) {}
     }
+    // Native title bar / window chrome (Wails WindowSet*Theme + background).
+    call("SetNativeTheme", t).catch(() => {});
     const ta = $("#config-raw");
     if (ta) highlightConfig(ta.value);
   }

@@ -77,6 +77,7 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
+		// Default dark to match frontend data-theme=dark (avoid white title bar flash).
 		BackgroundColour: &options.RGBA{R: 14, G: 16, B: 15, A: 255},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
@@ -84,7 +85,9 @@ func main() {
 			app,
 		},
 		Mac: &mac.Options{
-			TitleBar:             mac.TitleBarDefault(),
+			TitleBar: mac.TitleBarDefault(),
+			// Cocoa title bar / traffic lights follow dark aqua until JS applies user preference.
+			Appearance:           mac.NSAppearanceNameDarkAqua,
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
 			About: &mac.AboutInfo{
