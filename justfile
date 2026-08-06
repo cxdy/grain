@@ -28,6 +28,7 @@ init:
     fi
 
 # Unit tests (mock hypervisor — no QEMU required).
+# Note: desktop/ is a nested Go module (Wails); tested via `just desktop-test`.
 test:
     env -u GOROOT GOTOOLCHAIN=auto go test ./... -count=1
 
@@ -38,6 +39,62 @@ all: test build
 build:
     mkdir -p bin
     CGO_ENABLED=0 go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
+
+# Desktop backend unit tests (internal/desktop pure logic, no webview).
+desktop-test:
+    env -u GOROOT GOTOOLCHAIN=auto go test ./internal/desktop/ -count=1 -cover
+
+# Run Grain Desktop in Wails dev mode (requires: go install github.com/wailsapp/wails/v2/cmd/wails@latest).
+desktop-dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v wails >/dev/null 2>&1 || { echo "install wails: go install github.com/wailsapp/wails/v2/cmd/wails@latest"; exit 1; }
+    cd desktop
+    # CGO required for OS webview (not Electron).
+    CGO_ENABLED=1 wails dev
+
+# Linux desktop build path (same as desktop-build; unsigned OK). Requires WebKitGTK.
+# Example deps (Debian/Ubuntu): libgtk-3-dev libwebkit2gtk-4.1-dev
+desktop-build-linux: desktop-build
+
+# Build grain-desktop binary + macOS Grain.app (nested module under desktop/).
+desktop-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v wails >/dev/null 2>&1 || { echo "install wails: go install github.com/wailsapp/wails/v2/cmd/wails@latest"; exit 1; }
+    cd desktop
+    xattr -cr . 2>/dev/null || true
+    # Clean prior .app so packaging doesn't inherit resource-fork detritus.
+    rm -rf build/bin/Grain.app build/bin/Grain
+    CGO_ENABLED=1 wails build -skipbindings || CGO_ENABLED=1 wails build -skipbindings -nopackage
+    if [[ -d build/bin/Grain.app ]]; then
+      # codesign rejects Finder xattrs / resource forks under Documents/
+      xattr -cr build/bin/Grain.app 2>/dev/null || true
+      find build/bin/Grain.app -print0 2>/dev/null | xargs -0 xattr -c 2>/dev/null || true
+      if ! codesign --force --deep --sign - build/bin/Grain.app 2>/dev/null; then
+        tmp="$(mktemp -d)/Grain.app"
+        ditto --norsrc --noextattr build/bin/Grain.app "$tmp"
+        rm -rf build/bin/Grain.app
+        ditto "$tmp" build/bin/Grain.app
+        rm -rf "$(dirname "$tmp")"
+        codesign --force --deep --sign - build/bin/Grain.app 2>/dev/null || true
+      fi
+    fi
+    mkdir -p ../bin
+    # Prefer .app launcher (bare GUI binaries often get SIGKILL under Documents).
+    if [[ -d build/bin/Grain.app ]]; then
+      cp -f ../scripts/grain-desktop-launch.sh ../bin/Grain
+      chmod +x ../bin/Grain
+      cp -f ../bin/Grain ../bin/grain-desktop
+      echo "built desktop/build/bin/Grain.app"
+      echo "run:  ./bin/Grain   or   open desktop/build/bin/Grain.app"
+    elif [[ -f build/bin/Grain ]]; then
+      xattr -c build/bin/Grain 2>/dev/null || true
+      codesign --force --sign - build/bin/Grain 2>/dev/null || true
+      cp -f build/bin/Grain ../bin/Grain
+      cp -f build/bin/Grain ../bin/grain-desktop
+      echo "built bin/Grain"
+    fi
 
 # Drive initialize + tools/list against `grain mcp` (stdio handshake).
 mcp-handshake: build

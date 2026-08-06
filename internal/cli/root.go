@@ -81,6 +81,7 @@ func Root(version string) *cobra.Command {
   grain new --publish-socket H:G  SSH streamlocal socket forward
   grain logs            guest serial / qemu logs
   grain doctor          check dependencies
+  grain check-config    validate config.yaml
   grain down            stop daemon
 
 Remote team host (CLI dials HTTP instead of local socket):
@@ -146,6 +147,7 @@ Remote team host (CLI dials HTTP instead of local socket):
 		cmdAgent(&cfgPath),
 		cmdStatus(&cfgPath),
 		cmdDoctor(&cfgPath),
+		cmdCheckConfig(&cfgPath),
 		cmdVersion(version),
 	)
 	return root

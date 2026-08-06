@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grain</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./vendor/xterm.css" />
+    <link rel="stylesheet" id="hljs-theme" href="./vendor/highlight-github-dark.min.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!-- Splash -->
+    <div id="splash" class="splash" hidden>
+      <div class="splash-card">
+        <img class="logo" src="./logo.png" width="64" height="64" alt="Grain" />
+        <h1>Grain</h1>
+        <p id="splash-msg" class="muted">Checking daemon…</p>
+        <div class="splash-bar"><span></span></div>
+      </div>
+    </div>
+
+    <!-- Shell-only window -->
+    <div id="shell-only" class="shell-only" hidden>
+      <header class="shell-only-bar">
+        <img class="logo sm" src="./logo.png" width="20" height="20" alt="" />
+        <strong id="shell-only-title">Shell</strong>
+        <button type="button" class="btn-icon" id="shell-only-reconnect" title="Reconnect">↻</button>
+      </header>
+      <div id="xterm-only" class="xterm-host fill"></div>
+    </div>
+
+    <div id="app" class="app" hidden>
+      <!-- Top bar -->
+      <header class="topbar">
+        <div class="topbar-brand">
+          <img class="logo sm" src="./logo.png" width="26" height="26" alt="" />
+          <span class="brand-title">Grain</span>
+        </div>
+        <label class="host-select">
+          <span class="label-quiet">Host</span>
+          <select id="conn-select" aria-label="Host connection"></select>
+        </label>
+        <div class="health-pill" id="health-pill" title="Daemon health">
+          <span id="health-dot" class="dot"></span>
+          <span id="health-label">—</span>
+        </div>
+        <div class="topbar-spacer"></div>
+        <a class="docs-link" href="https://grainvm.com" target="_blank" rel="noreferrer">Docs</a>
+        <button type="button" class="btn-icon" id="btn-activity" title="Activity" aria-label="Activity">
+          🔔<span id="activity-badge" class="badge-count" hidden>0</span>
+        </button>
+        <button type="button" class="btn-icon" id="btn-theme" title="Theme" aria-label="Toggle theme"><span id="theme-icon">☀</span></button>
+        <button type="button" class="btn btn-ghost" id="btn-refresh" title="Refresh current view">Refresh</button>
+      </header>
+
+      <div class="body-layout">
+        <!-- Sidebar -->
+        <nav class="sidebar" aria-label="Primary">
+          <button type="button" class="nav-item active" data-view="sandboxes">Sandboxes</button>
+          <button type="button" class="nav-item" data-view="images">Images</button>
+          <button type="button" class="nav-item" data-view="mcp">MCP</button>
+          <button type="button" class="nav-item" data-view="doctor">Doctor</button>
+          <button type="button" class="nav-item" data-view="settings">Settings</button>
+        </nav>
+
+        <!-- Main + inspector -->
+        <div class="content-row">
+          <main class="main" id="main">
+            <!-- Sandboxes -->
+            <section id="view-sandboxes" class="view">
+              <div class="view-head">
+                <h2>Sandboxes</h2>
+                <div class="view-head-actions">
+                  <div id="bulk-bar" class="bulk-bar" hidden>
+                    <button type="button" class="btn btn-ghost btn-sm" id="bulk-start">Start</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="bulk-stop">Stop</button>
+                    <button type="button" class="btn btn-danger-ghost btn-sm" id="bulk-rm">Remove</button>
+                  </div>
+                  <button type="button" class="btn btn-primary" id="btn-new">New sandbox</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table" id="vm-table">
+                  <thead>
+                    <tr>
+                      <th id="th-check" class="col-check" hidden><input type="checkbox" id="check-all" title="Select all" /></th>
+                      <th>Name</th>
+                      <th>Status</th>
+                      <th>Agent</th>
+                      <th>Image</th>
+                      <th>CPU / RAM</th>
+                    </tr>
+                  </thead>
+                  <tbody id="vm-tbody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- Images -->
+            <section id="view-images" class="view" hidden>
+              <div class="view-head"><h2>Images</h2></div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr><th>ID</th><th>Status</th><th>Agent</th><th>Description</th><th></th></tr>
+                  </thead>
+                  <tbody id="images-tbody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- MCP -->
+            <section id="view-mcp" class="view" hidden>
+              <div class="view-head"><h2>MCP</h2></div>
+              <div class="panel">
+                <div class="panel-row">
+                  <div>
+                    <div class="panel-label">Status</div>
+                    <div id="mcp-status-text" class="panel-value">—</div>
+                  </div>
+                  <span id="mcp-pill" class="status-pill">—</span>
+                </div>
+                <div class="panel-row">
+                  <div>
+                    <div class="panel-label">Listen</div>
+                    <div id="mcp-listen" class="panel-value mono">—</div>
+                  </div>
+                </div>
+                <div class="form-row mt">
+                  <label class="check-label">
+                    <input type="checkbox" id="mcp-enabled" />
+                    Enable MCP in config
+                  </label>
+                </div>
+                <div class="form-row">
+                  <label class="field">
+                    <span>Listen address</span>
+                    <input type="text" id="mcp-listen-input" class="input" placeholder="127.0.0.1:7476" />
+                  </label>
+                </div>
+                <div class="btn-row">
+                  <button type="button" class="btn btn-primary" id="mcp-save">Save config</button>
+                  <button type="button" class="btn btn-ghost" id="mcp-ensure">Ensure running</button>
+                </div>
+                <p class="hint" id="mcp-hint">Local only: Desktop can start MCP with <code>grain up --mcp</code>.</p>
+                <div class="snippet-block">
+                  <div class="snippet-head"><span>Cursor</span><button type="button" class="btn btn-ghost btn-sm" data-copy="mcp-cursor">Copy</button></div>
+                  <pre id="mcp-cursor" class="snippet selectable"></pre>
+                </div>
+                <div class="snippet-block">
+                  <div class="snippet-head"><span>Claude</span><button type="button" class="btn btn-ghost btn-sm" data-copy="mcp-claude">Copy</button></div>
+                  <pre id="mcp-claude" class="snippet selectable"></pre>
+                </div>
+                <div class="snippet-block">
+                  <div class="snippet-head"><span>Generic</span><button type="button" class="btn btn-ghost btn-sm" data-copy="mcp-generic">Copy</button></div>
+                  <pre id="mcp-generic" class="snippet selectable"></pre>
+                </div>
+              </div>
+            </section>
+
+            <!-- Doctor -->
+            <section id="view-doctor" class="view" hidden>
+              <div class="view-head">
+                <h2>Doctor</h2>
+                <button type="button" class="btn btn-ghost" id="btn-doctor-run">Run checks</button>
+              </div>
+              <div id="doctor-list" class="doctor-list">
+                <p class="muted">Run checks to inspect host tools and daemon health.</p>
+              </div>
+            </section>
+
+            <!-- Settings -->
+            <section id="view-settings" class="view" hidden>
+              <div class="view-head"><h2>Settings</h2></div>
+              <div class="panel">
+                <h3 class="panel-title">Preferences</h3>
+                <dl class="meta" id="settings-meta"></dl>
+                <h3 class="panel-title mt">Connections</h3>
+                <p class="hint">Add hosts from the Host menu (Add new host…) or below.</p>
+                <button type="button" class="btn btn-ghost" id="btn-add-host">Add host</button>
+                <h3 class="panel-title mt">Advanced</h3>
+                <p class="hint">Raw <code>config.yaml</code> — validated with strict unknown-key checks before save.</p>
+                <div class="config-box">
+                  <div class="config-box-head">
+                    <span class="muted">config.yaml</span>
+                    <div class="btn-row">
+                      <button type="button" class="btn btn-ghost btn-sm" id="btn-reload-cfg">Reload</button>
+                      <button type="button" class="btn btn-primary btn-sm" id="btn-config-edit">Edit</button>
+                    </div>
+                  </div>
+                  <div class="code-editor">
+                    <div class="line-numbers" id="config-lines"></div>
+                    <div class="code-pane" id="config-pane">
+                      <pre class="code-hl" id="config-hl"><code class="language-yaml"></code></pre>
+                      <textarea id="config-raw" class="code-input selectable" spellcheck="false" readonly wrap="off"></textarea>
+                    </div>
+                  </div>
+                  <p id="config-error" class="config-error" hidden></p>
+                </div>
+              </div>
+            </section>
+          </main>
+
+          <!-- Right inspector (sandboxes) -->
+          <aside id="inspector" class="inspector" hidden>
+            <div class="inspector-empty" id="inspector-empty">
+              <p class="muted">Select a sandbox</p>
+            </div>
+            <div id="inspector-body" hidden>
+              <div class="inspector-head">
+                <div>
+                  <strong id="detail-name">—</strong>
+                  <span id="detail-status-pill"></span>
+                </div>
+                <div class="inspector-actions" id="detail-actions">
+                  <button type="button" class="btn btn-primary btn-sm" data-act="shell">Shell</button>
+                  <button type="button" class="btn-icon" data-act="window" title="Open in new window" aria-label="Open in new window">⧉</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-act="start" id="btn-start">Start</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-act="stop" id="btn-stop" hidden>Stop</button>
+                  <div class="dropdown">
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-more">More ▾</button>
+                    <ul class="dropdown-menu" id="more-menu">
+                      <li><button type="button" class="dropdown-item" data-act="logs">Logs</button></li>
+                      <li><button type="button" class="dropdown-item" data-act="edit">Config</button></li>
+                      <li><button type="button" class="dropdown-item" data-act="term">Terminal.app</button></li>
+                      <li class="dropdown-divider"></li>
+                      <li><button type="button" class="dropdown-item danger" data-act="rm">Remove</button></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div class="inspector-tabs" role="tablist">
+                <button type="button" class="insp-tab active" data-tab="overview" role="tab">Overview</button>
+                <button type="button" class="insp-tab" data-tab="shell" role="tab">Shell</button>
+                <button type="button" class="insp-tab" data-tab="logs" role="tab">Logs</button>
+              </div>
+              <div id="tab-overview" class="tab-panel" role="tabpanel">
+                <dl class="meta" id="detail-meta"></dl>
+              </div>
+              <div id="tab-shell" class="tab-panel" role="tabpanel" hidden>
+                <div class="shell-toolbar">
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-shell-reconnect">Reconnect</button>
+                  <button type="button" class="btn-icon" id="btn-shell-pop" title="Open in new window" aria-label="Open in new window">⧉</button>
+                </div>
+                <div id="xterm" class="xterm-host"></div>
+              </div>
+              <div id="tab-logs" class="tab-panel" role="tabpanel" hidden>
+                <div class="btn-row mb">
+                  <select id="log-source" class="input sm">
+                    <option value="serial">serial.log</option>
+                    <option value="qemu">qemu log</option>
+                  </select>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-reload-logs">Reload</button>
+                </div>
+                <pre id="log-view" class="log-view selectable"></pre>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity drawer -->
+    <div id="activity-drawer" class="drawer" hidden>
+      <div class="drawer-panel">
+        <div class="drawer-head">
+          <strong>Activity</strong>
+          <div class="btn-row">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-activity-clear">Clear</button>
+            <button type="button" class="btn-icon" id="btn-activity-close" aria-label="Close">×</button>
+          </div>
+        </div>
+        <div id="activity-list" class="activity-list"></div>
+      </div>
+    </div>
+
+    <!-- Create modal -->
+    <div class="modal-backdrop" id="modal-create" hidden>
+      <div class="modal" role="dialog" aria-labelledby="create-title">
+        <div class="modal-head">
+          <strong id="create-title">New sandbox</strong>
+          <button type="button" class="btn-icon" data-close="modal-create" aria-label="Close">×</button>
+        </div>
+        <form id="create-form" class="modal-body">
+          <label class="field">
+            <span>Name</span>
+            <input class="input" name="name" placeholder="auto if empty" autocomplete="off" />
+            <span class="field-hint" id="name-hint">Lowercase letters, digits, hyphens; start with a letter.</span>
+          </label>
+          <label class="field">
+            <span>Image</span>
+            <select class="input" name="image" id="create-image"></select>
+            <input class="input mt-sm" name="image_custom" id="create-image-custom" placeholder="custom id or path" hidden />
+          </label>
+          <div class="field-grid">
+            <label class="field"><span>CPUs</span><input class="input" name="cpus" type="number" min="1" /></label>
+            <label class="field"><span>Memory (MiB)</span><input class="input" name="memory_mb" type="number" min="256" step="256" /></label>
+            <label class="field"><span>Disk (GiB)</span><input class="input" name="disk_gb" type="number" min="1" /></label>
+          </div>
+          <label class="check-label"><input type="checkbox" name="persistent" id="create-persistent" /> Persistent disk</label>
+          <details class="adv">
+            <summary>Advanced</summary>
+            <div class="field-grid mt-sm">
+              <label class="field"><span>Arch</span>
+                <select class="input" name="arch"><option value="">host default</option><option value="arm64">arm64</option><option value="amd64">amd64</option></select>
+              </label>
+              <label class="field"><span>GPU</span>
+                <select class="input" name="gpu"><option value="">none</option><option value="virtio">virtio</option></select>
+              </label>
+              <label class="field"><span>Network</span>
+                <select class="input" name="network"><option value="">slirp</option><option value="overlay">overlay</option></select>
+              </label>
+            </div>
+            <label class="field mt-sm"><span>Wait</span>
+              <select class="input" name="wait"><option value="auto">auto</option><option value="agent">agent</option><option value="ssh">ssh</option><option value="userdata">userdata</option><option value="bootstrap">bootstrap</option></select>
+            </label>
+            <label class="field"><span>Timeout</span><input class="input" name="timeout" placeholder="e.g. 3m" /></label>
+            <label class="field"><span>Publish ports</span><input class="input" name="publish" placeholder="8080:80" /></label>
+            <label class="field"><span>Mounts</span><textarea class="input mono" name="mounts" rows="2" placeholder="/Users/me/proj:/work"></textarea></label>
+            <label class="field"><span>Cloud-init userdata</span><textarea class="input mono" name="userdata" rows="3"></textarea></label>
+          </details>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-ghost" data-close="modal-create">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="create-submit">Create</button>
+          </div>
+          <p id="create-status" class="hint"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Host modal -->
+    <div class="modal-backdrop" id="modal-host" hidden>
+      <div class="modal sm" role="dialog">
+        <div class="modal-head">
+          <strong>Add host</strong>
+          <button type="button" class="btn-icon" data-close="modal-host" aria-label="Close">×</button>
+        </div>
+        <form id="host-form" class="modal-body">
+          <label class="field"><span>Name</span><input class="input" name="name" required /></label>
+          <label class="field"><span>API endpoint</span><input class="input" name="api" placeholder="http://127.0.0.1:7474" required /></label>
+          <label class="field"><span>API token</span><input class="input" name="token" type="password" /></label>
+          <label class="check-label"><input type="checkbox" id="host-mcp" name="mcp_enabled" /> Remote MCP server</label>
+          <div id="host-mcp-fields" hidden>
+            <label class="field"><span>MCP endpoint</span><input class="input" name="mcp_listen" placeholder="127.0.0.1:7476" /></label>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-ghost" data-close="modal-host">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save host</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Sandbox config modal -->
+    <div class="modal-backdrop" id="modal-sbox" hidden>
+      <div class="modal sm" role="dialog">
+        <div class="modal-head">
+          <strong>Sandbox config — <span id="sbox-edit-name"></span></strong>
+          <button type="button" class="btn-icon" data-close="modal-sbox" aria-label="Close">×</button>
+        </div>
+        <form id="sbox-form" class="modal-body">
+          <div class="field-grid">
+            <label class="field"><span>CPUs</span><input class="input" name="cpus" type="number" min="1" /></label>
+            <label class="field"><span>Memory MiB</span><input class="input" name="memory_mb" type="number" min="256" /></label>
+            <label class="field"><span>Disk GiB</span><input class="input" name="disk_gb" type="number" min="1" /></label>
+          </div>
+          <label class="field"><span>Image</span><input class="input" name="image" /></label>
+          <label class="check-label"><input type="checkbox" name="persistent" id="sbox-p" /> Persistent</label>
+          <p class="hint">Increasing disk runs <code>qemu-img resize</code> (sandbox must be stopped). Guest FS may still need grow.</p>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-ghost" data-close="modal-sbox">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Confirm -->
+    <div class="modal-backdrop" id="modal-confirm" hidden>
+      <div class="modal sm" role="dialog">
+        <div class="modal-body">
+          <p id="confirm-msg"></p>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-ghost" id="confirm-later">Later</button>
+            <button type="button" class="btn btn-primary" id="confirm-yes">Yes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="./vendor/xterm.js"></script>
+    <script src="./vendor/addon-fit.js"></script>
+    <script src="./vendor/highlight.min.js"></script>
+    <script src="./vendor/languages/yaml.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

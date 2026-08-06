@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Grain",
+  "outputfilename": "Grain",
+  "frontend:dir": "frontend/dist",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "author": {
+    "name": "grain",
+    "email": ""
+  },
+  "info": {
+    "companyName": "grain",
+    "productName": "Grain",
+    "productVersion": "0.1.0",
+    "copyright": "Apache-2.0",
+    "comments": "Linux microVM operator console — thin client of the grain daemon"
+  }
+}

@@ -110,6 +110,7 @@ grain fwd ls lab         # host port → guest 6443
 | **Guest agent** | Exec, shell, file copy, and fs ops without living in SSH |
 | **API** | Unix socket + optional TCP · [OpenAPI](api/openapi.yaml) |
 | **SDKs** | [Go](https://pkg.go.dev/github.com/cxdy/grain/client) · [TypeScript](https://www.npmjs.com/package/@cxdy/grain) · [Python](https://pypi.org/project/grainvm/) |
+| **Desktop** | Optional Wails GUI (not Electron) · [desktop/README.md](desktop/README.md) |
 
 ---
 
@@ -133,9 +134,11 @@ The site is built from this repo’s `docs/` directory.
 ## Develop
 
 ```bash
-just test        # unit tests (mock hypervisor)
-just smoke-api   # CLI + daemon e2e without QEMU
+just test           # unit tests (mock hypervisor)
+just smoke-api      # CLI + daemon e2e without QEMU
 just build
+just desktop-test   # Desktop backend unit tests
+just desktop-build  # optional Grain Desktop (Wails; needs CGO + wails CLI)
 ```
 
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Releasing](docs/developer/releasing.md)

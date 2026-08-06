@@ -28,6 +28,7 @@ grain new --preset k3s -n lab -p --wait userdata
 
 | Guide | When you need it |
 |-------|------------------|
+| [Grain Desktop (GUI)](./desktop/) | Optional operator console (sandboxes, shell, images, MCP, doctor) |
 | [Images & golden boots](./images/) | Pull, import, bake, choose ubuntu/alpine/golden |
 | [Guest agent](./agent/) | Exec, shell, cp, fs without living in SSH |
 | [Networking & ports](./networking/) | Publish ports, live forwards, SLIRP limits |
