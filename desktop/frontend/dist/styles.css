@@ -21,6 +21,12 @@
   --code-bg: #0a0d0b;
   --code-fg: #e6edf3;
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  /* Scrollbars — soft, theme-aware, used app-wide via universal rules below */
+  --scrollbar-size: 10px;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(236, 234, 228, 0.14);
+  --scrollbar-thumb-hover: rgba(236, 234, 228, 0.28);
+  --scrollbar-thumb-active: rgba(61, 222, 168, 0.45);
   --font: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --radius: 0.5rem;
@@ -39,10 +45,47 @@
   --warn: #b8860b; --warn-soft: rgba(184,134,11,0.12);
   --code-bg: #f6f8fa; --code-fg: #1f2328;
   --shadow: 0 12px 40px rgba(28,25,23,0.1);
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(28, 25, 23, 0.18);
+  --scrollbar-thumb-hover: rgba(28, 25, 23, 0.32);
+  --scrollbar-thumb-active: rgba(15, 154, 102, 0.45);
   color-scheme: light;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* Global scrollbars (Firefox + WebKit/Blink). Inherit theme via CSS variables. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 999px;
+  /* inset so the pill doesn’t hug the edge of the gutter */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 /* Author CSS often sets display:flex/inline-flex on buttons & panels;
    without this, the HTML hidden attribute is overridden and “hidden”
    controls (Start/Stop, empty inspector, etc.) stay visible. */

@@ -40,9 +40,35 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	_ = a.reloadService()
+	// Match default HTML data-theme=dark so the title bar is not white on first paint.
+	a.applyNativeTheme("dark")
 }
 
 func (a *App) shutdown(ctx context.Context) {}
+
+// SetNativeTheme updates the OS window chrome (title bar / system appearance)
+// and window background to match the Desktop light|dark UI theme.
+// Called from the frontend whenever the user toggles or loads a saved theme.
+func (a *App) SetNativeTheme(theme string) {
+	a.applyNativeTheme(theme)
+}
+
+func (a *App) applyNativeTheme(theme string) {
+	if a.ctx == nil {
+		return
+	}
+	t := strings.ToLower(strings.TrimSpace(theme))
+	switch t {
+	case "light":
+		runtime.WindowSetLightTheme(a.ctx)
+		// Match [data-theme=light] --bg #f7f6f3
+		runtime.WindowSetBackgroundColour(a.ctx, 247, 246, 243, 255)
+	default:
+		runtime.WindowSetDarkTheme(a.ctx)
+		// Match [data-theme=dark] --bg #0e100f
+		runtime.WindowSetBackgroundColour(a.ctx, 14, 16, 15, 255)
+	}
+}
 
 func (a *App) reloadService() error {
 	path := a.configPath
