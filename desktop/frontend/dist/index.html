@@ -108,7 +108,7 @@
                       <th>Status</th>
                       <th>Agent</th>
                       <th>Image</th>
-                      <th>CPU / RAM</th>
+                      <th>vCPU / RAM</th>
                     </tr>
                   </thead>
                   <tbody id="vm-tbody"></tbody>
@@ -332,7 +332,7 @@
             <input class="input mt-sm" name="image_custom" id="create-image-custom" placeholder="custom id or path" hidden />
           </label>
           <div class="field-grid">
-            <label class="field"><span>CPUs</span><input class="input" name="cpus" type="number" min="1" /></label>
+            <label class="field"><span>vCPUs</span><input class="input" name="cpus" type="number" min="1" /></label>
             <label class="field"><span>Memory (MiB)</span><input class="input" name="memory_mb" type="number" min="256" step="256" /></label>
             <label class="field"><span>Disk (GiB)</span><input class="input" name="disk_gb" type="number" min="1" /></label>
           </div>
@@ -402,7 +402,7 @@
         </div>
         <form id="sbox-form" class="modal-body">
           <div class="field-grid">
-            <label class="field"><span>CPUs</span><input class="input" name="cpus" type="number" min="1" /></label>
+            <label class="field"><span>vCPUs</span><input class="input" name="cpus" type="number" min="1" /></label>
             <label class="field"><span>Memory MiB</span><input class="input" name="memory_mb" type="number" min="256" /></label>
             <label class="field"><span>Disk GiB</span><input class="input" name="disk_gb" type="number" min="1" /></label>
           </div>

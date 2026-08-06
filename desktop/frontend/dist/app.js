@@ -450,7 +450,7 @@
           <td>${statusBadge(vm.status)}</td>
           <td>${agentCell(vm)}</td>
           <td class="muted selectable">${escapeHtml(vm.image || "—")}</td>
-          <td class="muted">${vm.cpus || "—"} / ${vm.memory_mb || "—"} MiB</td>
+          <td class="muted">${vm.cpus != null && vm.cpus !== "" ? vm.cpus + " vCPUs" : "—"} / ${vm.memory_mb || "—"} MiB</td>
         </tr>`;
       })
       .join("");
@@ -486,7 +486,7 @@
     el.innerHTML = `
       <dt>Status</dt><dd>${escapeHtml(vm.status || "—")}</dd>
       <dt>Image</dt><dd>${escapeHtml(vm.image || "—")}</dd>
-      <dt>CPUs</dt><dd>${vm.cpus ?? "—"}</dd>
+      <dt>vCPUs</dt><dd>${vm.cpus != null ? vm.cpus : "—"}</dd>
       <dt>Memory</dt><dd>${vm.memory_mb != null ? vm.memory_mb + " MiB" : "—"}</dd>
       <dt>Disk</dt><dd>${vm.disk_gb != null && vm.disk_gb > 0 ? vm.disk_gb + " GiB" : "—"}</dd>
       <dt>Persistent</dt><dd>${vm.persistent ? "yes" : "no"}</dd>
