@@ -68,13 +68,38 @@ func BaseUserData(hostname, sshPubLine string) map[string]any {
 // BaseUserDataMinimal builds a lean cloud-config for agent-ready golden images.
 // Skips heavy package ops; keeps hostname, SSH keys, grain sudo user, and
 // readiness markers so clones finish cloud-init quickly.
+//
+// growDisk: when false (default for same-size qcow2 overlays), omit growpart/resizefs
+// which often dominate clone boot time even when the disk was not enlarged.
 func BaseUserDataMinimal(hostname, sshPubLine string) map[string]any {
+	return baseUserDataMinimal(hostname, sshPubLine, false)
+}
+
+// BaseUserDataMinimalGrow is BaseUserDataMinimal plus growpart/resizefs for
+// clones that resized the qcow2 beyond the base image virtual size.
+func BaseUserDataMinimalGrow(hostname, sshPubLine string) map[string]any {
+	return baseUserDataMinimal(hostname, sshPubLine, true)
+}
+
+func baseUserDataMinimal(hostname, sshPubLine string, growDisk bool) map[string]any {
 	key := strings.TrimSpace(sshPubLine)
 	// Single runcmd: keys + readiness stamps (userdata-ran for agent Health, grain-ready legacy).
 	readyCmd := fmt.Sprintf(
 		"%s; mkdir -p /var/lib/grain; touch /var/lib/grain/userdata-ran; echo grain-ready > /var/lib/grain-ready",
 		sshAuthRuncmd(sshPubLine),
 	)
+	mods := []any{
+		"set_hostname",
+		"update_hostname",
+		"update_etc_hosts",
+		"users-groups",
+		"ssh",
+		"runcmd",
+	}
+	if growDisk {
+		// Disk grow only when host resized the image; expensive on every boot otherwise.
+		mods = append([]any{"growpart", "resizefs"}, mods...)
+	}
 	return map[string]any{
 		"hostname":         hostname,
 		"fqdn":             hostname + ".local",
@@ -90,18 +115,8 @@ func BaseUserDataMinimal(hostname, sshPubLine string) map[string]any {
 		"ssh_authorized_keys": []any{
 			key,
 		},
-		// Limit config-stage modules so clone boots skip apt/locale/etc. while
-		// keeping hostname, disk grow, users, ssh, and runcmd on Ubuntu.
-		"cloud_config_modules": []any{
-			"growpart",
-			"resizefs",
-			"set_hostname",
-			"update_hostname",
-			"update_etc_hosts",
-			"users-groups",
-			"ssh",
-			"runcmd",
-		},
+		// Limit config-stage modules so clone boots skip apt/locale/etc.
+		"cloud_config_modules": mods,
 		"runcmd": []any{
 			[]any{"sh", "-c", readyCmd},
 		},
@@ -158,7 +173,12 @@ func RenderUserData(hostname, sshPubLine, extra string, mounts ...MountSpec) (st
 // When extra is non-empty, cloud_config_modules is dropped so packages/write_files
 // and other modules from the extra document can still run.
 func RenderUserDataMinimal(hostname, sshPubLine, extra string, mounts ...MountSpec) (string, error) {
-	base := BaseUserDataMinimal(hostname, sshPubLine)
+	return RenderUserDataMinimalOpts(hostname, sshPubLine, extra, false, mounts...)
+}
+
+// RenderUserDataMinimalOpts is RenderUserDataMinimal with optional disk grow modules.
+func RenderUserDataMinimalOpts(hostname, sshPubLine, extra string, growDisk bool, mounts ...MountSpec) (string, error) {
+	base := baseUserDataMinimal(hostname, sshPubLine, growDisk)
 	if strings.TrimSpace(extra) != "" {
 		delete(base, "cloud_config_modules")
 	}

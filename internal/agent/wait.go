@@ -8,7 +8,9 @@ import (
 )
 
 // WaitPollInterval is how often Wait polls the agent health endpoint.
-const WaitPollInterval = 200 * time.Millisecond
+// 50ms reduces mean detection lag vs 200ms without meaningful host load
+// (create latency is dominated by guest boot, not poll frequency).
+const WaitPollInterval = 50 * time.Millisecond
 
 // Wait polls HeadHealth every 200ms until the agent responds or ctx is done.
 func Wait(ctx context.Context, c *Client) error {

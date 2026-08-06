@@ -520,3 +520,25 @@ func toStrings(t *testing.T, v any) []string {
 	}
 	return out
 }
+
+func TestBaseUserDataMinimal_NoGrowByDefault(t *testing.T) {
+	m := BaseUserDataMinimal("h", "ssh-ed25519 AAAA k")
+	mods, _ := m["cloud_config_modules"].([]any)
+	for _, x := range mods {
+		s, _ := x.(string)
+		if s == "growpart" || s == "resizefs" {
+			t.Fatalf("default minimal should not grow disk, got %v", mods)
+		}
+	}
+	mg := BaseUserDataMinimalGrow("h", "ssh-ed25519 AAAA k")
+	mods2, _ := mg["cloud_config_modules"].([]any)
+	found := false
+	for _, x := range mods2 {
+		if s, _ := x.(string); s == "growpart" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("grow minimal missing growpart: %v", mods2)
+	}
+}
