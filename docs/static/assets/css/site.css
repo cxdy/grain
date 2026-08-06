@@ -412,6 +412,20 @@ pre code {
   color: var(--text);
   background: var(--bg-elev);
 }
+.version-commit {
+  font-size: 0.75rem;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  color: var(--muted);
+  margin-left: 0.35rem;
+  text-decoration: none;
+  opacity: 0.85;
+}
+.version-commit:hover,
+.version-commit:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+  outline: none;
+}
 
 /* Buttons */
 .btn {

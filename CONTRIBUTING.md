@@ -8,7 +8,7 @@ Also read [SECURITY.md](SECURITY.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md
 
 **Supported:** macOS and Linux (amd64 / arm64) with hardware virtualization (HVF / KVM). grain runs ordinary microVMs on those hosts — not nested virtualization. Nested virt only applies when grain itself runs *inside* another VM that lacks hardware virt.
 
-**Native Windows** is not a grain host; use the remote CLI/SDK against a Linux or macOS machine if needed ([remote host guide](https://grainvm.com/guides/remote-host/)). **WSL** reports as Linux and uses the same virt requirements as other Linux hosts.
+**Native Windows** is not a grain host; use the remote CLI/SDK against a Linux or macOS machine if needed ([remote host guide](https://grainvm.com/docs/0.6.3/guides/remote-host/)). **WSL** reports as Linux and uses the same virt requirements as other Linux hosts.
 
 ## Prerequisites
 
@@ -73,7 +73,7 @@ just test && just build
 ./bin/grain down
 ```
 
-Troubleshooting: [guides/troubleshooting](https://grainvm.com/guides/troubleshooting/). Security model: [explain/security](https://grainvm.com/explain/security/).
+Troubleshooting: [guides/troubleshooting](https://grainvm.com/docs/0.6.3/guides/troubleshooting/). Security model: [explain/security](https://grainvm.com/docs/0.6.3/explain/security/).
 
 ## Release
 

@@ -403,16 +403,10 @@ func readClipboardDarwin() ([]byte, error) {
 	return text, nil
 }
 
-// readDarwinClipboardImage returns PNG (or JPEG) bytes from the macOS pasteboard.
-// Screenshots often land as TIFF only (no PNG type). Naive
-// NSBitmapImageRep(data: tiff) can yield a tiny/icon rep; we rasterize via
-// NSImage.cgImage at full size then encode PNG.
-func readDarwinClipboardImage() ([]byte, error) {
-	if _, err := exec.LookPath("swift"); err != nil {
-		return nil, errString("swift not found for image clipboard")
-	}
-	// Prefer native PNG/JPEG; convert TIFF/public.tiff at full resolution.
-	const swiftSrc = `
+// Prefer native PNG/JPEG; convert TIFF/public.tiff at full resolution.
+// Compiled once to a cache binary — `swift -e` on every paste is too slow for
+// large screenshots and causes guest paste timeouts.
+const darwinClipboardSwiftSrc = `
 import AppKit
 import Foundation
 
@@ -468,13 +462,89 @@ if let imgs = pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSIm
 }
 exit(1)
 `
-	cmd := exec.Command("swift", "-e", swiftSrc)
+
+var (
+	darwinClipHelperOnce sync.Once
+	darwinClipHelperPath string
+	darwinClipHelperErr  error
+)
+
+// readDarwinClipboardImage returns PNG (or JPEG) bytes from the macOS pasteboard.
+// Screenshots often land as TIFF only (no PNG type). Naive
+// NSBitmapImageRep(data: tiff) can yield a tiny/icon rep; we rasterize via
+// NSImage.cgImage at full size then encode PNG.
+func readDarwinClipboardImage() ([]byte, error) {
+	helper, err := darwinClipboardHelper()
+	if err != nil {
+		// Fallback: slow swift -e (first-run / no write cache).
+		if _, lerr := exec.LookPath("swift"); lerr != nil {
+			return nil, errString("swift not found for image clipboard")
+		}
+		cmd := exec.Command("swift", "-e", darwinClipboardSwiftSrc)
+		cmd.Stderr = io.Discard
+		out, oerr := cmd.Output()
+		if oerr != nil || len(out) == 0 {
+			return nil, errString("no image on clipboard")
+		}
+		return out, nil
+	}
+	cmd := exec.Command(helper)
 	cmd.Stderr = io.Discard
 	out, err := cmd.Output()
 	if err != nil || len(out) == 0 {
 		return nil, errString("no image on clipboard")
 	}
 	return out, nil
+}
+
+// darwinClipboardHelper compiles the AppKit paste reader once into ~/.grain/bin.
+func darwinClipboardHelper() (string, error) {
+	darwinClipHelperOnce.Do(func() {
+		if _, err := exec.LookPath("swiftc"); err != nil {
+			if _, err2 := exec.LookPath("swift"); err2 != nil {
+				darwinClipHelperErr = errString("swift not found for image clipboard")
+				return
+			}
+			// swiftc missing: callers fall back to swift -e.
+			darwinClipHelperErr = errString("swiftc not found")
+			return
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			darwinClipHelperErr = err
+			return
+		}
+		dir := home + "/.grain/bin"
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			darwinClipHelperErr = err
+			return
+		}
+		bin := dir + "/grain-clipboard-read"
+		src := dir + "/grain-clipboard-read.swift"
+		// Rebuild when source marker missing or binary absent.
+		if st, err := os.Stat(bin); err == nil && st.Size() > 0 {
+			darwinClipHelperPath = bin
+			return
+		}
+		if err := os.WriteFile(src, []byte(darwinClipboardSwiftSrc), 0o644); err != nil {
+			darwinClipHelperErr = err
+			return
+		}
+		cmd := exec.Command("swiftc", "-O", "-o", bin, src)
+		cmd.Stderr = io.Discard
+		if err := cmd.Run(); err != nil {
+			darwinClipHelperErr = err
+			return
+		}
+		darwinClipHelperPath = bin
+	})
+	if darwinClipHelperErr != nil {
+		return "", darwinClipHelperErr
+	}
+	if darwinClipHelperPath == "" {
+		return "", errString("clipboard helper unavailable")
+	}
+	return darwinClipHelperPath, nil
 }
 
 func readClipboardLinux() ([]byte, error) {

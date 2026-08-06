@@ -47,43 +47,57 @@ paginate = 20
   # Current *released* docs version (patch path).
   docsVersion = "0.6.3"
   docsVersionLabel = "v0.6.3"
-  # Shown in version dropdown; CI will extend with more releases later.
+  # Git commit for the default docs version (tag v0.6.3). Prefer per-entry
+  # commit below; this is the homepage/marketing fallback.
+  docsVersionCommit = "a391ed3653fbf80b932119f5cc18a0c83d04a286"
+  # Shown in version dropdown. Each entry may include `commit` (full SHA of
+  # the release tag / branch tip) so the UI can link to source without keeping
+  # full content trees as the long-term model (see scripts/docs-version-bump.sh).
   [[params.docsVersions]]
     version = "0.6.3"
     label = "v0.6.3 (latest)"
     path = "/docs/0.6.3/"
+    commit = "a391ed3653fbf80b932119f5cc18a0c83d04a286"
   [[params.docsVersions]]
     version = "0.6.2"
     label = "v0.6.2"
     path = "/docs/0.6.2/"
+    commit = "cc03a051621c348fa572e2a1d888f4c530a545f2"
   [[params.docsVersions]]
     version = "0.6.1"
     label = "v0.6.1"
     path = "/docs/0.6.1/"
+    commit = "3924078b064bedd97651cd6bac26ee9a2220f23d"
   [[params.docsVersions]]
     version = "0.6.0"
     label = "v0.6.0"
     path = "/docs/0.6.0/"
+    commit = "1267d2fd70f65206f199806704a9cec7434afee7"
   [[params.docsVersions]]
     version = "0.5.0"
     label = "v0.5.0"
     path = "/docs/0.5.0/"
+    commit = "74f81d91bc65b4b7c3643112df8381277f2e9462"
   [[params.docsVersions]]
     version = "0.4.0"
     label = "v0.4.0"
     path = "/docs/0.4.0/"
+    commit = "6a2ea0fac89b50d29f78a08cc1098f535d9d8971"
   [[params.docsVersions]]
     version = "0.3.0"
     label = "v0.3.0"
     path = "/docs/0.3.0/"
+    commit = "e9888194916d46ec9088e80eb35629bcb2db7ef6"
   [[params.docsVersions]]
     version = "0.2.2"
     label = "v0.2.2"
     path = "/docs/0.2.2/"
+    commit = "e11bae9883914e32fafe6868a2c50dbdb8bac826"
   [[params.docsVersions]]
     version = "main"
     label = "main (bleeding edge)"
     path = "/docs/main/"
+    commit = "e829594fd7f9a02975532f256b6a226171777f9c"
 
   brand = "grain"
 

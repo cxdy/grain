@@ -91,7 +91,10 @@ Remote team host (CLI dials HTTP instead of local socket):
   grain new --profile remote-coding --wait agent
   grain sync push ~/proj NAME:/work/proj
   # see https://grainvm.com/guides/remote-host/`,
-		SilenceUsage: true,
+		// SilenceUsage/Errors: main prints a single "error: …" line (issue #93).
+		// Without SilenceErrors, cobra also prints "Error: …" and messages duplicate.
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	root.PersistentFlags().StringVar(&cfgPath, "config", "", "config file (default ~/.grain/config.yaml)")
 	root.PersistentFlags().StringVar(&apiURLFlag, "api", "", "remote daemon API URL (e.g. http://127.0.0.1:7474 via SSH -L, or https://host); overrides GRAIN_API and config api_url")

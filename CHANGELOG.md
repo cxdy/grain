@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **Versioned README / top-level links** — user-facing `grainvm.com` paths point at `/docs/<ver>/…` (no more 404s on unversioned `/get-started/…`).
+- **Docs version tracks product version** — homepage demo and chrome use `docsVersion` (no hardcoded `grain 0.2.2`); version switcher shows the git **commit** for the selected release.
+- **Tag/commit-backed docs versioning** — each `docsVersions` entry records the release-tag commit; `scripts/docs-version-bump.sh` writes commit SHAs so historical versions can be rebuilt from tags without forever-growing full trees as the only model.
 - **Firecracker official support** — guides/matrix/parity/config/concepts/architecture no longer label FC as experimental; support policy is **vFC-1 agent + vFC-2 partial net** on Linux+KVM. UDP mounts/overlay remain QEMU-only and are documented as such.
 - **Hypervisor feature matrix (QEMU vs Firecracker)** — new explain page comparing capabilities today with production-track target phases (**vFC-1** agent path over FC vsock UDS `CONNECT`, **vFC-2** net/mounts). Linked from Firecracker guide, product surface, and concepts; sidebar entry under Understand. Zero VMM code.
 - **Single-tenant / single-operator model** — document multi-user RBAC as an intentional non-goal: one `data_dir` owner (0700), unix socket 0600, shared `api_token` (not per-user roles); shared hosts use separate OS users/`data_dir` or separate hosts. `SECURITY.md`, explain/security, remote-host, remote-lab; config comments near `DataDir` / `APIToken`.
@@ -49,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CLI duplicated error lines** — root Cobra sets `SilenceErrors` so failures print once as `error: …` from `main` (no extra `Error: …` from cobra). Fixes irritating double messages on `grain status` / `grain down` and other RunE failures.
+- **Image paste into guest TUIs (Grok Build, etc.) on macOS host** — host `ReadClipboard` still prefers PNG/TIFF→PNG (compiled AppKit helper under `~/.grain/bin` for speed). Guest `pbpaste`/`xclip`/`wl-paste` shims advertise **TARGETS** / MIME types and tolerate `-Prefer`. When **Xvfb** is installed in the guest, the agent owns X11 **CLIPBOARD** on `DISPLAY=:7` and serves host images on SelectionRequest so **arboard-native** apps (not only CLI shims) can paste screenshots over `grain sh` (local or remote API). Large screenshots use ICCCM **INCR** chunking (direct ChangeProperty only under the X max-request-length; failures no longer send a false SelectionNotify). Redeploy guest agent after upgrade (`grain agent deploy`).
 - **Firecracker create-time `-P` host→guest** — OUTPUT DNAT of `127.0.0.1` never delivers packets onto the TAP. Create-time publishes, SSH, and agent host ports use the **same host TCP proxy** as live `grain fwd add` after guest eth0 is configured. Teardown removes MASQUERADE and TAP FORWARD rules. Smoke starts a guest HTTP listener and `curl`s both create-time `-P` and live `fwd`.
 - **Firecracker doctor / guide pull-first** — missing `fc-kernel` / `grain-ubuntu-fc` recommend `grain image pull …` (BYO import remains fallback); soft notes no longer say “not imported” / “not published yet”. Guide operator checklist + known-limitations table align with vFC-1 agent production (net still QEMU-only); boot sample p50/p95 match AWS `m7i-flex.large` post-merge bench.
 - **Install / `grain update` quieter when already set up** — `scripts/install.sh` skips the MCP enable prompt when `~/.grain/config.yaml` already exists, and drops the long “Next steps” footer (install progress + short “grain X installed” / PATH line only).
