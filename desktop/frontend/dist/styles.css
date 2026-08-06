@@ -263,7 +263,10 @@ a:hover { text-decoration: underline; }
 #view-sandboxes .view-head { flex-shrink: 0; }
 /*
  * List must always be height-bounded so overflow-y:auto works.
- * Unselected: fill remaining viewport. Selected: shorter cap for workspace.
+ * Unselected: fill remaining viewport (scroll the table).
+ * Selected: cap height so Overview/Shell keep most of the column.
+ * (Previously flex-shrink:0 with no max-height → tall list + parent overflow:hidden
+ *  = no scroll until a row was selected and the compact max-height kicked in.)
  */
 #view-sandboxes .table-wrap {
   flex: 1 1 auto;
