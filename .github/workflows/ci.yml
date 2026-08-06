@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: k8s-ghars-grain
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
