@@ -96,8 +96,15 @@ func DialConnection(conn Connection, cfg Config) (*client.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	var c *client.Client
 	if t.UseUnix {
-		return client.DialUnixToken(t.Socket, t.Token)
+		c, err = client.DialUnixToken(t.Socket, t.Token)
+	} else {
+		c, err = client.DialHTTP(t.BaseURL, t.Token)
 	}
-	return client.DialHTTP(t.BaseURL, t.Token)
+	if err != nil {
+		return nil, err
+	}
+	c.SetUserAgent("grain-desktop")
+	return c, nil
 }

@@ -890,6 +890,20 @@ a:hover { text-decoration: underline; }
 .act-error { color: var(--danger); }
 .act-warning { color: var(--warn); }
 .act-running { color: var(--muted); }
+.act-source {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  vertical-align: 0.05em;
+}
 
 .toast {
   position: fixed; bottom: 1rem; right: 1rem; z-index: 90;

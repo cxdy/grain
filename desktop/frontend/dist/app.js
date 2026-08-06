@@ -13,6 +13,7 @@
   }
 
   const EVENTS_KEY = "grain-desktop-activity-v2";
+  const ACTIVITY_CLEARED_KEY = "grain-desktop-activity-cleared-at";
   const THEME_KEY = "grain-desktop-theme";
 
   const state = {
@@ -32,12 +33,16 @@
     mcpSnippets: {},
     pollTimer: null,
     metricsTimer: null,
+    activityTimer: null,
     confirm: null,
     expandedEvent: null,
     currentView: "sandboxes",
     hostTestedOK: false,
     sandboxFilter: "",
     bulkBusy: false,
+    /** @type {any[]} daemon activity from GET /activity */
+    daemonActivity: [],
+    lastActivityID: "",
   };
 
   function escapeHtml(s) {
@@ -167,6 +172,7 @@
       duration_ms: opts.duration_ms != null ? opts.duration_ms : null,
       summary: opts.summary || opts.detail || "",
       detail: opts.detail || "",
+      source: opts.source || "desktop",
       ok: opts.status ? opts.status === "success" : opts.ok !== false,
     };
     list.unshift(ev);
@@ -174,6 +180,69 @@
     renderActivity();
     updateActivityBadge();
     return ev;
+  }
+
+  function activityClearedAt() {
+    try {
+      return localStorage.getItem(ACTIVITY_CLEARED_KEY) || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function mergedActivity() {
+    const cleared = activityClearedAt();
+    const local = loadEvents().map((e) => ({ ...e, _origin: "local" }));
+    const remote = (state.daemonActivity || [])
+      .filter((e) => !cleared || (e.t && e.t > cleared))
+      .map((e) => ({
+        id: e.id,
+        t: e.t,
+        action: e.action,
+        target: e.target || "",
+        status: e.status || "success",
+        duration_ms: e.duration_ms,
+        summary: e.summary || "",
+        detail: e.detail || "",
+        source: e.source || "api",
+        ok: e.status !== "error",
+        _origin: "daemon",
+      }));
+    // Prefer daemon events; drop local UI echoes that match a daemon event
+    // (same action+target within 3s) to avoid double lines for Desktop ops.
+    const filteredLocal = local.filter((le) => {
+      if (le.source && le.source !== "desktop" && le.source !== "ui") return true;
+      const lt = Date.parse(le.t) || 0;
+      return !remote.some((re) => {
+        if ((re.action || "") !== (le.action || "")) return false;
+        if ((re.target || "") !== (le.target || "")) return false;
+        const rt = Date.parse(re.t) || 0;
+        return Math.abs(rt - lt) < 3000;
+      });
+    });
+    const all = [...remote, ...filteredLocal];
+    all.sort((a, b) => (Date.parse(b.t) || 0) - (Date.parse(a.t) || 0));
+    return all.slice(0, 200);
+  }
+
+  async function pollDaemonActivity() {
+    try {
+      const list = (await call("ListActivity", "", 100)) || [];
+      state.daemonActivity = list;
+      if (list.length) state.lastActivityID = list[0].id || state.lastActivityID;
+      // Refresh drawer/badge when open or when new remote events exist
+      updateActivityBadge();
+      const drawer = $("#activity-drawer");
+      if (drawer && !drawer.hidden) renderActivity();
+    } catch (_) {
+      // daemon may be down — keep local-only feed
+    }
+  }
+
+  function startActivityPoll() {
+    if (state.activityTimer) return;
+    pollDaemonActivity();
+    state.activityTimer = setInterval(pollDaemonActivity, 3000);
   }
 
   function updateEvent(id, patch) {
@@ -209,7 +278,7 @@
   }
 
   function updateActivityBadge() {
-    const list = loadEvents();
+    const list = mergedActivity();
     const n = list.filter((e) => e.status === "error").length;
     const b = $("#activity-badge");
     if (!b) return;
@@ -222,9 +291,10 @@
   function renderActivity() {
     const root = $("#activity-list");
     if (!root) return;
-    const list = loadEvents();
+    const list = mergedActivity();
     if (!list.length) {
-      root.innerHTML = '<p class="muted" style="padding:1rem;text-align:center">No activity yet.</p>';
+      root.innerHTML =
+        '<p class="muted" style="padding:1rem;text-align:center">No activity yet.<br/><span style="font-size:0.85em">CLI, MCP, API, and Desktop actions appear here.</span></p>';
       return;
     }
     root.innerHTML = list
@@ -235,13 +305,14 @@
         const stClass =
           st === "success" ? "act-success" : st === "error" ? "act-error" : st === "warning" ? "act-warning" : "act-running";
         const target = e.target ? ` — "${escapeHtml(e.target)}"` : "";
+        const src = e.source ? `<span class="act-source">${escapeHtml(e.source)}</span>` : "";
         const dur =
           st === "running"
             ? " — …"
             : e.duration_ms != null
               ? ` — ${e.duration_ms}ms`
               : "";
-        const line = `${escapeHtml(formatActivityTime(e.t))} — ${escapeHtml(e.action)}${target} — <span class="${stClass}">${escapeHtml(st)}</span>${dur}`;
+        const line = `${escapeHtml(formatActivityTime(e.t))} — ${src}${escapeHtml(e.action)}${target} — <span class="${stClass}">${escapeHtml(st)}</span>${dur}`;
         const body = escapeHtml(e.summary || e.detail || "");
         return `<div class="activity-row ${open} ${hl}" data-eid="${escapeHtml(e.id)}">
           <div class="activity-row-head"><div class="activity-line">${line}</div></div>
@@ -262,7 +333,7 @@
     const d = $("#activity-drawer");
     if (d) d.hidden = false;
     if (focusId) state.expandedEvent = focusId;
-    renderActivity();
+    pollDaemonActivity().then(() => renderActivity());
   }
   function closeActivity() {
     const d = $("#activity-drawer");
@@ -3075,6 +3146,10 @@
     $("#btn-activity-close")?.addEventListener("click", closeActivity);
     $("#btn-activity-clear")?.addEventListener("click", () => {
       localStorage.removeItem(EVENTS_KEY);
+      try {
+        localStorage.setItem(ACTIVITY_CLEARED_KEY, new Date().toISOString());
+      } catch (_) {}
+      state.daemonActivity = [];
       renderActivity();
       updateActivityBadge();
     });
@@ -3695,6 +3770,7 @@
       if (splash.error) toast(splash.error, true, { action: "ensure ready" });
       await loadHostMenu();
       await refreshList();
+      startActivityPoll();
       state.pollTimer = setInterval(async () => {
         await refreshList();
         await loadHostMenu();
@@ -3705,6 +3781,7 @@
         await refreshList();
       } catch (_) {}
       toast(String(e), true, { action: "boot" });
+      startActivityPoll();
       state.pollTimer = setInterval(refreshList, 4000);
     }
   }

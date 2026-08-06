@@ -31,7 +31,12 @@ type Client struct {
 	base  string
 	token string
 	http  *http.Client
+	// userAgent is sent as User-Agent and X-Grain-Client (for activity feed source).
+	userAgent string
 }
+
+// DefaultUserAgent identifies the public Go SDK.
+const DefaultUserAgent = "grain-sdk/go"
 
 // DialUnix connects to the daemon Unix socket (typical local CLI path).
 // token may be empty when the daemon has no api_token configured.
@@ -45,8 +50,9 @@ func DialUnixToken(socketPath, token string) (*Client, error) {
 		return nil, errors.New("socket path is required")
 	}
 	return &Client{
-		base:  "http://grain",
-		token: token,
+		base:      "http://grain",
+		token:     token,
+		userAgent: DefaultUserAgent,
 		http: &http.Client{
 			Transport: &http.Transport{
 				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -67,15 +73,22 @@ func DialHTTP(baseURL, token string) (*Client, error) {
 		return nil, errors.New("base URL is required")
 	}
 	return &Client{
-		base:  baseURL,
-		token: token,
-		http:  &http.Client{},
+		base:      baseURL,
+		token:     token,
+		userAgent: DefaultUserAgent,
+		http:      &http.Client{},
 	}, nil
 }
 
 // SetToken sets or clears the Bearer token used on subsequent requests.
 func (c *Client) SetToken(token string) {
 	c.token = token
+}
+
+// SetUserAgent sets the User-Agent / X-Grain-Client identity (e.g. grain-desktop/1.0).
+// Empty restores DefaultUserAgent.
+func (c *Client) SetUserAgent(ua string) {
+	c.userAgent = strings.TrimSpace(ua)
 }
 
 // Token returns the configured Bearer token (may be empty).
@@ -92,11 +105,79 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
+	ua := c.userAgent
+	if ua == "" {
+		ua = DefaultUserAgent
+	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	// Short client label for activity feed (cli|desktop|mcp|sdk|…).
+	if req.Header.Get("X-Grain-Client") == "" {
+		label := ua
+		if i := strings.IndexByte(label, '/'); i > 0 {
+			label = label[:i]
+		}
+		label = strings.TrimPrefix(label, "grain-")
+		if label == "grain" || label == "" {
+			label = "sdk"
+		}
+		req.Header.Set("X-Grain-Client", label)
+	}
 	cli := c.http
 	if cli == nil {
 		cli = http.DefaultClient
 	}
 	return cli.Do(req)
+}
+
+// ActivityEvent is one control-plane action from GET /activity.
+type ActivityEvent struct {
+	ID         string `json:"id"`
+	Time       string `json:"t"`
+	Action     string `json:"action"`
+	Target     string `json:"target,omitempty"`
+	Source     string `json:"source,omitempty"`
+	Status     string `json:"status"`
+	DurationMS int64  `json:"duration_ms,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+	Method     string `json:"method,omitempty"`
+	Path       string `json:"path,omitempty"`
+}
+
+// ListActivity returns recent daemon control-plane activity (CLI/Desktop/MCP/API).
+// since is an optional last-seen event id (exclusive); limit 0 uses server default.
+func (c *Client) ListActivity(ctx context.Context, since string, limit int) ([]ActivityEvent, error) {
+	u, err := url.Parse(c.base + "/activity")
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	if since != "" {
+		q.Set("since", since)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	u.RawQuery = q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var list []ActivityEvent
+	if err := json.NewDecoder(res.Body).Decode(&list); err != nil {
+		return nil, err
+	}
+	return list, nil
 }
 
 // Health checks GET /healthz.

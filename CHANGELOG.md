@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fast create from suspended template** — `grain new --from TEMPLATE -n NAME` (API `POST /vms` body `{"from":"TEMPLATE","name":"NAME"}`). Clones a stopped/suspended persistent VM and starts it; when the template was `grain suspend`'d with a qcow2 snapshot, QEMU `-loadvm` restores memory and agent wait is short (seconds, not full cold boot). Clone copies suspend markers. Host logs `spawn timing`.
 - **Desktop official recipe preview** — `PreviewOfficialRecipe` fetches catalog YAML without installing (sha256 when pinned). Offline: local library copy if installed, else index description only with a clear warning.
 
+### Added
+
+- **Daemon activity feed** — `GET /activity` returns a ring of recent control-plane mutations (create/start/stop/rm/exec/…). Clients send `User-Agent` / `X-Grain-Client` (`cli`, `desktop`, `mcp`, `sdk`). Desktop Activity drawer polls and merges daemon events with local UI notes so CLI/MCP/API actions appear, not only Desktop clicks.
+
 ### Changed
 
 - **Desktop shell input** — xterm keystrokes call `ShellWrite` via live Wails bindings (was a dead `go?.ShellWrite` reference, so the in-app and pop-out shells ignored keyboard input).

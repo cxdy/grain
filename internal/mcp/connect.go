@@ -56,6 +56,7 @@ func Dial(opts ConnectOptions) (*client.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("dial grain API %s: %w", api, err)
 		}
+		c.SetUserAgent("grain-mcp")
 		return c, nil
 	}
 
@@ -83,5 +84,6 @@ func Dial(opts ConnectOptions) (*client.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dial grain socket %s: %w", sock, err)
 	}
+	c.SetUserAgent("grain-mcp")
 	return c, nil
 }
