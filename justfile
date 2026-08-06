@@ -58,42 +58,61 @@ desktop-dev:
 desktop-build-linux: desktop-build
 
 # Build grain-desktop binary + macOS Grain.app (nested module under desktop/).
+# Note: under iCloud/Documents, Wails' built-in codesign often fails on xattrs;
+# we always re-sign ourselves via ditto --norsrc after the build.
 desktop-build:
     #!/usr/bin/env bash
     set -euo pipefail
     command -v wails >/dev/null 2>&1 || { echo "install wails: go install github.com/wailsapp/wails/v2/cmd/wails@latest"; exit 1; }
     cd desktop
     xattr -cr . 2>/dev/null || true
-    # Clean prior .app so packaging doesn't inherit resource-fork detritus.
     rm -rf build/bin/Grain.app build/bin/Grain
-    CGO_ENABLED=1 wails build -skipbindings || CGO_ENABLED=1 wails build -skipbindings -nopackage
-    if [[ -d build/bin/Grain.app ]]; then
-      # codesign rejects Finder xattrs / resource forks under Documents/
-      xattr -cr build/bin/Grain.app 2>/dev/null || true
-      find build/bin/Grain.app -print0 2>/dev/null | xargs -0 xattr -c 2>/dev/null || true
-      if ! codesign --force --deep --sign - build/bin/Grain.app 2>/dev/null; then
-        tmp="$(mktemp -d)/Grain.app"
-        ditto --norsrc --noextattr build/bin/Grain.app "$tmp"
-        rm -rf build/bin/Grain.app
-        ditto "$tmp" build/bin/Grain.app
-        rm -rf "$(dirname "$tmp")"
-        codesign --force --deep --sign - build/bin/Grain.app 2>/dev/null || true
-      fi
+
+    # Prefer a packaged .app. Wails may exit non-zero on codesign even when packaging succeeded.
+    set +e
+    CGO_ENABLED=1 wails build -skipbindings
+    wails_rc=$?
+    set -e
+
+    if [[ ! -d build/bin/Grain.app ]] && [[ ! -f build/bin/Grain ]]; then
+      echo "wails build failed (exit ${wails_rc}) and produced no binary" >&2
+      exit 1
     fi
+
+    # If only a bare binary was produced (or packaging failed), try nopackage then wrap.
+    if [[ ! -d build/bin/Grain.app ]]; then
+      echo "no .app from package step — building bare binary…"
+      CGO_ENABLED=1 wails build -skipbindings -nopackage
+    fi
+
+    # Always strip resource forks / Finder xattrs and ad-hoc sign (Documents/iCloud detritus).
+    if [[ -d build/bin/Grain.app ]]; then
+      clean="$(mktemp -d)/Grain.app"
+      ditto --norsrc --noextattr build/bin/Grain.app "$clean"
+      rm -rf build/bin/Grain.app
+      mkdir -p build/bin
+      ditto "$clean" build/bin/Grain.app
+      rm -rf "$(dirname "$clean")"
+      xattr -cr build/bin/Grain.app 2>/dev/null || true
+      codesign --force --deep --sign - build/bin/Grain.app
+      codesign --verify --verbose=2 build/bin/Grain.app 2>&1 | head -5 || true
+    elif [[ -f build/bin/Grain ]]; then
+      xattr -c build/bin/Grain 2>/dev/null || true
+      codesign --force --sign - build/bin/Grain
+    fi
+
     mkdir -p ../bin
     # Prefer .app launcher (bare GUI binaries often get SIGKILL under Documents).
     if [[ -d build/bin/Grain.app ]]; then
       cp -f ../scripts/grain-desktop-launch.sh ../bin/Grain
       chmod +x ../bin/Grain
       cp -f ../bin/Grain ../bin/grain-desktop
-      echo "built desktop/build/bin/Grain.app"
-      echo "run:  ./bin/Grain   or   open desktop/build/bin/Grain.app"
+      echo "✓ built desktop/build/bin/Grain.app"
+      echo "  run:  ./bin/Grain   or   open desktop/build/bin/Grain.app"
     elif [[ -f build/bin/Grain ]]; then
-      xattr -c build/bin/Grain 2>/dev/null || true
-      codesign --force --sign - build/bin/Grain 2>/dev/null || true
       cp -f build/bin/Grain ../bin/Grain
       cp -f build/bin/Grain ../bin/grain-desktop
-      echo "built bin/Grain"
+      echo "✓ built bin/Grain (no .app package — open may SIGKILL under Documents)"
     fi
 
 # Drive initialize + tools/list against `grain mcp` (stdio handshake).
