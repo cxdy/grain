@@ -7,13 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-06
+
+Product-facing **minor** release after **v0.7.0**: optional Desktop, recipe library, warm pool / fast create, activity + metrics defaults, and **supported** Firecracker on Linux+KVM. Default hypervisor remains **QEMU**. Cold Ubuntu boot is still guest-bound (~seconds); sub-second “ready” means template/pool claim, not full cold boot.
+
+### Highlights
+
+| Theme | What shipped |
+|-------|----------------|
+| **Grain Desktop** | Optional Wails GUI: sandboxes, shell/logs, recipes, images, warm pool Settings, activity (all clients), bulk preflight, multi-Run v2 |
+| **Recipes** | `~/.grain/recipes` library, official catalog, form builder, deploy preflight, `go-dev` + expanded pack |
+| **Fast create** | `grain new --from`, warm pool (`grain pool *` / `--from-pool`), optional `warm_pool.running` |
+| **Firecracker** | **vFC-1** agent + **vFC-2** partial TAP publish/fwd; catalog `fc-kernel` / `grain-ubuntu-fc` |
+| **Ops / docs** | Activity ring, metrics default on, docs single-tree versioning (#88), README product surface |
+
+**Not in this release:** signed Desktop GitHub Release assets (install still prefers asset when present, else build-from-source), FC on macOS, multi-tenant RBAC.
+
 ### Fixed
 
 - **golangci-lint** — G118: warm-pool background fill/refill uses `context.WithoutCancel` instead of `context.Background` when a request/daemon context is in scope; staticcheck S1008/QF1012 cleanups in activity classify and multi-Run export.
+- **Agent listen before clipboard/X11** — TCP bind (and health) no longer waits on Xvfb/clipboard setup (CI `TestHealth` flaked when setup exceeded the wait window).
 
 ### Docs
 
-- **Product surface refresh** — CLI/API/config/metrics references document warm pool, `--from` / `--from-pool`, activity, `/info` caps, sandbox metrics defaults; Desktop, lifecycle (create latency), recipes (`go-dev`), quickstart/install, and root README updated for the last wave of Desktop/pool/activity work.
+- **Product surface refresh** — CLI/API/config/metrics references document warm pool, `--from` / `--from-pool`, activity, `/info` caps, sandbox metrics defaults; Desktop, lifecycle (create latency), recipes (`go-dev`), quickstart/install, and root README (Desktop, recipes, Firecracker) updated for the last wave of product work.
 
 ### Added
 
@@ -284,7 +301,9 @@ First public release: local Linux microVM control plane for macOS and Linux.
 - Platforms: **macOS and Linux** only (amd64 / arm64). Golden images: `golden-latest` on GitHub Releases.
 - Install: `curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash` (or release assets for `v0.1.0`).
 
-[Unreleased]: https://github.com/cxdy/grain/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/cxdy/grain/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/cxdy/grain/releases/tag/v0.8.0
+[0.7.0]: https://github.com/cxdy/grain/releases/tag/v0.7.0
 [0.2.2]: https://github.com/cxdy/grain/releases/tag/v0.2.2
 [0.2.1]: https://github.com/cxdy/grain/releases/tag/v0.2.1
 [0.2.0]: https://github.com/cxdy/grain/releases/tag/v0.2.0
