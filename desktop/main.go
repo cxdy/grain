@@ -42,7 +42,8 @@ func main() {
 		width, height = 900, 560
 	}
 
-	// App menu: Open (focus) + Quit — minimal tray substitute (window is primary).
+	// App menu. On macOS a custom Menu replaces the system defaults — without an
+	// Edit menu, Cmd+C / Cmd+V / Select All do nothing in the webview (logs, inputs).
 	appMenu := menu.NewMenu()
 	if *shellVM == "" {
 		fileMenu := appMenu.AddSubmenu("Grain")
@@ -61,6 +62,9 @@ func main() {
 			}
 		})
 	}
+	// Native Edit roles restore clipboard + find-adjacent shortcuts for WKWebView.
+	appMenu.Append(menu.EditMenu())
+	appMenu.Append(menu.WindowMenu())
 
 	err := wails.Run(&options.App{
 		Title:     title,

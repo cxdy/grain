@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cxdy/grain/client"
+	"github.com/cxdy/grain/internal/recipe"
 )
 
 // startFakeDaemon serves a minimal grain API on a unix socket and returns the path.
@@ -134,6 +135,73 @@ func TestServiceHealthListLifecycle(t *testing.T) {
 	got, err := svc.GetSandbox(ctx, "box")
 	if err != nil || got.Name != "box" {
 		t.Fatalf("get: %+v %v", got, err)
+	}
+}
+
+func TestExportSandboxRecipe(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.Instance{
+			Name:       r.PathValue("name"),
+			Status:     client.StatusRunning,
+			Image:      "grain-ubuntu",
+			CPUs:       4,
+			MemoryMB:   8192,
+			DiskGB:     32,
+			Persistent: true,
+			Mounts:     []client.Mount{{Host: "/tmp/src", Guest: "/work"}},
+			Forwards:   []client.PortForward{{GuestPort: 3000}},
+		})
+	})
+
+	sock := startFakeDaemon(t, mux)
+	dataDir := t.TempDir()
+	vmDir := filepath.Join(dataDir, "vms", "work")
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	meta := map[string]interface{}{
+		"name": "work", "cpus": 4, "memory_mb": 8192, "disk_gb": 32,
+		"image": "grain-ubuntu", "persistent": true,
+		"arch": "arm64", "network": "overlay", "gpu": "virtio",
+	}
+	b, _ := json.MarshalIndent(meta, "", "  ")
+	if err := os.WriteFile(filepath.Join(vmDir, "meta.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Defaults()
+	cfg.Socket = sock
+	cfg.DataDir = dataDir
+	cfg.Connections = []Connection{LocalConnection(sock, dataDir)}
+	svc := NewService(cfg)
+	svc.Active = "local"
+
+	y, err := svc.ExportSandboxRecipe(context.Background(), "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(y, "name: work") || !strings.Contains(y, "image: grain-ubuntu") {
+		t.Fatal(y)
+	}
+	if !strings.Contains(y, "guest: /work") || !strings.Contains(y, "guest_port: 3000") {
+		t.Fatal(y)
+	}
+	if !strings.Contains(y, "arch: arm64") || !strings.Contains(y, "network: overlay") {
+		t.Fatal(y)
+	}
+	if !strings.Contains(y, "persistent: true") {
+		t.Fatal(y)
+	}
+	// Must parse as a valid recipe.
+	if _, err := recipe.Parse([]byte(y)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ExportSandboxRecipe(context.Background(), ""); err == nil {
+		t.Fatal("expected empty name error")
 	}
 }
 

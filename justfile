@@ -93,6 +93,35 @@ desktop-build:
       mkdir -p build/bin
       ditto "$clean" build/bin/Grain.app
       rm -rf "$(dirname "$clean")"
+      # Pin Grain icon — Wails falls back to the default "W" when appicon.png is
+      # missing from the build tree (common with out-of-tree /tmp builds).
+      if [[ -f build/appicon.png ]]; then
+        if [[ ! -f build/iconfile.icns ]]; then
+          iconset="$(mktemp -d)/Grain.iconset"
+          mkdir -p "$iconset"
+          for pair in "16:16" "32:16@2x" "32:32" "64:32@2x" "128:128" "256:128@2x" "256:256" "512:256@2x" "512:512" "1024:512@2x"; do
+            px="${pair%%:*}"; name="${pair##*:}"
+            sips -z "$px" "$px" build/appicon.png --out "$iconset/icon_${name}.png" >/dev/null
+          done
+          # fix names: icon_16@2x etc.
+          mv -f "$iconset/icon_16@2x.png" "$iconset/icon_16x16@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_32@2x.png" "$iconset/icon_32x32@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_128@2x.png" "$iconset/icon_128x128@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_256@2x.png" "$iconset/icon_256x256@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_512@2x.png" "$iconset/icon_512x512@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_16.png" "$iconset/icon_16x16.png" 2>/dev/null || true
+          mv -f "$iconset/icon_32.png" "$iconset/icon_32x32.png" 2>/dev/null || true
+          mv -f "$iconset/icon_128.png" "$iconset/icon_128x128.png" 2>/dev/null || true
+          mv -f "$iconset/icon_256.png" "$iconset/icon_256x256.png" 2>/dev/null || true
+          mv -f "$iconset/icon_512.png" "$iconset/icon_512x512.png" 2>/dev/null || true
+          iconutil -c icns "$iconset" -o build/iconfile.icns || true
+          rm -rf "$(dirname "$iconset")"
+        fi
+      fi
+      if [[ -f build/iconfile.icns ]]; then
+        mkdir -p build/bin/Grain.app/Contents/Resources
+        cp -f build/iconfile.icns build/bin/Grain.app/Contents/Resources/iconfile.icns
+      fi
       xattr -cr build/bin/Grain.app 2>/dev/null || true
       codesign --force --deep --sign - build/bin/Grain.app
       codesign --verify --verbose=2 build/bin/Grain.app 2>&1 | head -5 || true
@@ -102,17 +131,22 @@ desktop-build:
     fi
 
     mkdir -p ../bin
-    # Prefer .app launcher (bare GUI binaries often get SIGKILL under Documents).
+    # Desktop launcher is ONLY bin/grain-desktop.
+    # Never write bin/Grain — on macOS default (case-insensitive) APFS,
+    # bin/Grain and bin/grain are the same file and would clobber the CLI.
     if [[ -d build/bin/Grain.app ]]; then
-      cp -f ../scripts/grain-desktop-launch.sh ../bin/Grain
-      chmod +x ../bin/Grain
-      cp -f ../bin/Grain ../bin/grain-desktop
+      cp -f ../scripts/grain-desktop-launch.sh ../bin/grain-desktop
+      chmod +x ../bin/grain-desktop
       echo "✓ built desktop/build/bin/Grain.app"
-      echo "  run:  ./bin/Grain   or   open desktop/build/bin/Grain.app"
+      echo "  Desktop:  ./bin/grain-desktop  or  open desktop/build/bin/Grain.app"
+      echo "  CLI:      ./bin/grain   (just build) — still the primary interface"
     elif [[ -f build/bin/Grain ]]; then
-      cp -f build/bin/Grain ../bin/Grain
-      cp -f build/bin/Grain ../bin/grain-desktop
-      echo "✓ built bin/Grain (no .app package — open may SIGKILL under Documents)"
+      cp -f build/bin/Grain ../bin/grain-desktop-bin
+      chmod +x ../bin/grain-desktop-bin
+      cp -f ../scripts/grain-desktop-launch.sh ../bin/grain-desktop
+      chmod +x ../bin/grain-desktop
+      echo "✓ built bin/grain-desktop-bin (no .app package)"
+      echo "  CLI remains: ./bin/grain"
     fi
 
 # Drive initialize + tools/list against `grain mcp` (stdio handshake).

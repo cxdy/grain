@@ -126,23 +126,41 @@
                   <div id="metrics-panel" class="metrics-panel">
                     <p class="muted" id="metrics-hint">Select a sandbox to view metrics.</p>
                     <div id="metrics-charts" hidden>
-                      <div class="metric-card">
+                      <div class="metrics-toolbar no-select">
+                        <div class="range-presets" id="range-presets" role="group" aria-label="Time range">
+                          <button type="button" class="range-btn active" data-range="1m">1m</button>
+                          <button type="button" class="range-btn" data-range="5m">5m</button>
+                          <button type="button" class="range-btn" data-range="15m">15m</button>
+                          <button type="button" class="range-btn" data-range="30m">30m</button>
+                          <button type="button" class="range-btn" data-range="1h">1h</button>
+                          <button type="button" class="range-btn" data-range="3h">3h</button>
+                          <button type="button" class="range-btn" data-range="6h">6h</button>
+                          <button type="button" class="range-btn" data-range="12h">12h</button>
+                          <button type="button" class="range-btn" data-range="24h">24h</button>
+                          <button type="button" class="range-btn" data-range="all">All</button>
+                        </div>
+                        <div class="range-label selectable" id="range-label">Last 1m</div>
+                        <button type="button" class="btn btn-ghost btn-sm" id="range-reset" hidden>Clear selection</button>
+                      </div>
+                      <div class="metric-card" data-series="cpu">
                         <div class="metric-head"><span>CPU load (1m)</span><strong id="m-cpu-val">—</strong></div>
-                        <canvas id="chart-cpu" width="640" height="80"></canvas>
+                        <div class="chart-wrap"><canvas id="chart-cpu" height="96"></canvas></div>
                       </div>
-                      <div class="metric-card">
+                      <div class="metric-card" data-series="mem">
                         <div class="metric-head"><span>Memory</span><strong id="m-mem-val">—</strong></div>
-                        <canvas id="chart-mem" width="640" height="80"></canvas>
+                        <div class="chart-wrap"><canvas id="chart-mem" height="96"></canvas></div>
                       </div>
-                      <div class="metric-card">
+                      <div class="metric-card" data-series="disk">
                         <div class="metric-head"><span>Disk</span><strong id="m-disk-val">—</strong></div>
-                        <canvas id="chart-disk" width="640" height="80"></canvas>
+                        <div class="chart-wrap"><canvas id="chart-disk" height="96"></canvas></div>
                       </div>
-                      <div class="metric-card">
-                        <div class="metric-head"><span>Network (cumulative)</span><strong id="m-net-val">—</strong></div>
-                        <canvas id="chart-net" width="640" height="80"></canvas>
+                      <div class="metric-card" data-series="net">
+                        <div class="metric-head"><span>Network</span><strong id="m-net-val">—</strong></div>
+                        <div class="chart-wrap"><canvas id="chart-net" height="96"></canvas></div>
                       </div>
+                      <div id="chart-tooltip" class="chart-tooltip" hidden></div>
                       <p class="hint" id="metrics-meta"></p>
+                      <p class="hint muted">Hover for sample timestamp · drag across any chart to zoom all panels · double-click or Clear selection to reset</p>
                     </div>
                     <div id="metrics-disabled" hidden>
                       <p class="muted">Metrics are off for this sandbox.</p>
@@ -163,15 +181,25 @@
                   </div>
                   <div id="xterm" class="xterm-host"></div>
                 </div>
-                <div id="tab-logs" class="tab-panel" role="tabpanel" hidden>
-                  <div class="btn-row mb">
-                    <select id="log-source" class="input sm">
-                      <option value="serial">serial.log</option>
-                      <option value="qemu">qemu log</option>
-                    </select>
-                    <button type="button" class="btn btn-ghost btn-sm" id="btn-reload-logs">Reload</button>
+                <div id="tab-logs" class="tab-panel tab-logs" role="tabpanel" hidden>
+                  <div class="log-toolbar no-select">
+                    <div class="btn-row">
+                      <select id="log-source" class="input sm">
+                        <option value="serial">serial.log</option>
+                        <option value="qemu">qemu log</option>
+                      </select>
+                      <button type="button" class="btn btn-ghost btn-sm" id="btn-reload-logs">Reload</button>
+                      <button type="button" class="btn btn-ghost btn-sm" id="btn-log-copy" title="Copy selection (or all)">Copy</button>
+                    </div>
+                    <div class="log-find" id="log-find-bar" hidden>
+                      <input type="search" id="log-find" class="input sm log-find-input" placeholder="Find in logs…" spellcheck="false" autocomplete="off" />
+                      <span class="log-find-count" id="log-find-count"></span>
+                      <button type="button" class="btn btn-ghost btn-sm" id="log-find-prev" title="Previous match">↑</button>
+                      <button type="button" class="btn btn-ghost btn-sm" id="log-find-next" title="Next match">↓</button>
+                      <button type="button" class="btn-icon" id="log-find-close" title="Close find" aria-label="Close find">×</button>
+                    </div>
                   </div>
-                  <pre id="log-view" class="log-view selectable"></pre>
+                  <pre id="log-view" class="log-view selectable" tabindex="0"></pre>
                 </div>
               </div>
             </section>
@@ -201,9 +229,19 @@
 
               <div id="seg-general" class="panel settings-seg">
                 <form id="settings-form">
-                  <label class="field"><span>Default connection</span>
-                    <select class="input" id="set-default-conn" name="default_connection"></select>
-                  </label>
+                  <div class="field">
+                    <span>Default connection</span>
+                    <div class="host-menu settings-host-menu" id="set-default-conn-menu">
+                      <input type="hidden" id="set-default-conn" name="default_connection" value="local" />
+                      <button type="button" class="host-btn" id="set-default-conn-btn" aria-haspopup="listbox" aria-expanded="false">
+                        <span id="set-default-conn-label">local</span>
+                        <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+                      </button>
+                      <div class="host-popover" id="set-default-conn-popover" hidden role="listbox">
+                        <div id="set-default-conn-list"></div>
+                      </div>
+                    </div>
+                  </div>
                   <label class="check-label">
                     <input type="checkbox" id="set-start-local" /> Start local daemon on launch
                   </label>
@@ -293,10 +331,10 @@
             </section>
           </main>
 
-          <!-- Inspector: meta + actions only -->
+          <!-- Inspector: selected sandbox details + actions -->
           <aside id="inspector" class="inspector" hidden>
             <div class="inspector-empty" id="inspector-empty">
-              <p class="muted">Select a sandbox</p>
+              <p class="muted">Select a sandbox to inspect</p>
             </div>
             <div id="inspector-body" hidden>
               <div class="inspector-head">
@@ -305,26 +343,47 @@
                   <span id="detail-status-pill"></span>
                 </div>
                 <div class="inspector-actions no-select" id="detail-actions">
-                  <button type="button" class="btn btn-primary btn-sm" data-act="shell">Shell</button>
+                  <button type="button" class="btn btn-primary btn-sm" data-act="shell" id="btn-shell">Shell</button>
                   <button type="button" class="btn-icon" data-act="window" title="Open in new window" aria-label="Open in new window">
                     <svg class="ico" viewBox="0 0 24 24"><path d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6v6M10 14L20 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
                   </button>
-                  <button type="button" class="btn btn-ghost btn-sm" data-act="start" id="btn-start">Start</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-act="start" id="btn-start" hidden>Start</button>
                   <button type="button" class="btn btn-ghost btn-sm" data-act="stop" id="btn-stop" hidden>Stop</button>
                   <div class="dropdown">
                     <button type="button" class="btn btn-ghost btn-sm" id="btn-more">More ▾</button>
                     <ul class="dropdown-menu" id="more-menu">
                       <li><button type="button" class="dropdown-item" data-act="logs">Logs</button></li>
                       <li><button type="button" class="dropdown-item" data-act="edit">Config</button></li>
+                      <li><button type="button" class="dropdown-item" data-act="export-recipe">Export as recipe…</button></li>
                       <li><button type="button" class="dropdown-item" data-act="term">Open in Terminal</button></li>
+                      <li id="more-agent-item" hidden>
+                        <button type="button" class="dropdown-item" data-act="deploy-agent">Install / update agent</button>
+                      </li>
                       <li class="dropdown-divider"></li>
                       <li><button type="button" class="dropdown-item danger" data-act="rm">Remove</button></li>
                     </ul>
                   </div>
                 </div>
               </div>
-              <p class="insp-summary muted selectable" id="inspector-summary"></p>
-              <dl class="meta insp-meta" id="inspector-meta"></dl>
+              <p class="insp-summary selectable" id="inspector-summary"></p>
+              <div class="insp-section">
+                <h4>Status</h4>
+                <dl class="insp-kv" id="inspector-status"></dl>
+              </div>
+              <div class="insp-section">
+                <h4>Resources</h4>
+                <dl class="insp-kv" id="inspector-resources"></dl>
+              </div>
+              <div class="insp-section">
+                <h4>Connectivity</h4>
+                <dl class="insp-kv" id="inspector-connectivity"></dl>
+              </div>
+              <div class="insp-section">
+                <h4>Config</h4>
+                <dl class="insp-kv" id="inspector-config"></dl>
+              </div>
+              <!-- Legacy full meta for overview Details panel -->
+              <dl class="meta insp-meta" id="inspector-meta" hidden></dl>
             </div>
           </aside>
         </div>

@@ -117,7 +117,7 @@ func RunDoctorChecks(ctx context.Context, cfg Config, svc *Service) []DoctorChec
 		} else {
 			out = append(out, DoctorCheck{
 				Name: "default image", OK: false, Message: cfg.Image + " not on disk",
-				Fix: "Pull the image from Desktop → Images or CLI",
+				Fix:     "Pull the image from Desktop → Images or CLI",
 				Command: fmt.Sprintf("grain image pull %s", cfg.Image),
 			})
 		}
@@ -167,7 +167,7 @@ type RepairResult struct {
 
 // allowedRepairCommands are the only commands Doctor may execute.
 var allowedRepairCommands = map[string][]string{
-	"grain up":      {"up"},
+	"grain up":       {"up"},
 	"grain up --mcp": {"up", "--mcp"},
 }
 

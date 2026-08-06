@@ -672,6 +672,63 @@ func (a *App) GetSandboxMetrics(name string) (desktop.MetricsHistoryDTO, error) 
 	return svc.SandboxMetrics(ctx, name)
 }
 
+// DeployAgent installs or updates grain-agent inside a running sandbox (SSH).
+func (a *App) DeployAgent(name string) (desktop.DeployAgentResult, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.DeployAgentResult{}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.DeployAgent(ctx, name)
+}
+
+// ExportSandboxRecipe builds a grain/v1 recipe YAML for the sandbox and prompts
+// for a save path (native dialog). YAML is always returned on success so the UI
+// can still use it if the dialog is cancelled.
+func (a *App) ExportSandboxRecipe(name string) (desktop.ExportRecipeResult, error) {
+	var out desktop.ExportRecipeResult
+	svc, err := a.service()
+	if err != nil {
+		return out, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	yamlStr, err := svc.ExportSandboxRecipe(ctx, name)
+	if err != nil {
+		return out, err
+	}
+	out.YAML = yamlStr
+
+	if a.ctx == nil {
+		return out, nil
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export sandbox recipe",
+		DefaultFilename: strings.TrimSpace(name) + ".recipe.yaml",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Recipe YAML (*.yaml)", Pattern: "*.yaml"},
+			{DisplayName: "YAML (*.yml)", Pattern: "*.yml"},
+		},
+	})
+	if err != nil {
+		return out, err
+	}
+	if strings.TrimSpace(path) == "" {
+		out.Cancelled = true
+		return out, nil
+	}
+	if err := os.WriteFile(path, []byte(yamlStr), 0o644); err != nil {
+		return out, fmt.Errorf("write recipe: %w", err)
+	}
+	out.Path = path
+	return out, nil
+}
+
 // EnableSandboxMetrics sets metrics_enabled on the VM meta (host data_dir) and
 // samples once so Overview can start filling the ring.
 func (a *App) EnableSandboxMetrics(name string, enabled bool) error {

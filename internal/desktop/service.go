@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cxdy/grain/client"
+	"github.com/cxdy/grain/internal/recipe"
 )
 
 // Sandbox is a UI-facing VM summary (core CLI list fields + extras).
@@ -21,6 +22,13 @@ type Sandbox struct {
 	MemoryMB   int    `json:"memory_mb"`
 	DiskGB     int    `json:"disk_gb,omitempty"`
 	SSHPort    int    `json:"ssh_port,omitempty"`
+	AgentPort  int    `json:"agent_port,omitempty"`
+	IP         string `json:"ip,omitempty"`
+	Network    string `json:"network,omitempty"`
+	Arch       string `json:"arch,omitempty"`
+	GPU        string `json:"gpu,omitempty"`
+	PID        int    `json:"pid,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
 	Error      string `json:"error,omitempty"`
 	// AgentOK is true when guest agent /health succeeds; false when checked and down; omitted when not checked.
 	AgentOK *bool `json:"agent_ok,omitempty"`
@@ -28,6 +36,11 @@ type Sandbox struct {
 	AgentVersion string `json:"agent_version,omitempty"`
 	// MetricsEnabled when the host samples guest stats for this sandbox.
 	MetricsEnabled bool `json:"metrics_enabled,omitempty"`
+	// HasAgentImage is true when the image is expected to ship/support grain-agent
+	// (grain-ubuntu, grain-ubuntu-fc, or local has_agent marker).
+	HasAgentImage bool `json:"has_agent_image,omitempty"`
+	// AgentCheckedAt is when Desktop last probed guest agent health (RFC3339).
+	AgentCheckedAt string `json:"agent_checked_at,omitempty"`
 }
 
 // CreateOpts are create options for the Desktop create form (including advanced).
@@ -228,17 +241,36 @@ func (s *Service) ListSandboxes(ctx context.Context) ([]Sandbox, error) {
 		return nil, err
 	}
 	out := make([]Sandbox, 0, len(list))
+	checkedAt := time.Now().UTC().Format(time.RFC3339)
 	for _, inst := range list {
 		if inst == nil {
 			continue
 		}
 		sb := instanceToSandbox(inst)
+		// Enrich from local meta when available (network/arch/gpu).
+		if s.Config.DataDir != "" {
+			if meta, _, merr := ReadSandboxMeta(s.Config.DataDir, inst.Name); merr == nil {
+				if sb.Network == "" && meta.Network != "" {
+					sb.Network = meta.Network
+				}
+				if sb.Arch == "" && meta.Arch != "" {
+					sb.Arch = meta.Arch
+				}
+				if sb.GPU == "" && meta.GPU != "" {
+					sb.GPU = meta.GPU
+				}
+				if meta.Image != "" {
+					sb.HasAgentImage = ImageSupportsAgent(meta.Image)
+				}
+			}
+		}
 		if inst.Status == client.StatusRunning {
 			actx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 			h, aerr := c.AgentHealth(actx, inst.Name)
 			cancel()
 			ok := aerr == nil
 			sb.AgentOK = &ok
+			sb.AgentCheckedAt = checkedAt
 			if h != nil && h.AgentVersion != "" {
 				sb.AgentVersion = h.AgentVersion
 			}
@@ -369,9 +401,9 @@ func splitList(s string) []string {
 
 // MetricsHistoryDTO is UI-facing metrics ring data.
 type MetricsHistoryDTO struct {
-	Enabled  bool                   `json:"enabled"`
-	Interval string                 `json:"interval,omitempty"`
-	Points   []MetricsSampleDTO     `json:"points"`
+	Enabled  bool               `json:"enabled"`
+	Interval string             `json:"interval,omitempty"`
+	Points   []MetricsSampleDTO `json:"points"`
 }
 
 // MetricsSampleDTO is one chart point.
@@ -498,7 +530,160 @@ func (s *Service) GetSandbox(ctx context.Context, name string) (*Sandbox, error)
 		return nil, err
 	}
 	sb := instanceToSandbox(inst)
+	if s.Config.DataDir != "" {
+		if meta, _, merr := ReadSandboxMeta(s.Config.DataDir, name); merr == nil {
+			if sb.Network == "" && meta.Network != "" {
+				sb.Network = meta.Network
+			}
+			if sb.Arch == "" && meta.Arch != "" {
+				sb.Arch = meta.Arch
+			}
+			if sb.GPU == "" && meta.GPU != "" {
+				sb.GPU = meta.GPU
+			}
+			if meta.Image != "" {
+				sb.HasAgentImage = ImageSupportsAgent(meta.Image)
+			}
+		}
+	}
+	if inst.Status == client.StatusRunning {
+		actx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
+		h, aerr := c.AgentHealth(actx, name)
+		cancel()
+		ok := aerr == nil
+		sb.AgentOK = &ok
+		sb.AgentCheckedAt = time.Now().UTC().Format(time.RFC3339)
+		if h != nil && h.AgentVersion != "" {
+			sb.AgentVersion = h.AgentVersion
+		}
+	}
 	return &sb, nil
+}
+
+// ExportRecipeResult is YAML (+ optional save path) for a sandbox recipe export.
+type ExportRecipeResult struct {
+	// YAML is the full recipe document (always set on success).
+	YAML string `json:"yaml"`
+	// Path is set when the user saved via the Desktop file dialog.
+	Path string `json:"path,omitempty"`
+	// Cancelled is true when the save dialog was dismissed without a path.
+	Cancelled bool `json:"cancelled,omitempty"`
+}
+
+// ExportSandboxRecipe builds a portable grain/v1 Sandbox recipe from the live
+// instance (create options, mounts, port/socket forwards). Bootstrap steps and
+// first-boot userdata are not recoverable from a running VM and are omitted.
+// Arch/GPU/network are filled from local meta.json when the API omits them.
+func (s *Service) ExportSandboxRecipe(ctx context.Context, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("name is required")
+	}
+	c, err := s.ensureClient()
+	if err != nil {
+		return "", err
+	}
+	inst, err := c.Get(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	if inst == nil {
+		return "", fmt.Errorf("sandbox %q not found", name)
+	}
+
+	snap := recipe.Snapshot{
+		Name:       inst.Name,
+		Image:      inst.Image,
+		CPUs:       inst.CPUs,
+		MemoryMB:   inst.MemoryMB,
+		DiskGB:     inst.DiskGB,
+		Persistent: inst.Persistent,
+	}
+	for _, m := range inst.Mounts {
+		snap.Mounts = append(snap.Mounts, recipe.Mount{
+			Host:  m.Host,
+			Guest: m.Guest,
+			Tag:   m.Tag,
+		})
+	}
+	for _, fwd := range inst.Forwards {
+		snap.Forwards = append(snap.Forwards, recipe.Forward{
+			HostPort:  fwd.HostPort,
+			GuestPort: fwd.GuestPort,
+			Proto:     fwd.Proto,
+		})
+	}
+	for _, sf := range inst.SocketForwards {
+		snap.SocketForwards = append(snap.SocketForwards, recipe.SocketForward{
+			HostPath:  sf.HostPath,
+			GuestPath: sf.GuestPath,
+		})
+	}
+
+	// Local meta often has arch/gpu/network not present on the API Instance DTO.
+	if s.Config.DataDir != "" {
+		if meta, _, merr := ReadSandboxMeta(s.Config.DataDir, name); merr == nil {
+			if snap.Image == "" && meta.Image != "" {
+				snap.Image = meta.Image
+			}
+			if snap.CPUs == 0 && meta.CPUs > 0 {
+				snap.CPUs = meta.CPUs
+			}
+			if snap.MemoryMB == 0 && meta.MemoryMB > 0 {
+				snap.MemoryMB = meta.MemoryMB
+			}
+			if snap.DiskGB == 0 && meta.DiskGB > 0 {
+				snap.DiskGB = meta.DiskGB
+			}
+			snap.Arch = meta.Arch
+			snap.GPU = meta.GPU
+			snap.Network = meta.Network
+			// Prefer meta persistent only when we have local meta (API already set it).
+			if meta.Name != "" {
+				snap.Persistent = meta.Persistent
+			}
+		}
+	}
+
+	return recipe.FormatSnapshot(snap)
+}
+
+// DeployAgentResult is UI-facing agent deploy output.
+type DeployAgentResult struct {
+	Name         string `json:"name"`
+	Binary       string `json:"binary,omitempty"`
+	AgentVersion string `json:"agent_version,omitempty"`
+	Message      string `json:"message,omitempty"`
+}
+
+// DeployAgent installs/updates grain-agent in a running sandbox over SSH.
+func (s *Service) DeployAgent(ctx context.Context, name string) (DeployAgentResult, error) {
+	var out DeployAgentResult
+	if name == "" {
+		return out, fmt.Errorf("name is required")
+	}
+	c, err := s.ensureClient()
+	if err != nil {
+		return out, err
+	}
+	res, err := c.DeployAgent(ctx, name)
+	if err != nil {
+		return out, err
+	}
+	out.Name = name
+	if res != nil {
+		out.Name = res.Name
+		out.Binary = res.Binary
+		if res.Health != nil {
+			out.AgentVersion = res.Health.AgentVersion
+		}
+	}
+	if out.AgentVersion != "" {
+		out.Message = fmt.Sprintf("guest agent %s ready", out.AgentVersion)
+	} else {
+		out.Message = "guest agent deployed"
+	}
+	return out, nil
 }
 
 // ShellSession builds websocket dial info for the active connection.
@@ -595,7 +780,7 @@ func instanceToSandbox(inst *client.Instance) Sandbox {
 	if inst == nil {
 		return Sandbox{}
 	}
-	return Sandbox{
+	sb := Sandbox{
 		Name:           inst.Name,
 		Status:         string(inst.Status),
 		Image:          inst.Image,
@@ -604,7 +789,36 @@ func instanceToSandbox(inst *client.Instance) Sandbox {
 		MemoryMB:       inst.MemoryMB,
 		DiskGB:         inst.DiskGB,
 		SSHPort:        inst.SSHPort,
+		AgentPort:      inst.AgentPort,
+		IP:             inst.IP,
+		PID:            inst.PID,
 		Error:          inst.Error,
 		MetricsEnabled: inst.MetricsEnabled,
+		HasAgentImage:  ImageSupportsAgent(inst.Image),
 	}
+	if !inst.CreatedAt.IsZero() {
+		sb.CreatedAt = inst.CreatedAt.UTC().Format(time.RFC3339)
+	}
+	return sb
+}
+
+// ImageSupportsAgent reports whether an image is expected to run grain-agent
+// (catalog HasAgent or known grain-ubuntu* ids). Used to gate metrics UI and
+// Deploy Agent actions for cloud images without an agent.
+func ImageSupportsAgent(imageID string) bool {
+	id := strings.TrimSpace(imageID)
+	if id == "" {
+		return false
+	}
+	// Fast path for known golden IDs (works offline / remote Desktop).
+	switch id {
+	case "grain-ubuntu", "grain-ubuntu-fc":
+		return true
+	case "ubuntu-cloud", "alpine-cloud", "fc-kernel":
+		return false
+	}
+	if strings.HasPrefix(id, "grain-ubuntu") {
+		return true
+	}
+	return false
 }

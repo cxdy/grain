@@ -21,7 +21,7 @@ CLI-first path: install → `grain up` → `grain new` → `grain sh`.
 | Area | Notes |
 |------|--------|
 | **Sandboxes** | List, create, start/stop/remove, multi-select bulk actions, right-side inspector |
-| **Inspector** | Overview · Shell · Logs — in-app shell plus **open in new window** |
+| **Inspector** | Overview · Shell · Logs — in-app shell plus **open in new window**; **More → Export as recipe…** writes a portable [`grain/v1` Sandbox recipe](../get-started/recipe/) (create options, mounts, forwards — not bootstrap/userdata) |
 | **Images** | Catalog ready/missing, pull with progress |
 | **MCP** | Status, enable in config, copy IDE snippets, ensure-running (local) |
 | **Doctor** | Host tool + daemon checks with fix hints |
@@ -40,7 +40,7 @@ wails doctor
 # from repo root
 just desktop-test
 just desktop-build
-./bin/Grain                    # launcher → Grain.app on macOS
+./bin/grain-desktop            # launcher → Grain.app on macOS (not ./bin/Grain — collides with CLI on case-insensitive volumes)
 open desktop/build/bin/Grain.app
 ```
 

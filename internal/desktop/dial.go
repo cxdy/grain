@@ -101,4 +101,3 @@ func DialConnection(conn Connection, cfg Config) (*client.Client, error) {
 	}
 	return client.DialHTTP(t.BaseURL, t.Token)
 }
-

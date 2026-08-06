@@ -29,14 +29,14 @@ func (p DesktopPrefs) StartLocalDaemonEnabled() bool {
 
 // Config is the Desktop-relevant subset of ~/.grain/config.yaml.
 type Config struct {
-	DataDir     string         `yaml:"data_dir"`
-	Socket      string         `yaml:"socket"`
-	API         string         `yaml:"api"` // daemon listen (not client dial target)
-	APIURL      string         `yaml:"api_url"`
-	APIToken    string         `yaml:"api_token"`
-	AuthToken   string         `yaml:"auth_token"`
-	Connections []Connection   `yaml:"connections"`
-	Desktop     DesktopPrefs   `yaml:"desktop"`
+	DataDir     string       `yaml:"data_dir"`
+	Socket      string       `yaml:"socket"`
+	API         string       `yaml:"api"` // daemon listen (not client dial target)
+	APIURL      string       `yaml:"api_url"`
+	APIToken    string       `yaml:"api_token"`
+	AuthToken   string       `yaml:"auth_token"`
+	Connections []Connection `yaml:"connections"`
+	Desktop     DesktopPrefs `yaml:"desktop"`
 	// Default create knobs (mirrored for create form defaults).
 	DefaultCPUs     int    `yaml:"cpus"`
 	DefaultMemoryMB int    `yaml:"memory_mb"`

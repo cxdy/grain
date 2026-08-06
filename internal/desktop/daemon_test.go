@@ -9,12 +9,12 @@ import (
 )
 
 type fakeRunner struct {
-	path      string
-	lookErr   error
-	startErr  error
-	started   atomic.Int32
-	lastName  string
-	lastArgs  []string
+	path     string
+	lookErr  error
+	startErr error
+	started  atomic.Int32
+	lastName string
+	lastArgs []string
 }
 
 func (f *fakeRunner) LookPath(file string) (string, error) {
@@ -39,10 +39,10 @@ func TestShouldStartLocalDaemon(t *testing.T) {
 	local := Connection{Name: "local"}
 	remote := Connection{Name: "lab", API: "http://x"}
 	cases := []struct {
-		conn     Connection
-		healthy  bool
-		pref     bool
-		want     bool
+		conn    Connection
+		healthy bool
+		pref    bool
+		want    bool
 	}{
 		{local, true, true, false},
 		{local, false, true, true},

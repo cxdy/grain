@@ -29,8 +29,8 @@ func TestSaveHostConnection(t *testing.T) {
 	}
 	// update same name
 	err = SaveHostConnection(path, ConnectionWithMCP{
-		Name: "lab",
-		API:  "http://10.0.0.5:7475",
+		Name:  "lab",
+		API:   "http://10.0.0.5:7475",
 		Token: "x",
 	})
 	if err != nil {

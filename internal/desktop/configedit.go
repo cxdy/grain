@@ -104,9 +104,9 @@ type SaveConfigResult struct {
 
 // TokenActionResult is returned after generate/revoke of api_token.
 type TokenActionResult struct {
-	Token   string `json:"token,omitempty"` // only on generate, show once
-	Message string `json:"message"`
-	HasToken bool  `json:"has_token"`
+	Token    string `json:"token,omitempty"` // only on generate, show once
+	Message  string `json:"message"`
+	HasToken bool   `json:"has_token"`
 }
 
 // GenerateAPIToken creates a new random token, writes api_token to config, returns plaintext once.

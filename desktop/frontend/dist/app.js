@@ -376,10 +376,67 @@
     const pop = $("#host-popover");
     const btn = $("#host-btn");
     if (!pop) return;
+    closeDefaultConnMenu();
     const open = pop.hidden;
     pop.hidden = !open;
     btn?.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) loadHostMenu();
+  }
+
+  /* Settings → Default connection (same host-menu chrome as header) */
+  function closeDefaultConnMenu() {
+    const pop = $("#set-default-conn-popover");
+    const btn = $("#set-default-conn-btn");
+    if (pop) pop.hidden = true;
+    if (btn) btn.setAttribute("aria-expanded", "false");
+  }
+  function toggleDefaultConnMenu() {
+    const pop = $("#set-default-conn-popover");
+    const btn = $("#set-default-conn-btn");
+    if (!pop) return;
+    closeHostMenu();
+    const open = pop.hidden;
+    pop.hidden = !open;
+    btn?.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  function setDefaultConnValue(name) {
+    const hidden = $("#set-default-conn");
+    const label = $("#set-default-conn-label");
+    if (hidden) hidden.value = name || "local";
+    if (label) {
+      label.textContent = name || "local";
+      label.title = name || "local";
+    }
+  }
+  function renderDefaultConnMenu(conns, selected) {
+    const list = $("#set-default-conn-list");
+    const names =
+      conns && conns.length
+        ? conns.map((c) => c.name).filter(Boolean)
+        : ["local"];
+    let sel = selected || "local";
+    if (!names.includes(sel)) sel = names[0] || "local";
+    setDefaultConnValue(sel);
+    if (!list) return;
+    list.innerHTML = names
+      .map((name) => {
+        const active = name === sel;
+        const check = active ? '<span class="check">✓</span>' : "";
+        return `<button type="button" class="host-item ${active ? "active" : ""}" data-name="${escapeHtml(name)}" role="option" aria-selected="${active}">
+          <span>${escapeHtml(name)}</span>${check}
+        </button>`;
+      })
+      .join("");
+    $$("#set-default-conn-list .host-item").forEach((b) => {
+      b.addEventListener("click", () => {
+        setDefaultConnValue(b.dataset.name);
+        renderDefaultConnMenu(
+          names.map((n) => ({ name: n })),
+          b.dataset.name
+        );
+        closeDefaultConnMenu();
+      });
+    });
   }
 
   /* ── sandboxes ── */
@@ -474,12 +531,61 @@
     });
   }
 
+  function isRunning(status) {
+    return (status || "").toLowerCase() === "running";
+  }
+  function isStopped(status) {
+    const s = (status || "").toLowerCase();
+    return s === "stopped" || s === "suspended" || s === "";
+  }
+
+  /** Start only when not running; Stop only when running. Never both. */
   function updateActionButtons(status) {
-    const running = (status || "").toLowerCase() === "running";
+    const running = isRunning(status);
     const start = $("#btn-start");
     const stop = $("#btn-stop");
-    if (start) start.hidden = running;
-    if (stop) stop.hidden = !running;
+    // Explicit show/hide — do not rely on CSS alone (btn display:inline-flex
+    // used to override the HTML hidden attribute).
+    if (start) {
+      start.hidden = running;
+      start.style.display = running ? "none" : "";
+    }
+    if (stop) {
+      stop.hidden = !running;
+      stop.style.display = running ? "" : "none";
+    }
+  }
+
+  function imageHasAgent(vm) {
+    if (!vm) return false;
+    if (vm.has_agent_image === true) return true;
+    if (vm.has_agent_image === false) return false;
+    const img = (vm.image || "").toLowerCase();
+    if (!img) return false;
+    if (img === "ubuntu-cloud" || img === "alpine-cloud" || img === "fc-kernel") return false;
+    return img === "grain-ubuntu" || img === "grain-ubuntu-fc" || img.startsWith("grain-ubuntu");
+  }
+
+  function formatWhen(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  function agentLabel(vm) {
+    if (!imageHasAgent(vm)) return "n/a (image has no guest agent)";
+    if (vm.agent_ok === true) return vm.agent_version ? `ok · ${vm.agent_version}` : "ok";
+    if (vm.agent_ok === false) return "not responding (use Install / update agent)";
+    if (isRunning(vm.status)) return "checking…";
+    return "— (start sandbox to probe)";
   }
 
   function fillMeta(vm, el) {
@@ -492,27 +598,71 @@
       <dt>Disk</dt><dd>${vm.disk_gb != null && vm.disk_gb > 0 ? vm.disk_gb + " GiB" : "—"}</dd>
       <dt>Persistent</dt><dd>${vm.persistent ? "yes" : "no"}</dd>
       <dt>SSH port</dt><dd>${vm.ssh_port || "—"}</dd>
-      <dt>Agent</dt><dd>${
-        vm.agent_ok === true
-          ? escapeHtml(vm.agent_version || "ok")
-          : vm.agent_ok === false
-            ? "not installed"
-            : "—"
+      <dt>Agent</dt><dd>${escapeHtml(agentLabel(vm))}</dd>
+      <dt>Metrics</dt><dd>${
+        !imageHasAgent(vm) ? "n/a" : vm.metrics_enabled ? "on (host ring)" : "off"
       }</dd>
-      <dt>Metrics</dt><dd>${vm.metrics_enabled ? "on (host ring)" : "off"}</dd>
       <dt>Error</dt><dd class="selectable">${escapeHtml(vm.error || "—")}</dd>`;
   }
 
-  function fillInspectorSummary(vm) {
+  function setKV(el, rows) {
+    if (!el) return;
+    el.innerHTML = rows
+      .map(
+        ([k, v]) =>
+          `<dt>${escapeHtml(k)}</dt><dd class="selectable">${v == null || v === "" ? "—" : escapeHtml(String(v))}</dd>`
+      )
+      .join("");
+  }
+
+  function fillInspector(vm) {
+    if (!vm) return;
     const el = $("#inspector-summary");
-    if (!el || !vm) return;
-    const agent =
-      vm.agent_ok === true
-        ? vm.agent_version || "ok"
-        : vm.agent_ok === false
-          ? "agent not installed"
-          : "agent —";
-    el.textContent = `${vm.image || "—"} · ${vm.cpus || "—"} vCPUs · ${vm.memory_mb || "—"} MiB · ${agent}${vm.metrics_enabled ? " · metrics on" : ""}`;
+    if (el) {
+      const bits = [
+        vm.image || "—",
+        vm.cpus != null ? `${vm.cpus} vCPUs` : null,
+        vm.memory_mb != null ? `${vm.memory_mb} MiB` : null,
+        vm.disk_gb ? `${vm.disk_gb} GiB disk` : null,
+      ].filter(Boolean);
+      el.textContent = bits.join(" · ");
+    }
+    setKV($("#inspector-status"), [
+      ["State", vm.status || "—"],
+      ["Agent", agentLabel(vm)],
+      ["Checked", vm.agent_checked_at ? formatWhen(vm.agent_checked_at) : isRunning(vm.status) ? "—" : "—"],
+      ["Metrics", !imageHasAgent(vm) ? "n/a (no guest agent)" : vm.metrics_enabled ? "on · host ring" : "off"],
+      ["Error", vm.error || "—"],
+    ]);
+    setKV($("#inspector-resources"), [
+      ["vCPUs", vm.cpus != null ? String(vm.cpus) : "—"],
+      ["Memory", vm.memory_mb != null ? `${vm.memory_mb} MiB` : "—"],
+      ["Disk", vm.disk_gb != null && vm.disk_gb > 0 ? `${vm.disk_gb} GiB` : "—"],
+      ["PID", vm.pid ? String(vm.pid) : "—"],
+    ]);
+    setKV($("#inspector-connectivity"), [
+      ["IP", vm.ip || "—"],
+      ["SSH", vm.ssh_port ? `localhost:${vm.ssh_port}` : "—"],
+      ["Agent port", vm.agent_port ? String(vm.agent_port) : "—"],
+      ["Network", vm.network || "—"],
+    ]);
+    setKV($("#inspector-config"), [
+      ["Image", vm.image || "—"],
+      ["Persistent", vm.persistent ? "yes" : "no"],
+      ["Arch", vm.arch || "—"],
+      ["GPU", vm.gpu || "—"],
+      ["Created", formatWhen(vm.created_at)],
+    ]);
+    fillMeta(vm, $("#inspector-meta"));
+    fillMeta(vm, $("#detail-meta"));
+
+    // More → Install/update agent only for agent-capable images
+    const agentItem = $("#more-agent-item");
+    if (agentItem) agentItem.hidden = !imageHasAgent(vm);
+  }
+
+  function fillInspectorSummary(vm) {
+    fillInspector(vm);
   }
 
   function fmtBytesShort(n) {
@@ -523,40 +673,489 @@
     return String(n);
   }
 
-  function drawSpark(canvasId, values, color) {
+  /* ── Grafana-style metrics charts (shared range + hover + brush) ── */
+  const RANGE_MS = {
+    "1m": 60e3,
+    "5m": 5 * 60e3,
+    "15m": 15 * 60e3,
+    "30m": 30 * 60e3,
+    "1h": 3600e3,
+    "3h": 3 * 3600e3,
+    "6h": 6 * 3600e3,
+    "12h": 12 * 3600e3,
+    "24h": 24 * 3600e3,
+    all: null,
+  };
+
+  const metricsUI = {
+    allPoints: [],
+    series: {},
+    // view window: absolute ms range (null,null = follow preset)
+    viewFrom: null,
+    viewTo: null,
+    preset: "1m",
+    hoverT: null,
+    brush: null, // { startX, curX, canvas }
+    bound: false,
+    pad: { l: 8, r: 8, t: 6, b: 6 },
+  };
+
+  function formatTs(ms) {
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  }
+
+  function formatRangeLabel(from, to, preset) {
+    if (preset && preset !== "custom" && RANGE_MS[preset] !== undefined && preset !== "all") {
+      return `Last ${preset}`;
+    }
+    if (preset === "all") return "All samples";
+    if (from != null && to != null) {
+      return `${formatTs(from)} — ${formatTs(to)}`;
+    }
+    return "—";
+  }
+
+  function effectiveWindow() {
+    const pts = metricsUI.allPoints;
+    if (!pts.length) return { from: 0, to: 0, pts: [] };
+    const dataFrom = pts[0].t_ms;
+    const dataTo = pts[pts.length - 1].t_ms;
+    let from = metricsUI.viewFrom;
+    let to = metricsUI.viewTo;
+    if (from == null || to == null) {
+      if (metricsUI.preset === "all" || !RANGE_MS[metricsUI.preset]) {
+        from = dataFrom;
+        to = dataTo;
+      } else {
+        to = dataTo;
+        from = to - RANGE_MS[metricsUI.preset];
+        if (from < dataFrom) from = dataFrom;
+      }
+    }
+    if (from > to) {
+      const t = from;
+      from = to;
+      to = t;
+    }
+    const filtered = pts.filter((p) => p.t_ms >= from && p.t_ms <= to);
+    return { from, to, pts: filtered };
+  }
+
+  function seriesValues(key, pts) {
+    if (key === "net") {
+      // Throughput from cumulative counters (bytes/sec between samples).
+      const rates = [];
+      for (let i = 0; i < pts.length; i++) {
+        if (i === 0) {
+          rates.push(0);
+          continue;
+        }
+        const dt = (pts[i].t_ms - pts[i - 1].t_ms) / 1000;
+        if (dt <= 0) {
+          rates.push(0);
+          continue;
+        }
+        const drx = Math.max(0, (pts[i].net_rx_bytes || 0) - (pts[i - 1].net_rx_bytes || 0));
+        const dtx = Math.max(0, (pts[i].net_tx_bytes || 0) - (pts[i - 1].net_tx_bytes || 0));
+        rates.push((drx + dtx) / dt);
+      }
+      return rates;
+    }
+    return pts.map((p) => {
+      if (key === "cpu") return p.load1 || 0;
+      if (key === "mem") {
+        const t = p.mem_total_bytes || 0;
+        const a = p.mem_available_bytes || 0;
+        return t > 0 ? ((t - a) / t) * 100 : 0;
+      }
+      if (key === "disk") {
+        const t = p.disk_total_bytes || 0;
+        const f = p.disk_free_bytes || 0;
+        return t > 0 ? ((t - f) / t) * 100 : 0;
+      }
+      return 0;
+    });
+  }
+
+  function fmtRate(bps) {
+    if (bps == null || !Number.isFinite(bps) || bps <= 0) return "0 B/s";
+    if (bps >= 1e9) return (bps / 1e9).toFixed(2) + " GB/s";
+    if (bps >= 1e6) return (bps / 1e6).toFixed(2) + " MB/s";
+    if (bps >= 1e3) return (bps / 1e3).toFixed(1) + " KB/s";
+    return Math.round(bps) + " B/s";
+  }
+
+  function netRateAt(pts, idx) {
+    if (!pts || idx <= 0 || idx >= pts.length) return { rx: 0, tx: 0, total: 0 };
+    const dt = (pts[idx].t_ms - pts[idx - 1].t_ms) / 1000;
+    if (dt <= 0) return { rx: 0, tx: 0, total: 0 };
+    const rx = Math.max(0, (pts[idx].net_rx_bytes || 0) - (pts[idx - 1].net_rx_bytes || 0)) / dt;
+    const tx = Math.max(0, (pts[idx].net_tx_bytes || 0) - (pts[idx - 1].net_tx_bytes || 0)) / dt;
+    return { rx, tx, total: rx + tx };
+  }
+
+  function seriesFormat(key, p, pts, idx) {
+    if (!p) return "—";
+    if (key === "cpu") return `load ${(p.load1 || 0).toFixed(2)}`;
+    if (key === "mem") {
+      const t = p.mem_total_bytes || 0;
+      const a = p.mem_available_bytes || 0;
+      const u = t > 0 ? t - a : 0;
+      return t > 0 ? `${fmtBytesShort(u)} / ${fmtBytesShort(t)} (${((u / t) * 100).toFixed(0)}%)` : "—";
+    }
+    if (key === "disk") {
+      const t = p.disk_total_bytes || 0;
+      const f = p.disk_free_bytes || 0;
+      const u = t > 0 ? t - f : 0;
+      return t > 0 ? `${fmtBytesShort(u)} / ${fmtBytesShort(t)} (${((u / t) * 100).toFixed(0)}%)` : "—";
+    }
+    if (key === "net") {
+      const r = netRateAt(pts, idx);
+      const cumRx = p.net_rx_bytes || 0;
+      const cumTx = p.net_tx_bytes || 0;
+      if (cumRx === 0 && cumTx === 0) {
+        return "↓0 ↑0 · agent may lack net counters — Install / update agent";
+      }
+      return `↓${fmtRate(r.rx)} ↑${fmtRate(r.tx)} · Σ ↓${fmtBytesShort(cumRx)} ↑${fmtBytesShort(cumTx)}`;
+    }
+    return "—";
+  }
+
+  function chartLayout(canvas, forceResize) {
+    const wrap = canvas.parentElement;
+    const w = Math.max(1, (wrap && wrap.clientWidth) || canvas.clientWidth || 640);
+    const h = 96;
+    const dpr = window.devicePixelRatio || 1;
+    const pad = metricsUI.pad;
+    const need =
+      forceResize ||
+      canvas._layoutW !== w ||
+      canvas._layoutH !== h ||
+      canvas._layoutDpr !== dpr;
+    if (need) {
+      canvas._layoutW = w;
+      canvas._layoutH = h;
+      canvas._layoutDpr = dpr;
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w, h, pad, plotW: w - pad.l - pad.r, plotH: h - pad.t - pad.b };
+  }
+
+  function xForTime(t, from, to, layout) {
+    if (to <= from) return layout.pad.l;
+    return layout.pad.l + ((t - from) / (to - from)) * layout.plotW;
+  }
+
+  function timeForX(x, from, to, layout) {
+    const rel = (x - layout.pad.l) / Math.max(layout.plotW, 1);
+    return from + Math.min(1, Math.max(0, rel)) * (to - from);
+  }
+
+  /** Map pointer X (CSS px) on any chart to a shared 0–1 fraction of the plot. */
+  function fracForX(x, layout) {
+    return Math.min(1, Math.max(0, (x - layout.pad.l) / Math.max(layout.plotW, 1)));
+  }
+
+  function nearestPoint(pts, t) {
+    if (!pts.length) return null;
+    let best = pts[0];
+    let bestD = Math.abs(pts[0].t_ms - t);
+    for (const p of pts) {
+      const d = Math.abs(p.t_ms - t);
+      if (d < bestD) {
+        best = p;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  function drawChart(canvasId, key, color) {
     const c = $(canvasId);
     if (!c) return;
-    const dpr = window.devicePixelRatio || 1;
-    const w = c.clientWidth || 640;
-    const h = 72;
-    c.width = Math.floor(w * dpr);
-    c.height = Math.floor(h * dpr);
-    const ctx = c.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const layout = chartLayout(c, false);
+    const { ctx, w, h, pad } = layout;
     ctx.clearRect(0, 0, w, h);
-    if (!values || values.length < 2) {
-      ctx.fillStyle = "rgba(128,128,128,0.35)";
-      ctx.font = "12px sans-serif";
-      ctx.fillText("No samples yet — wait for collection interval", 8, h / 2);
+    const win = effectiveWindow();
+    const pts = win.pts;
+    const values = seriesValues(key, pts);
+    c._metricsKey = key;
+    c._metricsColor = color;
+
+    if (values.length < 1) {
+      ctx.fillStyle = "rgba(128,128,128,0.4)";
+      ctx.font = "12px IBM Plex Sans, sans-serif";
+      ctx.fillText("No samples in this range", 10, h / 2);
       return;
     }
+
     let min = Math.min(...values);
     let max = Math.max(...values);
     if (min === max) {
       min -= 1;
       max += 1;
     }
-    const pad = 4;
+    // line
     ctx.strokeStyle = color || "#3ddea8";
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.75;
     ctx.beginPath();
-    values.forEach((v, i) => {
-      const x = pad + (i / (values.length - 1)) * (w - pad * 2);
-      const y = h - pad - ((v - min) / (max - min)) * (h - pad * 2);
+    pts.forEach((p, i) => {
+      const x = xForTime(p.t_ms, win.from, win.to, layout);
+      const y = pad.t + (1 - (values[i] - min) / (max - min)) * layout.plotH;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
     ctx.stroke();
+
+    // brush selection preview (shared time fraction → all charts stay aligned)
+    if (metricsUI.brush && metricsUI.brush.f0 != null) {
+      const f0 = Math.min(metricsUI.brush.f0, metricsUI.brush.f1);
+      const f1 = Math.max(metricsUI.brush.f0, metricsUI.brush.f1);
+      const x0 = pad.l + f0 * layout.plotW;
+      const x1 = pad.l + f1 * layout.plotW;
+      ctx.fillStyle = "rgba(61, 222, 168, 0.14)";
+      ctx.fillRect(x0, pad.t, Math.max(1, x1 - x0), layout.plotH);
+      ctx.strokeStyle = "rgba(61, 222, 168, 0.6)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x0, pad.t, Math.max(1, x1 - x0), layout.plotH);
+    }
+
+    // hover crosshair (synced across all charts via metricsUI.hoverT)
+    if (metricsUI.hoverT != null && pts.length) {
+      const np = nearestPoint(pts, metricsUI.hoverT);
+      if (np) {
+        const x = xForTime(np.t_ms, win.from, win.to, layout);
+        const vi = pts.indexOf(np);
+        const y = pad.t + (1 - (values[vi] - min) / (max - min)) * layout.plotH;
+        ctx.strokeStyle = "rgba(236, 234, 228, 0.4)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x, pad.t);
+        ctx.lineTo(x, h - pad.b);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color || "#3ddea8";
+        ctx.beginPath();
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.25)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+  }
+
+  let _redrawRaf = 0;
+  function redrawAllCharts() {
+    if (_redrawRaf) cancelAnimationFrame(_redrawRaf);
+    _redrawRaf = requestAnimationFrame(() => {
+      _redrawRaf = 0;
+      drawChart("#chart-cpu", "cpu", "#3ddea8");
+      drawChart("#chart-mem", "mem", "#6cb6ff");
+      drawChart("#chart-disk", "disk", "#e0b050");
+      drawChart("#chart-net", "net", "#c084fc");
+      updateRangeChrome();
+      updateLiveValues();
+    });
+  }
+
+  function updateRangeChrome() {
+    const win = effectiveWindow();
+    const label = $("#range-label");
+    const preset = metricsUI.viewFrom != null ? "custom" : metricsUI.preset;
+    if (label) label.textContent = formatRangeLabel(win.from, win.to, preset);
+    $$(".range-btn").forEach((b) => {
+      b.classList.toggle("active", metricsUI.viewFrom == null && b.dataset.range === metricsUI.preset);
+    });
+    const reset = $("#range-reset");
+    if (reset) reset.hidden = metricsUI.viewFrom == null;
+  }
+
+  function updateLiveValues() {
+    const win = effectiveWindow();
+    const pts = win.pts;
+    const tipT = metricsUI.hoverT;
+    let idx = pts.length - 1;
+    let p = pts[idx];
+    if (tipT != null && pts.length) {
+      p = nearestPoint(pts, tipT);
+      idx = pts.indexOf(p);
+    }
+    $("#m-cpu-val").textContent = p ? (p.load1 || 0).toFixed(2) : "—";
+    $("#m-mem-val").textContent = seriesFormat("mem", p, pts, idx);
+    $("#m-disk-val").textContent = seriesFormat("disk", p, pts, idx);
+    $("#m-net-val").textContent = seriesFormat("net", p, pts, idx);
+  }
+
+  function showTooltip(clientX, clientY, html) {
+    const tip = $("#chart-tooltip");
+    if (!tip) return;
+    tip.hidden = false;
+    tip.innerHTML = html;
+    const pad = 14;
+    let x = clientX + pad;
+    let y = clientY + pad;
+    const tw = tip.offsetWidth || 180;
+    const th = tip.offsetHeight || 48;
+    if (x + tw > window.innerWidth - 8) x = clientX - tw - pad;
+    if (y + th > window.innerHeight - 8) y = clientY - th - pad;
+    if (x < 8) x = 8;
+    if (y < 8) y = 8;
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+  }
+  function hideTooltip() {
+    const tip = $("#chart-tooltip");
+    if (tip) tip.hidden = true;
+  }
+
+  function clearCustomRange() {
+    metricsUI.viewFrom = null;
+    metricsUI.viewTo = null;
+    if (metricsUI.preset === "custom") metricsUI.preset = "1m";
+    metricsUI.hoverT = null;
+    hideTooltip();
+    redrawAllCharts();
+  }
+
+  function bindChartInteractions() {
+    if (metricsUI.bound) return;
+    metricsUI.bound = true;
+    const ids = ["#chart-cpu", "#chart-mem", "#chart-disk", "#chart-net"];
+
+    ids.forEach((sel) => {
+      const c = $(sel);
+      if (!c) return;
+      c.addEventListener("mousemove", (e) => {
+        if (metricsUI.brush) return; // window handler owns brush drag
+        const layout = chartLayout(c, false);
+        const rect = c.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const win = effectiveWindow();
+        if (!win.pts.length) return;
+        const t = timeForX(x, win.from, win.to, layout);
+        metricsUI.hoverT = t;
+        const np = nearestPoint(win.pts, t);
+        const key = c._metricsKey || "cpu";
+        if (np) {
+          const idx = win.pts.indexOf(np);
+          showTooltip(
+            e.clientX,
+            e.clientY,
+            `<div class="tip-ts">${escapeHtml(formatTs(np.t_ms))}</div>` +
+              `<div class="tip-val">${escapeHtml(seriesFormat(key, np, win.pts, idx))}</div>`
+          );
+        }
+        redrawAllCharts();
+      });
+      c.addEventListener("mouseleave", () => {
+        if (!metricsUI.brush) {
+          metricsUI.hoverT = null;
+          hideTooltip();
+          redrawAllCharts();
+        }
+      });
+      c.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const layout = chartLayout(c, false);
+        const rect = c.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const f = fracForX(x, layout);
+        metricsUI.brush = { f0: f, f1: f, canvas: c };
+        hideTooltip();
+        redrawAllCharts();
+      });
+      // Double-click any chart to clear a brush zoom (Grafana-like zoom out)
+      c.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        if (metricsUI.viewFrom != null) clearCustomRange();
+      });
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!metricsUI.brush) return;
+      const c = metricsUI.brush.canvas;
+      const layout = chartLayout(c, false);
+      const rect = c.getBoundingClientRect();
+      const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
+      metricsUI.brush.f1 = fracForX(x, layout);
+      // Live range preview in toolbar while dragging
+      const win = effectiveWindow();
+      if (win.pts.length) {
+        const f0 = Math.min(metricsUI.brush.f0, metricsUI.brush.f1);
+        const f1 = Math.max(metricsUI.brush.f0, metricsUI.brush.f1);
+        const from = win.from + f0 * (win.to - win.from);
+        const to = win.from + f1 * (win.to - win.from);
+        const label = $("#range-label");
+        if (label) label.textContent = formatRangeLabel(from, to, "custom");
+      }
+      redrawAllCharts();
+    });
+    window.addEventListener("mouseup", () => {
+      if (!metricsUI.brush) return;
+      const c = metricsUI.brush.canvas;
+      const layout = chartLayout(c, false);
+      const win = effectiveWindow();
+      const f0 = Math.min(metricsUI.brush.f0, metricsUI.brush.f1);
+      const f1 = Math.max(metricsUI.brush.f0, metricsUI.brush.f1);
+      metricsUI.brush = null;
+      // require ~6px of drag relative to plot width
+      if (f1 - f0 < 0.01 || !win.pts.length || win.to <= win.from) {
+        redrawAllCharts();
+        return;
+      }
+      let from = win.from + f0 * (win.to - win.from);
+      let to = win.from + f1 * (win.to - win.from);
+      if (to - from < 1000) {
+        const mid = (from + to) / 2;
+        from = mid - 500;
+        to = mid + 500;
+      }
+      metricsUI.viewFrom = from;
+      metricsUI.viewTo = to;
+      metricsUI.preset = "custom";
+      metricsUI.hoverT = null;
+      hideTooltip();
+      redrawAllCharts();
+    });
+
+    $("#range-presets")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-range]");
+      if (!btn) return;
+      metricsUI.preset = btn.dataset.range;
+      metricsUI.viewFrom = null;
+      metricsUI.viewTo = null;
+      metricsUI.hoverT = null;
+      hideTooltip();
+      redrawAllCharts();
+    });
+    $("#range-reset")?.addEventListener("click", () => clearCustomRange());
+
+    // Keep chart width in sync with panel resizes
+    window.addEventListener("resize", () => {
+      ["#chart-cpu", "#chart-mem", "#chart-disk", "#chart-net"].forEach((sel) => {
+        const el = $(sel);
+        if (el) chartLayout(el, true);
+      });
+      redrawAllCharts();
+    });
   }
 
   async function loadMetrics(name) {
@@ -570,6 +1169,21 @@
       }
       if (charts) charts.hidden = true;
       if (disabled) disabled.hidden = true;
+      return;
+    }
+    const vm =
+      state.sandboxes.find((s) => s.name === name) ||
+      (state._selectedVM && state._selectedVM.name === name ? state._selectedVM : null);
+    // Cloud images without guest agent cannot provide stats — don't nag with 404/enable.
+    if (vm && !imageHasAgent(vm)) {
+      if (charts) charts.hidden = true;
+      if (disabled) disabled.hidden = true;
+      if (hint) {
+        hint.hidden = false;
+        hint.innerHTML = `<span class="muted">Metrics require a guest agent image
+          (e.g. <code>grain-ubuntu</code> / <code>grain-ubuntu-fc</code>).
+          <strong>${escapeHtml(vm.image || name)}</strong> has no guest agent, so Overview metrics are unavailable.</span>`;
+      }
       return;
     }
     try {
@@ -599,46 +1213,30 @@
       }
       if (disabled) disabled.hidden = true;
       if (charts) charts.hidden = false;
-      const pts = h.points || [];
-      const loads = pts.map((p) => p.load1 || 0);
-      const memUsed = pts.map((p) => {
-        const t = p.mem_total_bytes || 0;
-        const a = p.mem_available_bytes || 0;
-        return t > 0 ? ((t - a) / t) * 100 : 0;
-      });
-      const diskUsed = pts.map((p) => {
-        const t = p.disk_total_bytes || 0;
-        const f = p.disk_free_bytes || 0;
-        return t > 0 ? ((t - f) / t) * 100 : 0;
-      });
-      const net = pts.map((p) => (p.net_rx_bytes || 0) + (p.net_tx_bytes || 0));
-      drawSpark("#chart-cpu", loads, "#3ddea8");
-      drawSpark("#chart-mem", memUsed, "#6cb6ff");
-      drawSpark("#chart-disk", diskUsed, "#e0b050");
-      drawSpark("#chart-net", net, "#c084fc");
-      const last = pts[pts.length - 1];
-      if (last) {
-        const mt = last.mem_total_bytes || 0;
-        const ma = last.mem_available_bytes || 0;
-        const mu = mt > 0 ? mt - ma : 0;
-        const dt = last.disk_total_bytes || 0;
-        const df = last.disk_free_bytes || 0;
-        const du = dt > 0 ? dt - df : 0;
-        $("#m-cpu-val").textContent = (last.load1 || 0).toFixed(2);
-        $("#m-mem-val").textContent =
-          mt > 0 ? `${fmtBytesShort(mu)} / ${fmtBytesShort(mt)} (${((mu / mt) * 100).toFixed(0)}%)` : "—";
-        $("#m-disk-val").textContent =
-          dt > 0 ? `${fmtBytesShort(du)} / ${fmtBytesShort(dt)} (${((du / dt) * 100).toFixed(0)}%)` : "—";
-        $("#m-net-val").textContent = `↓${fmtBytesShort(last.net_rx_bytes || 0)} ↑${fmtBytesShort(last.net_tx_bytes || 0)}`;
-      } else {
-        $("#m-cpu-val").textContent = "—";
-        $("#m-mem-val").textContent = "—";
-        $("#m-disk-val").textContent = "—";
-        $("#m-net-val").textContent = "—";
-      }
+      bindChartInteractions();
+      const pts = (h.points || [])
+        .map((p) => ({
+          t_ms: p.t_ms || p.TimeMS || 0,
+          load1: p.load1 ?? 0,
+          mem_total_bytes: p.mem_total_bytes ?? 0,
+          mem_available_bytes: p.mem_available_bytes ?? 0,
+          disk_total_bytes: p.disk_total_bytes ?? 0,
+          disk_free_bytes: p.disk_free_bytes ?? 0,
+          net_rx_bytes: p.net_rx_bytes ?? 0,
+          net_tx_bytes: p.net_tx_bytes ?? 0,
+        }))
+        .filter((p) => p.t_ms > 0)
+        .sort((a, b) => a.t_ms - b.t_ms);
+      metricsUI.allPoints = pts;
+      redrawAllCharts();
       const meta = $("#metrics-meta");
       if (meta) {
-        meta.textContent = `${pts.length} samples · interval ${h.interval || "—"} · stored on Grain host (data_dir/vms/${name}/metrics.ring)`;
+        const anyNet = pts.some((p) => (p.net_rx_bytes || 0) + (p.net_tx_bytes || 0) > 0);
+        meta.textContent = `${pts.length} samples in ring · interval ${h.interval || "—"} · host data_dir/vms/${name}/metrics.ring`;
+        if (!anyNet && pts.length > 0) {
+          meta.textContent +=
+            " · network counters are zero — Install / update agent if traffic is expected";
+        }
       }
     } catch (e) {
       const msg = String(e).replace(/^Error:\s*/i, "");
@@ -646,12 +1244,16 @@
       if (disabled) disabled.hidden = true;
       if (hint) {
         hint.hidden = false;
-        // 404 = daemon too old (no metrics route) — most common after Desktop-only rebuild
         if (/404|not found/i.test(msg)) {
-          hint.innerHTML = `<span class="hint bad">Metrics API not found (HTTP 404).</span>
-            <span class="hint"> The Grain <strong>daemon</strong> on this host is older than the Desktop client.
-            Rebuild and restart it: <code>just build && grain down && grain up</code>, then reopen Overview.
-            Metrics are stored on that host, not in the Desktop app.</span>`;
+          // Only for agent images — cloud images already bailed above.
+          if (vm && !imageHasAgent(vm)) {
+            hint.innerHTML = `<span class="muted">Metrics require a guest agent image.</span>`;
+          } else {
+            hint.innerHTML = `<span class="hint bad">Metrics API not found (HTTP 404).</span>
+              <span class="hint"> The Grain <strong>daemon</strong> on this host is older than the Desktop client.
+              Rebuild and restart it: <code>just build && grain down && grain up</code>, then reopen Overview.
+              Metrics are stored on that host, not in the Desktop app.</span>`;
+          }
         } else {
           hint.textContent = msg;
         }
@@ -672,6 +1274,7 @@
       clearInterval(state.metricsTimer);
       state.metricsTimer = null;
     }
+    hideTooltip();
   }
 
   function showInspector(show) {
@@ -709,13 +1312,17 @@
       if (fromList) {
         if (vm.agent_ok == null && fromList.agent_ok != null) vm.agent_ok = fromList.agent_ok;
         if (!vm.agent_version && fromList.agent_version) vm.agent_version = fromList.agent_version;
+        if (!vm.agent_checked_at && fromList.agent_checked_at) vm.agent_checked_at = fromList.agent_checked_at;
         if (!vm.disk_gb && fromList.disk_gb) vm.disk_gb = fromList.disk_gb;
+        if (vm.has_agent_image == null && fromList.has_agent_image != null)
+          vm.has_agent_image = fromList.has_agent_image;
+        if (!vm.network && fromList.network) vm.network = fromList.network;
+        if (!vm.created_at && fromList.created_at) vm.created_at = fromList.created_at;
       }
+      state._selectedVM = vm;
       updateActionButtons(vm.status);
       $("#detail-status-pill").innerHTML = statusBadge(vm.status);
-      fillMeta(vm, $("#detail-meta"));
-      fillInspectorSummary(vm);
-      fillMeta(vm, $("#inspector-meta"));
+      fillInspector(vm);
       if (switched && state.activeTab === "shell" && state.term) {
         try {
           state.term.reset();
@@ -776,13 +1383,22 @@
       if (state.selected && names.has(state.selected)) {
         const vm = state.sandboxes.find((s) => s.name === state.selected);
         if (vm) {
+          // Keep richer fields from last GetSandbox when list is thinner.
+          if (state._selectedVM && state._selectedVM.name === vm.name) {
+            const prev = state._selectedVM;
+            if (vm.agent_ok == null && prev.agent_ok != null) vm.agent_ok = prev.agent_ok;
+            if (!vm.agent_version && prev.agent_version) vm.agent_version = prev.agent_version;
+            if (!vm.created_at && prev.created_at) vm.created_at = prev.created_at;
+            if (!vm.network && prev.network) vm.network = prev.network;
+            if (!vm.arch && prev.arch) vm.arch = prev.arch;
+            if (!vm.gpu && prev.gpu) vm.gpu = prev.gpu;
+            if (!vm.ip && prev.ip) vm.ip = prev.ip;
+            if (!vm.agent_port && prev.agent_port) vm.agent_port = prev.agent_port;
+          }
+          state._selectedVM = { ...state._selectedVM, ...vm };
           updateActionButtons(vm.status);
           $("#detail-status-pill").innerHTML = statusBadge(vm.status);
-          if (state.activeTab === "overview") {
-            fillMeta(vm, $("#detail-meta"));
-            fillInspectorSummary(vm);
-            fillMeta(vm, $("#inspector-meta"));
-          }
+          fillInspector(state._selectedVM);
         }
       } else if (state.selected && !names.has(state.selected)) {
         state.selected = null;
@@ -899,17 +1515,11 @@
       if (hint)
         hint.innerHTML = `Config: <span class="selectable mono">${escapeHtml(sum.path || "—")}</span> · dial <span class="selectable mono">${escapeHtml(sum.dial_hint || "—")}</span>`;
       const conns = sum.connections || [];
-      const defSel = $("#set-default-conn");
-      if (defSel) {
-        const def = sum.desktop?.default_connection || "local";
-        defSel.innerHTML =
-          conns
-            .map(
-              (c) =>
-                `<option value="${escapeHtml(c.name)}" ${c.name === def ? "selected" : ""}>${escapeHtml(c.name)}</option>`
-            )
-            .join("") || `<option value="local">local</option>`;
-      }
+      const def =
+        sum.desktop?.default_connection ||
+        (conns[0] && conns[0].name) ||
+        "local";
+      renderDefaultConnMenu(conns, def);
       const startLocal = $("#set-start-local");
       if (startLocal) {
         const v = sum.desktop?.start_local_daemon;
@@ -1230,18 +1840,174 @@
     } catch (_) {}
   }
 
+  const logFind = {
+    text: "",
+    query: "",
+    matches: [], // character offsets into plain text — we use element indices of marks
+    idx: -1,
+  };
+
+  function setLogText(text) {
+    logFind.text = text == null ? "" : String(text);
+    renderLogView();
+  }
+
+  function renderLogView() {
+    const view = $("#log-view");
+    if (!view) return;
+    const text = logFind.text;
+    const q = (logFind.query || "").trim();
+    logFind.matches = [];
+    logFind.idx = -1;
+
+    if (!q) {
+      view.textContent = text;
+      updateLogFindCount();
+      return;
+    }
+
+    // Case-insensitive highlight; escape HTML carefully.
+    const lower = text.toLowerCase();
+    const needle = q.toLowerCase();
+    let html = "";
+    let i = 0;
+    let matchN = 0;
+    while (i < text.length) {
+      const j = lower.indexOf(needle, i);
+      if (j < 0) {
+        html += escapeHtml(text.slice(i));
+        break;
+      }
+      html += escapeHtml(text.slice(i, j));
+      html += `<mark class="log-hit" data-hit="${matchN}">${escapeHtml(text.slice(j, j + needle.length))}</mark>`;
+      logFind.matches.push(matchN);
+      matchN++;
+      i = j + needle.length;
+    }
+    view.innerHTML = html || "";
+    if (logFind.matches.length) {
+      logFind.idx = 0;
+      focusLogMatch(0, false);
+    }
+    updateLogFindCount();
+  }
+
+  function updateLogFindCount() {
+    const el = $("#log-find-count");
+    if (!el) return;
+    const n = logFind.matches.length;
+    const q = (logFind.query || "").trim();
+    if (!q) {
+      el.textContent = "";
+      return;
+    }
+    if (!n) {
+      el.textContent = "0/0";
+      return;
+    }
+    el.textContent = `${logFind.idx + 1}/${n}`;
+  }
+
+  function focusLogMatch(index, scroll) {
+    const view = $("#log-view");
+    if (!view) return;
+    const marks = $$("mark.log-hit", view);
+    marks.forEach((m) => m.classList.remove("current"));
+    if (!marks.length) return;
+    const i = ((index % marks.length) + marks.length) % marks.length;
+    logFind.idx = i;
+    const m = marks[i];
+    m.classList.add("current");
+    if (scroll !== false) {
+      m.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+    updateLogFindCount();
+  }
+
+  function logFindNext(dir) {
+    if (!logFind.matches.length) return;
+    focusLogMatch(logFind.idx + (dir < 0 ? -1 : 1), true);
+  }
+
+  function openLogFind(prefill) {
+    const bar = $("#log-find-bar");
+    const input = $("#log-find");
+    if (!bar || !input) return;
+    bar.hidden = false;
+    if (prefill != null && prefill !== "") input.value = prefill;
+    input.focus();
+    input.select();
+    logFind.query = input.value;
+    renderLogView();
+  }
+
+  function closeLogFind() {
+    const bar = $("#log-find-bar");
+    const input = $("#log-find");
+    if (bar) bar.hidden = true;
+    if (input) input.value = "";
+    logFind.query = "";
+    renderLogView();
+    $("#log-view")?.focus();
+  }
+
+  async function copyLogSelection() {
+    const sel = window.getSelection();
+    let text = sel && String(sel) ? String(sel) : "";
+    // Prefer selection when it intersects the log view
+    const view = $("#log-view");
+    if (text && view && sel && sel.rangeCount) {
+      try {
+        const range = sel.getRangeAt(0);
+        if (!view.contains(range.commonAncestorContainer)) text = "";
+      } catch (_) {
+        text = "";
+      }
+    }
+    if (!text) text = logFind.text || view?.textContent || "";
+    if (!text) {
+      toast("Nothing to copy", true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(text === logFind.text || text === (view?.textContent || "") ? "Logs copied" : "Copied selection");
+    } catch (e) {
+      // Fallback for restricted clipboard
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        toast("Copied");
+      } catch (_) {
+        toast("Copy failed", true);
+      }
+    }
+  }
+
   async function loadLogs() {
     if (!state.selected) return;
     const view = $("#log-view");
     if (!view) return;
-    view.textContent = "Loading…";
+    setLogText("Loading…");
     try {
       const res = await call("ReadLogs", state.selected, $("#log-source")?.value || "serial");
-      view.textContent = res.missing
+      const body = res.missing
         ? `No log at ${res.path || "?"}`
         : (res.truncated ? "…\n" : "") + (res.content || "");
+      setLogText(body);
+      // Keep find bar query if open
+      if (!$("#log-find-bar")?.hidden) {
+        logFind.query = $("#log-find")?.value || "";
+        renderLogView();
+      }
     } catch (e) {
-      view.textContent = String(e);
+      setLogText(String(e));
     }
   }
 
@@ -1572,8 +2338,14 @@
       e.stopPropagation();
       toggleHostMenu();
     });
+    $("#set-default-conn-btn")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleDefaultConnMenu();
+    });
     document.addEventListener("click", (e) => {
       if (!$("#host-menu")?.contains(e.target)) closeHostMenu();
+      if (!$("#set-default-conn-menu")?.contains(e.target)) closeDefaultConnMenu();
     });
     $("#host-add")?.addEventListener("click", () => {
       closeHostMenu();
@@ -1638,6 +2410,24 @@
         }
         if (actName === "logs") return switchTab("logs");
         if (actName === "edit") return openSandboxEdit(name);
+        if (actName === "export-recipe") {
+          const res = await act("export recipe", () => call("ExportSandboxRecipe", name), {
+            target: name,
+            summary: `exported recipe for ${name}`,
+          });
+          if (res?.cancelled) {
+            toast("Export cancelled");
+            return;
+          }
+          if (res?.path) {
+            toast(`Saved recipe: ${res.path}`);
+          } else if (res?.yaml) {
+            toast("Recipe generated (no save path)");
+          } else {
+            toast(`Exported recipe for ${name}`);
+          }
+          return;
+        }
         if (actName === "start") {
           await act("start", () => call("StartSandbox", name), {
             target: name,
@@ -1658,10 +2448,21 @@
           await selectVM(name);
           return;
         }
+        if (actName === "deploy-agent") {
+          const res = await act("deploy agent", () => call("DeployAgent", name), {
+            target: name,
+            summary: `deployed guest agent on ${name}`,
+          });
+          toast(res?.message || `Agent deployed on ${name}`);
+          await refreshList();
+          await selectVM(name);
+          return;
+        }
         if (actName === "rm") {
           if (!confirm(`Remove ${name}?`)) return;
           await act("remove", () => call("RemoveSandbox", name), { target: name });
           state.selected = null;
+          state._selectedVM = null;
           showInspector(false);
           await refreshList();
         }
@@ -1683,6 +2484,56 @@
 
     $("#btn-reload-logs")?.addEventListener("click", loadLogs);
     $("#log-source")?.addEventListener("change", loadLogs);
+    $("#btn-log-copy")?.addEventListener("click", () => copyLogSelection());
+    $("#log-find")?.addEventListener("input", (e) => {
+      logFind.query = e.target.value || "";
+      renderLogView();
+    });
+    $("#log-find")?.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeLogFind();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        logFindNext(e.shiftKey ? -1 : 1);
+      }
+    });
+    $("#log-find-next")?.addEventListener("click", () => logFindNext(1));
+    $("#log-find-prev")?.addEventListener("click", () => logFindNext(-1));
+    $("#log-find-close")?.addEventListener("click", closeLogFind);
+
+    // Cmd/Ctrl+F find in logs; Cmd/Ctrl+C copy selection from log view (backup to Edit menu)
+    document.addEventListener("keydown", (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const key = (e.key || "").toLowerCase();
+      if (key === "f" && state.activeTab === "logs" && state.selected) {
+        e.preventDefault();
+        const sel = window.getSelection()?.toString();
+        openLogFind(sel && sel.length < 120 ? sel : undefined);
+        return;
+      }
+      if (key === "g" && state.activeTab === "logs" && !$("#log-find-bar")?.hidden) {
+        e.preventDefault();
+        logFindNext(e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (key === "c") {
+        const view = $("#log-view");
+        const sel = window.getSelection();
+        if (!view || !sel || !sel.rangeCount) return;
+        try {
+          if (!view.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
+        } catch (_) {
+          return;
+        }
+        if (!String(sel)) return;
+        e.preventDefault();
+        copyLogSelection();
+      }
+    });
     $("#settings-form")?.addEventListener("submit", onSettingsFormSave);
     $("#btn-add-host")?.addEventListener("click", () => openHostModal(null, []));
     $("#host-mcp")?.addEventListener("change", (e) => {
