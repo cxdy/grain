@@ -46,6 +46,8 @@
     /** @type {any[]} daemon activity from GET /activity */
     daemonActivity: [],
     lastActivityID: "",
+    /** activity source filter: all|desktop|cli|mcp|api */
+    activitySourceFilter: "all",
   };
 
   function escapeHtml(s) {
@@ -225,7 +227,15 @@
     });
     const all = [...remote, ...filteredLocal];
     all.sort((a, b) => (Date.parse(b.t) || 0) - (Date.parse(a.t) || 0));
-    return all.slice(0, 200);
+    const srcFilter = (state.activitySourceFilter || "all").toLowerCase();
+    const sliced = all.slice(0, 200);
+    if (!srcFilter || srcFilter === "all") return sliced;
+    return sliced.filter((e) => {
+      let src = (e.source || "api").toLowerCase();
+      if (src === "ui") src = "desktop";
+      if (srcFilter === "api") return src === "api" || src === "sdk";
+      return src === srcFilter;
+    });
   }
 
   async function pollDaemonActivity() {
@@ -1956,6 +1966,18 @@
       if ($("#set-data-dir")) $("#set-data-dir").value = sum.data_dir || "";
       if ($("#set-api")) $("#set-api").value = sum.api || "";
       if ($("#set-api-url")) $("#set-api-url").value = sum.api_url || "";
+      const wp = sum.warm_pool || {};
+      if ($("#set-pool-template")) $("#set-pool-template").value = wp.template || "";
+      if ($("#set-pool-size")) $("#set-pool-size").value = wp.size != null ? wp.size : 0;
+      if ($("#set-pool-running")) $("#set-pool-running").checked = !!wp.running;
+      const ps = $("#settings-pool-status");
+      if (ps) {
+        if (wp.template && wp.size > 0) {
+          ps.textContent = `Configured: template ${wp.template}, size ${wp.size}${wp.running ? " (running mode)" : ""}`;
+        } else {
+          ps.textContent = "Warm pool disabled (set template + size > 0).";
+        }
+      }
       const ts = $("#token-status");
       if (ts) ts.textContent = sum.has_token ? "Token: set" : "Token: not set";
 
@@ -3051,12 +3073,19 @@
       const st = await call("PoolStatus");
       if (!st?.enabled) {
         el.innerHTML =
-          "Warm pool is <strong>not configured</strong>. Set <code>warm_pool.template</code> and <code>warm_pool.size</code> in config, then Fill.";
+          "Warm pool is <strong>not configured</strong>. Set template and size in <strong>Settings → Warm pool</strong> (or config.yaml), then Fill.";
         return;
       }
-      el.innerHTML = `Pool <strong>${escapeHtml(st.template || "")}</strong> — ready <strong>${st.ready ?? 0}</strong> / desired <strong>${st.desired ?? 0}</strong>${
+      const ready = st.ready ?? 0;
+      const desired = st.desired ?? 0;
+      const runNote = st.running ? " · <em>running mode</em>" : "";
+      if (ready <= 0) {
+        el.innerHTML = `Pool <strong>${escapeHtml(st.template || "")}</strong> is <strong>empty</strong> (ready 0 / desired ${desired})${runNote}. Cold boot will be slow — Fill the pool first for fast claim.`;
+        return;
+      }
+      el.innerHTML = `Pool <strong>${escapeHtml(st.template || "")}</strong> — ready <strong>${ready}</strong> / desired <strong>${desired}</strong>${runNote}${
         (st.members || []).length ? ` · ${escapeHtml((st.members || []).join(", "))}` : ""
-      }`;
+      }. Claim is the fast path.`;
     } catch (e) {
       el.textContent = String(e);
     }
@@ -3073,8 +3102,22 @@
       // metrics default on unless user unchecked last time
       if (f.metrics_enabled) f.metrics_enabled.checked = true;
     } catch (_) {}
-    const cold = document.querySelector('input[name="create_mode"][value="cold"]');
-    if (cold) cold.checked = true;
+    // Prefer pool when ready>0 on active host; otherwise honest cold.
+    let prefer = "cold";
+    try {
+      const dec = await call("DecideCreateMode");
+      if (dec && dec.prefer_pool && dec.mode === "pool") prefer = "pool";
+      const hint = $("#create-mode-hint");
+      if (hint && dec && dec.hint) hint.textContent = dec.hint;
+      const poolStatus = $("#create-pool-status");
+      if (poolStatus && dec && dec.status) poolStatus.textContent = dec.status;
+    } catch (_) {}
+    const radio = document.querySelector(`input[name="create_mode"][value="${prefer}"]`);
+    if (radio) radio.checked = true;
+    else {
+      const cold = document.querySelector('input[name="create_mode"][value="cold"]');
+      if (cold) cold.checked = true;
+    }
     await refreshCreateModeUI();
     $("#create-status").textContent = "";
     $("#create-submit").disabled = false;
@@ -3296,6 +3339,44 @@
         toast("All selected sandboxes are already running");
         return;
       }
+      // Real capacity preflight before confirm/fan-out (local caps when known).
+      try {
+        const pf = await call("BulkStartPreflight", toStart);
+        if (pf && pf.block) {
+          await confirmDialog(pf.message || "Bulk start blocked by resource caps.", {
+            yes: "OK",
+            no: "",
+            danger: false,
+          });
+          toast(pf.message || "Bulk start blocked", true, { action: "bulk preflight" });
+          return;
+        }
+        if (pf && pf.warn) {
+          const cont = await confirmDialog(
+            (pf.message || "Capacity warning") + "\n\nContinue with bulk start?",
+            { yes: "Start anyway", no: "Cancel", danger: false }
+          );
+          if (!cont) return;
+          return runBulk(kind, toStart, v, toStart.length);
+        }
+        if (pf && pf.message) {
+          // under limit: include preflight summary in confirm
+          const nStart = pf.would_start || toStart.length;
+          const preview =
+            toStart.length <= 8
+              ? toStart.join(", ")
+              : toStart.slice(0, 6).join(", ") + `… (+${toStart.length - 6} more)`;
+          const ok = await confirmDialog(
+            `Start ${nStart} sandbox${nStart === 1 ? "" : "es"}?\n\n${preview}\n\n${pf.message}`,
+            { yes: "Start", no: "Cancel", danger: false }
+          );
+          if (!ok) return;
+          return runBulk(kind, toStart, v, toStart.length);
+        }
+      } catch (e) {
+        // Fall through to generic confirm if preflight RPC fails.
+        console.warn("BulkStartPreflight", e);
+      }
     }
     const n = names.length;
     const preview = names.length <= 8 ? names.join(", ") : names.slice(0, 6).join(", ") + `… (+${n - 6} more)`;
@@ -3303,9 +3384,6 @@
       kind === "rm"
         ? `Remove ${n} sandboxes?\n\n${preview}\n\nThis deletes them permanently (ephemeral disks are discarded).`
         : `${v.title} ${n} sandboxes?\n\n${preview}`;
-    if (kind === "start" && n >= 10) {
-      detail += `\n\nLarge bulk start may hit host resource caps (max_vms / memory); failures are reported per host.`;
-    }
     const ok = await confirmDialog(detail, {
       yes: kind === "rm" ? "Remove" : v.title,
       no: "Cancel",
@@ -3408,10 +3486,46 @@
       renderActivity();
       updateActivityBadge();
     });
+    $("#activity-source-filter")?.addEventListener("change", (e) => {
+      state.activitySourceFilter = e.target.value || "all";
+      renderActivity();
+      updateActivityBadge();
+    });
     $("#activity-drawer")?.addEventListener("click", (e) => {
       if (e.target.id === "activity-drawer") closeActivity();
     });
     $("#toast")?.addEventListener("click", () => openActivity($("#toast").dataset.eventId));
+
+    $("#btn-pool-apply")?.addEventListener("click", async () => {
+      const form = {
+        template: ($("#set-pool-template")?.value || "").trim(),
+        size: Number($("#set-pool-size")?.value || 0),
+        running: !!$("#set-pool-running")?.checked,
+      };
+      try {
+        const res = await act("warm pool settings", () => call("SaveWarmPoolSettings", form), {
+          target: form.template || "warm_pool",
+          summary: `warm_pool template=${form.template} size=${form.size}`,
+        });
+        toast(res?.message || "Warm pool settings applied");
+        await loadSettings();
+      } catch (e) {
+        toast(String(e), true);
+      }
+    });
+    $("#btn-pool-fill-settings")?.addEventListener("click", async () => {
+      try {
+        await act("pool fill", () => call("PoolFill"), { target: "warm pool" });
+        toast("Warm pool fill complete");
+        const st = await call("PoolStatus");
+        const el = $("#settings-pool-status");
+        if (el && st) {
+          el.textContent = `Pool ${st.template || ""} — ready ${st.ready ?? 0} / desired ${st.desired ?? 0}${st.running ? " (running)" : ""}`;
+        }
+      } catch (e) {
+        toast(String(e), true);
+      }
+    });
 
     $("#host-btn")?.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -3698,6 +3812,23 @@
             }
             throw e;
           }
+        }
+        if (actName === "promote-golden") {
+          const yes = await confirmDialog(
+            `Promote “${name}” to warm-pool golden template?\n\nWill suspend if running, set warm_pool.template, restart daemon, and fill the pool.`,
+            { yes: "Promote + fill", no: "Cancel", danger: false }
+          );
+          if (!yes) return;
+          const size = Number($("#set-pool-size")?.value || 0) || 2;
+          const running = !!$("#set-pool-running")?.checked;
+          const res = await act(
+            "promote golden",
+            () => call("PromoteGoldenAndFill", name, size, running),
+            { target: name, summary: `promoted ${name} as warm pool golden` }
+          );
+          toast(res?.message || `Promoted ${name} and filled pool`);
+          await refreshList();
+          return;
         }
         if (actName === "start") {
           await act("start", () => call("StartSandbox", name), {

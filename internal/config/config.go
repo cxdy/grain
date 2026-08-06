@@ -145,13 +145,18 @@ type MCPConfig struct {
 
 // WarmPoolConfig holds pre-cloned suspended VMs ready for PoolClaim.
 // Template must be a persistent stopped/suspended golden (prefer grain suspend
-// with qcow2 savevm). Size is how many ready clones to keep on disk (not running).
-// Claim renames one member and starts it (-loadvm when snapshotted).
+// with qcow2 savevm). Size is how many ready clones to keep on disk (not running)
+// unless Running is true.
+// Claim renames one member and starts it (-loadvm when snapshotted), or if Running
+// and the member is already agent-ready, claim only renames/untags.
 type WarmPoolConfig struct {
 	// Template is the source VM name to clone from. Empty disables the pool.
 	Template string `yaml:"template"`
 	// Size is the desired number of ready pool members (0–32). 0 disables.
 	Size int `yaml:"size"`
+	// Running, when true, starts pool members after fill and keeps them agent-ready
+	// (uses host RAM). Default false = disk-only suspended members (claim does start).
+	Running bool `yaml:"running"`
 }
 
 // Enabled reports whether the warm pool should maintain members.

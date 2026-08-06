@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cxdy/grain/client"
+	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/recipe"
 )
 
@@ -264,6 +265,111 @@ func (s *Service) PoolFill(ctx context.Context) (*PoolStatus, error) {
 		return nil, err
 	}
 	return c.PoolFill(ctx)
+}
+
+// DecideCreateMode queries pool status on the active connection and returns prefer-pool decision.
+func (s *Service) DecideCreateMode(ctx context.Context) (CreateModeDecision, error) {
+	st, err := s.PoolStatus(ctx)
+	if err != nil {
+		// Honest fallback when pool endpoint unavailable.
+		return DecideDefaultCreateMode(false, 0, 0, ""), err
+	}
+	if st == nil {
+		return DecideDefaultCreateMode(false, 0, 0, ""), nil
+	}
+	return DecideDefaultCreateMode(st.Enabled, st.Ready, st.Desired, st.Template), nil
+}
+
+// SuspendSandbox suspends a persistent VM (savevm when possible) on the active host.
+func (s *Service) SuspendSandbox(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	c, err := s.ensureClient()
+	if err != nil {
+		return err
+	}
+	return c.Suspend(ctx, name)
+}
+
+// PromoteGoldenResult is returned after promote-to-golden + optional fill.
+type PromoteGoldenResult struct {
+	Plan    PromoteGoldenPlan `json:"plan"`
+	Filled  bool              `json:"filled"`
+	Status  *PoolStatus       `json:"status,omitempty"`
+	Message string            `json:"message"`
+}
+
+// BulkStartPreflightForNames builds inventory from the active host and runs capacity preflight.
+// configPath is used to load max_vms caps when the active connection is local.
+func (s *Service) BulkStartPreflightForNames(ctx context.Context, names []string, configPath string) (BulkStartPreflightResult, error) {
+	list, err := s.ListSandboxes(ctx)
+	if err != nil {
+		return BulkStartPreflightResult{}, err
+	}
+	byName := make(map[string]Sandbox, len(list))
+	runningCount, runningCPU, runningMem := 0, 0, 0
+	for _, sb := range list {
+		byName[sb.Name] = sb
+		st := strings.ToLower(sb.Status)
+		if st == "running" || st == "paused" {
+			runningCount++
+			cpus := sb.CPUs
+			if cpus <= 0 {
+				cpus = 2
+			}
+			mem := sb.MemoryMB
+			if mem <= 0 {
+				mem = 2048
+			}
+			runningCPU += cpus
+			runningMem += mem
+		}
+	}
+	var toStart []BulkStartVM
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		sb, ok := byName[n]
+		if !ok {
+			toStart = append(toStart, BulkStartVM{Name: n, Status: "stopped", CPUs: 2, MemoryMB: 2048})
+			continue
+		}
+		toStart = append(toStart, BulkStartVM{
+			Name:     sb.Name,
+			Status:   sb.Status,
+			CPUs:     sb.CPUs,
+			MemoryMB: sb.MemoryMB,
+		})
+	}
+
+	in := BulkStartPreflightInput{
+		ToStart:         toStart,
+		RunningCount:    runningCount,
+		RunningCPUs:     runningCPU,
+		RunningMemoryMB: runningMem,
+	}
+	conn, cerr := s.ActiveConnection()
+	if cerr == nil && conn.IsLocal() {
+		if cfg, lerr := config.Load(configPath); lerr == nil {
+			in.Caps = ResourceCapsFromConfig(cfg)
+			in.CapsKnown = true
+		}
+	}
+	// Remote: caps unknown (local config is not the remote daemon's).
+	return BulkStartPreflight(in), nil
+}
+
+// ListActivityFiltered returns daemon activity optionally filtered by source labels.
+func (s *Service) ListActivityFiltered(ctx context.Context, since string, limit int, sources []string) ([]ActivityEvent, error) {
+	list, err := s.ListActivity(ctx, since, limit)
+	if err != nil {
+		return nil, err
+	}
+	return FilterActivityBySources(list, sources), nil
 }
 
 // ListCreateTemplates returns stopped/suspended persistent VMs suitable as --from sources.
@@ -858,6 +964,8 @@ type ConfigSummary struct {
 	Connections     []ConnectionBrief `json:"connections"`
 	Desktop         DesktopPrefs      `json:"desktop"`
 	DialHint        string            `json:"dial_hint,omitempty"`
+	// WarmPool from config.yaml (template/size/running); apply via SaveWarmPoolForm.
+	WarmPool WarmPoolForm `json:"warm_pool"`
 }
 
 // ConnectionBrief is a connection without secrets.
@@ -894,6 +1002,7 @@ func (s *Service) Summary(configPath string) ConfigSummary {
 			}
 		}
 	}
+	wp, _ := ReadWarmPoolForm(configPath)
 	return ConfigSummary{
 		Path:            configPath,
 		DataDir:         s.Config.DataDir,
@@ -908,6 +1017,7 @@ func (s *Service) Summary(configPath string) ConfigSummary {
 		Connections:     briefs,
 		Desktop:         s.Config.Desktop,
 		DialHint:        hint,
+		WarmPool:        wp,
 	}
 }
 
