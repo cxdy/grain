@@ -56,18 +56,31 @@ grain suspend golden
 # Spawn = clone + start (clone cost every time)
 grain new --from golden -n w1
 
-# Warm pool = pre-cloned suspended disks; claim renames + starts
+# Warm pool = pre-cloned members; claim renames + starts (or rename-only if running)
 # config.yaml:
 #   warm_pool:
 #     template: golden
 #     size: 2
+#     running: false   # true = keep members agent-ready (uses host RAM)
 grain pool fill
 grain new --from-pool -n w2
 grain pool status
 grain pool drain   # delete ready members
 ```
 
-Pool members stay **stopped/suspended** (disk only, no host RAM). Claim uses `-loadvm` when a suspend snapshot exists. The daemon refills toward `warm_pool.size` after each claim; on `grain up` it also fills in the background when configured.
+**Default:** pool members stay **stopped/suspended** (disk only, no host RAM). Claim uses `-loadvm` when a suspend snapshot exists.
+
+**Optional `warm_pool.running: true`:** fill starts each member and leaves it agent-ready (RAM cost). Claim is rename/untag only — closest path to “assign a ready sandbox.”
+
+The daemon refills toward `warm_pool.size` after each claim; on `grain up` it also fills in the background when configured.
+
+### Desktop warm-path loop
+
+1. Boot and prepare a golden: create persistent sandbox, wait for agent, then **More → Promote to golden + fill pool** (suspends if running, sets `warm_pool.template` / size, restarts local daemon, fills).
+2. Or set **Settings → Warm pool** (template, size, optional running mode) → **Apply warm pool** → **Fill pool**.
+3. **New sandbox** prefers **From warm pool** when ready &gt; 0; empty/unconfigured states stay honest (cold boot message, no silent slow path).
+4. Multi-select **Start** runs a capacity **preflight** against host caps (`max_vms` / CPU / memory from the active daemon’s `GET /info`).
+5. **Activity** drawer can filter by source (`desktop` / `cli` / `mcp` / `api`).
 
 ## API
 

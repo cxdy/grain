@@ -1,4 +1,0 @@
----
-title: Reference
-section: reference
----

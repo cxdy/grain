@@ -61,16 +61,17 @@ svu next
 
    - Fetches remote tags so `svu` sees the latest release
    - Runs `svu next` (for example `v0.3.1`)
-   - **Bumps the Hugo site docs version** (snapshots `docs/content/docs/main` →
-     `docs/content/docs/<ver>/`, sets the version switcher to `vX.Y.Z (latest)`,
-     commits `docs: publish vX.Y.Z site version` when needed)
+   - **Updates Hugo docs version metadata** (live content stays
+     `docs/content/docs/main/` → `/docs/main/`; sets switcher label to
+     `vX.Y.Z (latest)` and lists product SVU tags as GitHub **commit** links —
+     no per-release content trees; see issue #88)
    - Creates the git tag on that commit
    - Pushes `HEAD` and the tag to `origin`
 
 4. Watch **Release** (GoReleaser) on the tag — publishes `grain_*.tar.gz`,
    `grain-agent-linux-*.tar.gz`, and `checksums.txt`.
 
-5. Watch **Pages** — deploys grainvm.com with the new default docs version.
+5. Watch **Pages** — deploys grainvm.com with the new docs label + switcher.
 
 Do **not** create release tags by hand unless fixing a one-off; prefer
 `just release-tag` so `svu`, docs version, and commit history stay aligned.
@@ -79,7 +80,7 @@ Do **not** create release tags by hand unless fixing a one-off; prefer
 
 ```bash
 just docs-version 0.3.1
-# review, then commit docs/hugo.toml + docs/content/docs/0.3.1/
+# review, then commit docs/hugo.toml only (no docs/content/docs/<ver>/ tree)
 ```
 
 ### Safety net
@@ -94,7 +95,7 @@ git fetch --tags
 TAG=$(svu next)
 VER="${TAG#v}"
 ./scripts/docs-version-bump.sh "$VER"
-git add docs/hugo.toml "docs/content/docs/${VER}"
+git add docs/hugo.toml
 git commit -m "docs: publish ${TAG} site version"   # if there are changes
 git tag "$TAG"
 git push origin HEAD "$TAG"

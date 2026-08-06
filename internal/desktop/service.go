@@ -272,12 +272,12 @@ func (s *Service) DecideCreateMode(ctx context.Context) (CreateModeDecision, err
 	st, err := s.PoolStatus(ctx)
 	if err != nil {
 		// Honest fallback when pool endpoint unavailable.
-		return DecideDefaultCreateMode(false, 0, 0, ""), err
+		return DecideDefaultCreateModeRunning(false, 0, 0, "", false), err
 	}
 	if st == nil {
-		return DecideDefaultCreateMode(false, 0, 0, ""), nil
+		return DecideDefaultCreateModeRunning(false, 0, 0, "", false), nil
 	}
-	return DecideDefaultCreateMode(st.Enabled, st.Ready, st.Desired, st.Template), nil
+	return DecideDefaultCreateModeRunning(st.Enabled, st.Ready, st.Desired, st.Template, st.Running), nil
 }
 
 // SuspendSandbox suspends a persistent VM (savevm when possible) on the active host.
@@ -352,14 +352,25 @@ func (s *Service) BulkStartPreflightForNames(ctx context.Context, names []string
 		RunningCPUs:     runningCPU,
 		RunningMemoryMB: runningMem,
 	}
-	conn, cerr := s.ActiveConnection()
-	if cerr == nil && conn.IsLocal() {
-		if cfg, lerr := config.Load(configPath); lerr == nil {
-			in.Caps = ResourceCapsFromConfig(cfg)
-			in.CapsKnown = true
+	// Prefer caps from the active host's GET /info (works for local and remote).
+	if c, cerr := s.ensureClient(); cerr == nil {
+		if info, ierr := c.Info(ctx); ierr == nil {
+			if caps, ok := ResourceCapsFromInfoMap(info); ok {
+				in.Caps = caps
+				in.CapsKnown = true
+			}
 		}
 	}
-	// Remote: caps unknown (local config is not the remote daemon's).
+	// Fallback: local config file when info omits caps (older daemons).
+	if !in.CapsKnown {
+		conn, cerr := s.ActiveConnection()
+		if cerr == nil && conn.IsLocal() {
+			if cfg, lerr := config.Load(configPath); lerr == nil {
+				in.Caps = ResourceCapsFromConfig(cfg)
+				in.CapsKnown = true
+			}
+		}
+	}
 	return BulkStartPreflight(in), nil
 }
 

@@ -1,0 +1,46 @@
+# Go toolchain bootstrap.
+#
+#   grain new --recipe go-dev
+#
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: go-dev
+  description: Ubuntu with Go toolchain bootstrap (git + golang)
+spec:
+  image: grain-ubuntu
+  persistent: true
+  cpus: 2
+  memory_mb: 4096
+  disk_gb: 20
+  ready_timeout: 15m
+  mounts:
+    - host: .
+      guest: /work
+  bootstrap:
+    ready_name: go-dev
+    steps:
+      - name: packages
+        message: installing git and curl
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq git curl ca-certificates
+      - name: golang
+        message: installing Go toolchain
+        run: |
+          if command -v go >/dev/null 2>&1; then
+            go version
+            exit 0
+          fi
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            aarch64|arm64) GOARCH=arm64 ;;
+            x86_64|amd64) GOARCH=amd64 ;;
+            *) GOARCH=amd64 ;;
+          esac
+          VER=$(curl -fsSL https://go.dev/VERSION?m=text | head -1)
+          curl -fsSL "https://go.dev/dl/${VER}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xz
+          ln -sf /usr/local/go/bin/go /usr/local/bin/go
+          ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+          go version

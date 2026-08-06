@@ -1,5 +1,6 @@
-# Safety net: after a GitHub Release is published, ensure the Hugo site
-# defaults to that version (content snapshot + version switcher).
+# Safety net: after a GitHub Release is published, refresh Hugo docs switcher
+# metadata (live tree label + product SVU tag→commit list). Does NOT snapshot
+# per-release content trees (issue #88).
 # Prefer `just release-tag`, which bumps docs before tagging; this catches
 # hand-cut tags and forgotten bumps.
 name: Docs version
@@ -33,10 +34,18 @@ jobs:
           fi
           VER="${RAW#v}"
           if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            echo "Skipping non-semver tag: $RAW"
+            echo "Skipping non-semver / non-product tag: $RAW"
             echo "skip=true" >>"$GITHUB_OUTPUT"
             exit 0
           fi
+          # Skip non-product release tags (fc/golden/sdk/guest-agent).
+          case "$RAW" in
+            fc-*|golden-*|sdk-*|*guest-agent*|agent-*)
+              echo "Skipping non-product tag: $RAW"
+              echo "skip=true" >>"$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
           echo "version=$VER" >>"$GITHUB_OUTPUT"
           echo "tag=v$VER" >>"$GITHUB_OUTPUT"
           echo "skip=false" >>"$GITHUB_OUTPUT"
@@ -48,7 +57,7 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Bump docs version
+      - name: Bump docs version metadata
         if: steps.ver.outputs.skip != 'true'
         run: ./scripts/docs-version-bump.sh "${{ steps.ver.outputs.version }}"
 
@@ -67,11 +76,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
-          git add docs/hugo.toml "docs/content/docs/${VER}"
-          git add -u docs/hugo.toml docs/content/docs/ || true
+          git add docs/hugo.toml
+          git add -u docs/hugo.toml || true
           git commit -m "docs: publish v${VER} site version"
           git push -u origin "$BRANCH" --force
-          # Create PR if one does not already exist for this branch
           if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
             echo "PR already open for $BRANCH"
             gh pr view "$BRANCH" --web || true
@@ -82,17 +90,18 @@ jobs:
               --title "docs: publish v${VER} site version" \
               --body "$(cat <<EOF
           ## Summary
-          Automated docs version bump for **v${VER}** (release safety net).
+          Automated docs version metadata bump for **v${VER}** (release safety net).
 
-          - Snapshot \`docs/content/docs/main\` → \`docs/content/docs/${VER}/\`
-          - Set site default + version switcher to **v${VER} (latest)**
+          - Live content remains \`docs/content/docs/main/\` → \`/docs/main/\`
+          - Version switcher label **v${VER} (latest)** + product SVU tags as GitHub commit links
+          - No per-release content snapshot (issue #88)
 
-          Prefer cutting releases with \`just release-tag\`, which performs this
-          bump before tagging. This workflow covers tags created without that recipe.
+          Prefer cutting releases with \`just release-tag\`.
 
           ## Test plan
-          - [ ] Version switcher shows v${VER} (latest)
-          - [ ] Home Install / Docs links point at \`/docs/${VER}/\`
+          - [ ] Version switcher shows v${VER} (latest) for live docs
+          - [ ] Historical versions open GitHub at the tag commit
+          - [ ] No \`docs/content/docs/${VER}/\` tree on main
           - [ ] Pages deploy succeeds after merge
           EOF
           )"

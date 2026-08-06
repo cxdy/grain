@@ -76,6 +76,18 @@
       ],
       "path": "remote-coding.yaml",
       "sha256": "1864f97311c69ef8e541a8e6fa8f5ebadf1b0a648d7d0e77990c25439ea5a21e"
+    },
+    {
+      "id": "go-dev",
+      "title": "Go dev",
+      "description": "Ubuntu with Go toolchain bootstrap (git + golang)",
+      "tags": [
+        "official",
+        "bootstrap",
+        "go"
+      ],
+      "path": "go-dev.yaml",
+      "sha256": "ed84dd760fd05030c1654706891fbbf1ac376c84069cf3eef8d11eb270851ac0"
     }
   ]
 }

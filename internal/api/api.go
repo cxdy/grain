@@ -189,10 +189,21 @@ func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) info(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
+	out := map[string]string{
 		"version": Version,
 		"name":    "grain",
-	})
+	}
+	// Resource caps for Desktop bulk preflight (0 = unlimited). String values keep
+	// GET /info map[string]string-compatible for CLI/SDK clients.
+	if s.mgr != nil {
+		cfg := s.mgr.Config()
+		out["max_vms"] = strconv.Itoa(cfg.MaxVMs)
+		out["max_cpus_total"] = strconv.Itoa(cfg.MaxCPUsTotal)
+		out["max_memory_mb_total"] = strconv.Itoa(cfg.MaxMemoryMBTotal)
+		out["max_cpus_per_vm"] = strconv.Itoa(cfg.MaxCPUsPerVM)
+		out["max_memory_mb_per_vm"] = strconv.Itoa(cfg.MaxMemoryMBPerVM)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // Version is set from main via init or ldflags later.

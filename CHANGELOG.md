@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Docs versioning (issue #88)** — single live content tree `docs/content/docs/main/` only; removed per-release `docs/content/docs/0.x.y/` snapshots. Version switcher lists product SVU tags (`vX.Y.Z`, not fc/golden/sdk tags) with **git commit** links to GitHub; live site stays `/docs/main/`. `scripts/docs-version-bump.sh` updates metadata only.
+- **GET /info resource caps** — `max_vms`, `max_cpus_total`, `max_memory_mb_total` (and per-VM caps) so Desktop bulk-start preflight hard-blocks on **remote** hosts, not only local config.
+- **Multi-host Run v2** — re-run failed hosts only, copy/export all results (stdout+stderr), clearer FAILED tagging.
+- **Official recipe `go-dev`** — Go toolchain bootstrap; catalog entry. GitHub Release `download_count` helper for catalog/stats without extra infra.
+- **Desktop warm-path polish** — Settings pool status shows suspended vs running honesty; create prefer-pool copy; promote+fill loop docs.
 - **Desktop warm-pool product path** — Settings → Warm pool (template / size / optional running mode) applies config and restarts the local daemon; More → **Promote to golden + fill pool**; New sandbox **prefers pool claim** when ready > 0 with honest empty/unconfigured status. Optional `warm_pool.running: true` keeps members agent-ready (RAM cost); claim is rename-only in that mode.
-- **Desktop bulk start preflight** — before multi-start fan-out, estimates capacity against `max_vms` / `max_cpus_total` / `max_memory_mb_total` (local connection) and **blocks** over-cap batches or **warns** when caps are unknown (remote).
+- **Desktop bulk start preflight** — before multi-start fan-out, estimates capacity against `max_vms` / `max_cpus_total` / `max_memory_mb_total` (from active host `GET /info`, else local config) and **blocks** over-cap batches or **warns** when caps are unknown.
 - **Activity source filter** — Activity drawer filter by `desktop` / `cli` / `mcp` / `api` (existing `X-Grain-Client` labels). Pool/create APIs always use the active host connection (remote parity).
 - **Warm pool** — config `warm_pool.template` + `warm_pool.size` pre-clones suspended template VMs (disk only). `grain pool status|fill|claim|drain`, `grain new --from-pool -n NAME`, API `GET /pool` / `POST /pool/{fill,claim,drain}` and create `from_pool: true`. Claim renames a ready member and starts with `-loadvm` when snapshotted; async refill + fill on daemon start. Host logs `pool claim timing`.
 - **Fast create from suspended template** — `grain new --from TEMPLATE -n NAME` (API `POST /vms` body `{"from":"TEMPLATE","name":"NAME"}`). Clones a stopped/suspended persistent VM and starts it; when the template was `grain suspend`'d with a qcow2 snapshot, QEMU `-loadvm` restores memory and agent wait is short (seconds, not full cold boot). Clone copies suspend markers. Host logs `spawn timing`.

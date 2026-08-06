@@ -671,7 +671,7 @@ func TestBulkStartPreflightForNamesBlocks(t *testing.T) {
 	if err := svc.Connect(); err != nil {
 		t.Fatal(err)
 	}
-	// Local connection: caps from config file.
+	// Local connection: caps from config file (when /info omits caps).
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(cfgPath, []byte("max_vms: 2\n"), 0o600); err != nil {
@@ -684,6 +684,56 @@ func TestBulkStartPreflightForNamesBlocks(t *testing.T) {
 	}
 	if !r.Block || !strings.Contains(r.Message, "max_vms") {
 		t.Fatalf("%+v", r)
+	}
+}
+
+func TestBulkStartPreflightRemoteInfoCaps(t *testing.T) {
+	// Active remote host: caps from GET /info (not local config.yaml).
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /info", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"name": "grain", "version": "test",
+			"max_vms": "2", "max_cpus_total": "0", "max_memory_mb_total": "0",
+		})
+	})
+	mux.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]*client.Instance{
+			{Name: "r1", Status: client.StatusRunning, CPUs: 1, MemoryMB: 512},
+			{Name: "s1", Status: client.StatusStopped, CPUs: 1, MemoryMB: 512},
+			{Name: "s2", Status: client.StatusStopped, CPUs: 1, MemoryMB: 512},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cfg := Defaults()
+	cfg.Connections = []Connection{{Name: "lab", API: srv.URL}}
+	svc := NewService(cfg)
+	svc.Active = "lab"
+	if err := svc.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	// Local config would allow huge batch; remote max_vms=2 must block.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("max_vms: 100\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := svc.BulkStartPreflightForNames(context.Background(), []string{"s1", "s2"}, cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Block || !strings.Contains(r.Message, "max_vms") {
+		t.Fatalf("want remote hard block: %+v", r)
+	}
+	// Under limit on same host.
+	r, err = svc.BulkStartPreflightForNames(context.Background(), []string{"s1"}, cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Block {
+		t.Fatalf("under limit should not block: %+v", r)
 	}
 }
 

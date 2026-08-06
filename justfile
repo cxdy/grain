@@ -322,13 +322,13 @@ version:
     echo "current: $(svu current 2>/dev/null || echo '(none)')"
     echo "next:    $(svu next)"
 
-# Snapshot docs/main → docs/<version> and set site default / switcher latest.
+# Update docs switcher label + product tag→commit list (no per-release content copy; #88).
 # Example: just docs-version 0.3.1
 docs-version ver:
     ./scripts/docs-version-bump.sh {{ ver }}
 
 # Create and push the next semver tag from conventional commits (svu next).
-# Also bumps the Hugo docs version (content tree + switcher) and commits that
+# Also updates Hugo docs switcher metadata (single live tree + SVU commit links)
 # before tagging so grainvm.com shows the new release as latest after Pages deploy.
 # Triggers GoReleaser via .github/workflows/release.yml.
 # Preview only: just version   (or: svu next)
@@ -354,11 +354,10 @@ release-tag:
       exit 1
     fi
     VER="${TAG#v}"
-    echo "Bumping site docs version to ${VER}"
+    echo "Bumping site docs version metadata to ${VER} (live tree remains docs/main)"
     ./scripts/docs-version-bump.sh "$VER"
     if [[ -n "$(git status --porcelain)" ]]; then
-      git add docs/hugo.toml "docs/content/docs/${VER}"
-      # Also stage removals/moves if the script rewrote shared paths
+      git add docs/hugo.toml
       git add -u docs/hugo.toml docs/content/docs/ 2>/dev/null || true
       git commit -m "docs: publish v${VER} site version"
       echo "Committed docs version bump for ${TAG}"

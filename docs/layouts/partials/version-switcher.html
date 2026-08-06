@@ -1,3 +1,8 @@
+{{/*
+  Live docs: single tree at /docs/main/ (params.docsVersion).
+  Historical product SVU tags: external GitHub tree URLs at the release commit
+  (no per-release content copies — issue #88).
+*/}}
 {{ $current := partial "docs-version.html" . }}
 {{ $commit := "" }}
 {{ range .Site.Params.docsVersions }}
@@ -10,11 +15,14 @@
   <label class="visually-hidden" for="docs-version">Docs version</label>
   <select id="docs-version" class="version-select" data-version-select aria-label="Documentation version">
     {{ range .Site.Params.docsVersions }}
-      <option value="{{ .path }}" {{ if eq .version $current }}selected{{ end }}
-        {{ with .commit }}data-commit="{{ . }}"{{ end }}>{{ .label }}</option>
+      <option value="{{ .path }}"
+        {{ if eq .version $current }}selected{{ end }}
+        {{ if .external }}data-external="1"{{ end }}
+        {{ if .live }}data-live="1"{{ end }}
+        {{ with .commit }}data-commit="{{ . }}"{{ end }}>{{ .label }}{{ if .external }} (source){{ end }}</option>
     {{ end }}
   </select>
   {{ with $commit }}
-  <a class="version-commit" href="{{ $.Site.Params.github }}/tree/{{ . }}" title="Source commit for this docs version" rel="noopener">{{ slicestr . 0 7 }}</a>
+  <a class="version-commit" href="{{ $.Site.Params.github }}/tree/{{ . }}" title="Git commit for this docs version" rel="noopener" target="_blank">{{ slicestr . 0 7 }}</a>
   {{ end }}
 </div>

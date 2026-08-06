@@ -532,7 +532,9 @@
           </form>
           <div class="multi-ssh-history" id="multi-ssh-history" hidden></div>
           <div class="multi-ssh-out" id="multi-ssh-out" aria-live="polite"></div>
-          <div class="modal-foot no-select">
+          <div class="modal-foot no-select multi-ssh-foot">
+            <button type="button" class="btn btn-ghost btn-sm" id="multi-ssh-rerun-failed" hidden>Re-run failed</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="multi-ssh-copy-all">Copy all</button>
             <button type="button" class="btn btn-ghost" data-close="modal-multi-ssh">Close</button>
           </div>
         </div>

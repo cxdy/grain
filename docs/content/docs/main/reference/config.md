@@ -42,11 +42,14 @@ mcp:
 warm_pool:
   template: ""               # persistent stopped/suspended golden (e.g. after grain suspend)
   size: 0                    # ready pre-clones to keep (0–32; 0 = disabled)
+  running: false             # true = keep members agent-ready (uses host RAM)
 ```
 
 Or one-shot: `grain up --mcp`. Stdio for IDE hosts: `grain mcp`. See [MCP server](../../mcp/).
 
-**Warm pool:** set `template` + `size` > 0, then `grain pool fill` (or restart the daemon — fill runs in the background). Claim with `grain new --from-pool` / `grain pool claim`. Members are suspended/stopped clones (disk only). See [lifecycle](../../guides/lifecycle/).
+**Warm pool:** set `template` + `size` &gt; 0, then `grain pool fill` (or restart the daemon — fill runs in the background). Claim with `grain new --from-pool` / `grain pool claim`. Default members are suspended/stopped clones (disk only). Set `running: true` to keep members agent-ready for rename-only claim. Desktop: **Settings → Warm pool** or **More → Promote to golden + fill**. See [lifecycle](../../guides/lifecycle/) and [Desktop](../../guides/desktop/).
+
+`GET /info` exposes resource caps (`max_vms`, `max_cpus_total`, `max_memory_mb_total`, …) as strings so Desktop bulk-start preflight can hard-block over-cap batches on local and remote hosts.
 
 Upgrade notices (not `grain update` itself) can also be disabled with env:
 

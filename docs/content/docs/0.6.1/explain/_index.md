@@ -1,4 +1,0 @@
----
-title: Explain
-section: explain
----
