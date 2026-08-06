@@ -70,6 +70,7 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `grain start [name]` | Start stopped persistent VM |
 | `grain pause` / `resume` | Freeze / unfreeze vCPUs |
 | `grain suspend` / `restore` | Free RAM / bring back persistent VM |
+| `grain clone <src> [dst]` | Offline clone of a stopped/suspended persistent disk |
 | `grain sh [name]` | Shell (agent PTY preferred) |
 | `grain x [name] -- cmd…` | Exec (streaming agent preferred) |
 | `grain cp src dst` | Copy (`NAME:path` or host path); both directions |
@@ -92,25 +93,67 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `-m` / `--mem` | Memory MiB |
 | `-d` / `--disk` | Disk GiB |
 | `-i` / `--image` | Image id |
+| `--from TEMPLATE` | Fast spawn: clone a stopped/suspended persistent template and start (`-loadvm` when snapshotted) |
+| `--from-pool` | Claim a pre-cloned [warm pool](#warm-pool-grain-pool) member and start (mutually exclusive with `--from`) |
 | `--wait` | `auto` (default), `ssh`, `agent`, `userdata`, `bootstrap` |
 | `-P` / `--publish` | `HOST:GUEST` or `GUEST` (repeatable) |
 | `-v` / `--volume` | `HOST:GUEST` share (repeatable) |
 | `--publish-socket` | Host↔guest unix socket forward |
 | `--profile` | Named profile from config, or builtin `remote-coding` |
 | `--preset` | `docker`, `k3s`, or `act` |
-| `--recipe` | Sandbox recipe YAML (create + optional bootstrap steps) |
+| `--recipe` | Sandbox recipe YAML or library name (create + optional bootstrap steps) |
 | `--userdata-file` | Extra cloud-init / shell (not with `--recipe`) |
 | `--proxy` | Inject `HTTPS_PROXY` for egress proxy |
+
+**Create path notes**
+
+- Cold boot (`grain new` without `--from` / `--from-pool`): host work is ~hundreds of ms; remaining time is guest UEFI/kernel/agent (~seconds on `grain-ubuntu`). Daemon logs `create timing` (image/disk/seed/start/wait ms).
+- Agent-ready images use a **minimal** cloud-init seed; disk growpart is **deferred** after agent when the clone disk is larger than the base image.
+- `--from` / `--from-pool` skip a full cold boot when the template was `grain suspend`’d with a qcow2 snapshot. Guide: [lifecycle — fast create](../../guides/lifecycle/#fast-create-spawn-and-warm-pool).
+
+### Warm pool (`grain pool`)
+
+Pre-clone suspended (or optionally **running**) template VMs for fast claim. Config:
+
+```yaml
+warm_pool:
+  template: golden   # persistent stopped/suspended VM name
+  size: 2            # ready members to keep (0 disables; max 32)
+  running: false     # true = keep members agent-ready (uses host RAM)
+```
+
+| Command | Description |
+|---------|-------------|
+| `grain pool status` | Ready count, desired size, members, running mode |
+| `grain pool fill` | Clone template until ready == size (starts members if `running: true`) |
+| `grain pool claim [-n NAME]` | Claim one member, rename, start (or rename-only if already running) |
+| `grain pool drain` | Delete all ready pool members |
+
+```bash
+grain new -i grain-ubuntu -n golden -p --wait agent
+grain suspend golden
+# set warm_pool in config, then:
+grain pool fill
+grain new --from-pool -n work1
+grain pool status
+```
+
+Desktop: **Settings → Warm pool** and **More → Promote to golden + fill pool**. See [Desktop](../../guides/desktop/) and [config](../config/).
 
 ### `grain recipe`
 
 | Command | Meaning |
 |---------|---------|
-| `grain recipe validate <file>` | Schema + compile check |
-| `grain recipe show <file>` | Print resolved create options |
-| `grain recipe show <file> --userdata` | Also print compiled cloud-init |
+| `grain recipe list` | Recipes in `~/.grain/recipes` |
+| `grain recipe add <file\|url\|id>` | Install into the library (never creates a VM) |
+| `grain recipe search` | Official catalog index |
+| `grain recipe preview <url\|id>` | Validate + summary without install |
+| `grain recipe delete <id>` | Remove library file only |
+| `grain recipe validate <file\|id>` | Schema + compile check |
+| `grain recipe show <file\|id>` | Print resolved create options |
+| `grain recipe show … --userdata` | Also print compiled cloud-init |
 
-Guide: [Sandbox recipes](../get-started/recipe/).
+Guide: [Sandbox recipes](../../get-started/recipe/).
 
 Name is optional for `sh` / `rm` / `x` / `fs` / etc. when exactly one VM exists.
 

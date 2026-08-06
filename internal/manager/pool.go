@@ -201,12 +201,13 @@ func (m *Manager) PoolClaim(ctx context.Context, destName string) (*vm.Instance,
 			"start_wait_ms", int64(0),
 			"total_ms", tDone.Sub(t0).Milliseconds(),
 		)
-		// Best-effort async refill (same as start path).
+		// Best-effort async refill (same as start path). Detach cancel so refill
+		// outlives the claim request while still using a bounded timeout.
 		if m.cfg.WarmPool.Enabled() {
 			m.poolBG.Add(1)
 			go func() {
 				defer m.poolBG.Done()
-				bg, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Minute)
 				defer cancel()
 				m.poolMu.Lock()
 				defer m.poolMu.Unlock()
@@ -238,12 +239,13 @@ func (m *Manager) PoolClaim(ctx context.Context, destName string) (*vm.Instance,
 		"total_ms", tDone.Sub(t0).Milliseconds(),
 	)
 
-	// Best-effort async refill (do not block claim path).
+	// Best-effort async refill (do not block claim path). Detach cancel so refill
+	// outlives the claim request while still using a bounded timeout.
 	if m.cfg.WarmPool.Enabled() {
 		m.poolBG.Add(1)
 		go func() {
 			defer m.poolBG.Done()
-			bg, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Minute)
 			defer cancel()
 			m.poolMu.Lock()
 			defer m.poolMu.Unlock()

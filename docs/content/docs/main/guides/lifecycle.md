@@ -44,9 +44,25 @@ grain restore lab
 - `start` rejects a `suspended` VM — use `restore`  
 - Suspended VMs do not count toward running resource caps  
 
-## Fast create: spawn and warm pool
+## Create path and latency
 
-Cold boots wait on guest UEFI + kernel + agent. Host-side setup is already ~200ms; sub-second (and the &lt;100ms claim path) needs a suspended golden with a qcow2 snapshot and/or a warm pool.
+| Path | What happens | Typical ready time |
+|------|----------------|--------------------|
+| **Cold** `grain new` | New disk/seed + QEMU + guest boot + agent | ~seconds on `grain-ubuntu` (host work ~200 ms) |
+| **Spawn** `grain new --from TEMPLATE` | Clone disk + start (`-loadvm` if snapshotted) | Sub-second–few seconds when suspended |
+| **Pool claim** `grain new --from-pool` | Rename ready member + start (or rename-only if `running`) | Fastest assign path |
+
+Daemon INFO logs help measure:
+
+- `create timing` — image / disk / seed / start / wait ms  
+- `spawn timing` — from-template path  
+- `pool claim timing` — claim + start (or `running_mode=true`)
+
+**Lean cold path (already default for goldens):** agent-ready images use minimal cloud-init; growpart/resizefs is skipped unless the clone disk is larger than the base (grow deferred after agent). Agent wait polls at 50 ms.
+
+The product **&lt;100 ms ready** promise means **assign a ready sandbox** (pool/snapshot), not “full Ubuntu cold boot in 100 ms.”
+
+## Fast create: spawn and warm pool
 
 ```bash
 # Template once
@@ -68,9 +84,10 @@ grain pool status
 grain pool drain   # delete ready members
 ```
 
-**Default:** pool members stay **stopped/suspended** (disk only, no host RAM). Claim uses `-loadvm` when a suspend snapshot exists.
-
-**Optional `warm_pool.running: true`:** fill starts each member and leaves it agent-ready (RAM cost). Claim is rename/untag only — closest path to “assign a ready sandbox.”
+| Mode | Members | Claim |
+|------|---------|--------|
+| Default (`running: false`) | Stopped/suspended disks (no host RAM) | Start with `-loadvm` when snapshotted |
+| `running: true` | Agent-ready, uses host RAM | Rename/untag only |
 
 The daemon refills toward `warm_pool.size` after each claim; on `grain up` it also fills in the background when configured.
 
@@ -82,12 +99,13 @@ The daemon refills toward `warm_pool.size` after each claim; on `grain up` it al
 4. Multi-select **Start** runs a capacity **preflight** against host caps (`max_vms` / CPU / memory from the active daemon’s `GET /info`).
 5. **Activity** drawer can filter by source (`desktop` / `cli` / `mcp` / `api`).
 
+Full Desktop surface: [Grain Desktop](../desktop/).
+
 ## API
 
-- `POST /vms/{name}/pause`  
-- `POST /vms/{name}/resume`  
-- `POST /vms/{name}/suspend`  
-- `POST /vms/{name}/restore`  
+- `POST /vms/{name}/pause` · `resume` · `suspend` · `restore` · `clone`  
 - `POST /vms` body `from` — spawn from template  
 - `POST /vms` body `from_pool: true` — claim from warm pool  
 - `GET /pool` · `POST /pool/fill` · `POST /pool/claim` · `POST /pool/drain`  
+- `GET /activity` — control-plane activity ring  
+- `GET /info` — version + resource caps (strings)  

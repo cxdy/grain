@@ -60,6 +60,29 @@ grain down
 
 Optional starter config and more flags: **[quick start](https://grainvm.com/docs/main/get-started/quickstart/)**.
 
+### Faster creates (template / warm pool)
+
+Cold boots are guest-bound (~seconds). After a golden is agent-ready:
+
+```bash
+grain new -i grain-ubuntu -n golden -p --wait agent
+grain suspend golden
+grain new --from golden -n work1                 # clone + loadvm when snapshotted
+# config warm_pool.template/size, then:
+# grain pool fill && grain new --from-pool -n work2
+```
+
+→ [Lifecycle: create path & warm pool](https://grainvm.com/docs/main/guides/lifecycle/)
+
+### Desktop (optional GUI)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash -s -- --desktop
+# or: just desktop-build && ./bin/grain-desktop
+```
+
+→ [Desktop guide](https://grainvm.com/docs/main/guides/desktop/)
+
 ### MCP (coding agents)
 
 MCP is built into `grain` (not a separate binary):

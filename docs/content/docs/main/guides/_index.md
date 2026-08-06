@@ -28,16 +28,16 @@ grain new --preset k3s -n lab -p --wait userdata
 
 | Guide | When you need it |
 |-------|------------------|
-| [Grain Desktop (GUI)](./desktop/) | Optional operator console (sandboxes, shell, images, MCP, doctor) |
-| [Images & golden boots](./images/) | Pull, import, bake, choose ubuntu/alpine/golden |
+| [Grain Desktop (GUI)](./desktop/) | Optional operator console (sandboxes, shell, recipes, warm pool, activity, multi-Run) |
+| [Images & golden boots](./images/) | Pull, import, bake, lean golden for pool/claim |
 | [Guest agent](./agent/) | Exec, shell, cp, fs without living in SSH |
+| [Pause, suspend, restore](./lifecycle/) | Lifecycle + **fast create / warm pool / latency** |
 | [Networking & ports](./networking/) | Publish ports, live forwards, SLIRP limits |
 | [Overlay network](./networking-overlay/) | Guest↔guest L2 on one host (`network: overlay`) |
 | [Guest architecture](./multi-arch/) | arm64 / amd64 guests (TCG cross-arch) |
 | [Virtio GPU](./gpu/) | `virtio-gpu-pci` for guests |
 | [Mounts & shares](./mounts/) | Share host directories into the guest |
 | [Profiles & presets](./profiles/) | Named defaults and docker / k3s / act presets |
-| [Pause, suspend, restore](./lifecycle/) | Free CPU or RAM while keeping work |
 
 ## Security & ops
 

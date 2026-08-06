@@ -57,10 +57,7 @@ func ShouldRecord(method, path string) bool {
 	case "/healthz", "/info", "/metrics", "/openapi.yaml", "/openapi.json", "/activity":
 		return false
 	}
-	if strings.HasPrefix(path, "/metrics") {
-		return false
-	}
-	return true
+	return !strings.HasPrefix(path, "/metrics")
 }
 
 // Classify maps method+path to a short action and optional target (VM/secret name).

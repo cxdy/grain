@@ -35,6 +35,11 @@ ready_timeout: 2m
 log_level: info
 check_updates: true          # stderr note when a newer GitHub Release exists (CLI only)
 
+# Guest stats history on the host (default on)
+sandbox_metrics_enabled: true
+sandbox_metrics_interval: 15s
+sandbox_metrics_points: 5760   # ~24h at 15s
+
 mcp:
   enabled: false             # true = grain up starts MCP Streamable HTTP
   listen: 127.0.0.1:7476     # MCP endpoint http://LISTEN/mcp
@@ -43,13 +48,45 @@ warm_pool:
   template: ""               # persistent stopped/suspended golden (e.g. after grain suspend)
   size: 0                    # ready pre-clones to keep (0–32; 0 = disabled)
   running: false             # true = keep members agent-ready (uses host RAM)
+
+desktop:
+  default_connection: local
+  start_local_daemon: true   # Desktop splash may grain up local daemon
 ```
 
 Or one-shot: `grain up --mcp`. Stdio for IDE hosts: `grain mcp`. See [MCP server](../../mcp/).
 
-**Warm pool:** set `template` + `size` &gt; 0, then `grain pool fill` (or restart the daemon — fill runs in the background). Claim with `grain new --from-pool` / `grain pool claim`. Default members are suspended/stopped clones (disk only). Set `running: true` to keep members agent-ready for rename-only claim. Desktop: **Settings → Warm pool** or **More → Promote to golden + fill**. See [lifecycle](../../guides/lifecycle/) and [Desktop](../../guides/desktop/).
+### Warm pool
 
-`GET /info` exposes resource caps (`max_vms`, `max_cpus_total`, `max_memory_mb_total`, …) as strings so Desktop bulk-start preflight can hard-block over-cap batches on local and remote hosts.
+| Key | Meaning |
+|-----|---------|
+| `warm_pool.template` | Source VM name (persistent; prefer after `grain suspend`) |
+| `warm_pool.size` | Desired ready members (`0` disables; max `32`) |
+| `warm_pool.running` | `false` (default): disk-only suspended members. `true`: members stay running/agent-ready (RAM cost); claim is rename-only |
+
+Set `template` + `size` &gt; 0, then `grain pool fill` (daemon also fills in the background on `grain up`). Claim: `grain new --from-pool` / `grain pool claim` / API `from_pool: true`. Desktop: **Settings → Warm pool** or **More → Promote to golden + fill**. See [lifecycle](../../guides/lifecycle/) and [Desktop](../../guides/desktop/).
+
+### Metrics defaults
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `sandbox_metrics_enabled` | `true` | New sandboxes write guest stats samples under `vms/<name>/metrics.ring` |
+| `sandbox_metrics_interval` | `15s` | Sample period |
+| `sandbox_metrics_points` | `5760` | Ring capacity |
+
+See [Metrics](../metrics/).
+
+### Resource caps and `GET /info`
+
+```yaml
+max_vms: 8
+max_cpus_total: 16
+max_memory_mb_total: 32768
+max_cpus_per_vm: 8
+max_memory_mb_per_vm: 16384
+```
+
+Zero means unlimited for that field when explicitly set. The daemon refuses creates/starts that would exceed caps. `GET /info` exposes the same caps as **strings** so Desktop bulk-start preflight can hard-block on **local and remote** hosts.
 
 Upgrade notices (not `grain update` itself) can also be disabled with env:
 
@@ -104,18 +141,6 @@ kernel_path: ""                   # default ~/.grain/kernels/vmlinux (under data
 | `kernel_path` | empty | Guest **vmlinux**; empty uses `data_dir/kernels/vmlinux` |
 
 Linux + KVM only. Agent uses Firecracker vsock UDS; optional TAP + TCP proxy for `-P` / `grain fwd`. Prefer raw rootfs (`grain-ubuntu-fc`). Full operator path: [Firecracker on Linux](../../guides/firecracker/).
-
-## Resource caps
-
-Zero means unlimited for that field when explicitly set; defaults are finite.
-
-```yaml
-max_vms: 8
-max_cpus_total: 16
-max_memory_mb_total: 32768
-max_cpus_per_vm: 8
-max_memory_mb_per_vm: 16384
-```
 
 ## Egress proxy
 

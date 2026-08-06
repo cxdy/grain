@@ -100,6 +100,7 @@ In-repo under [`recipes/`](https://github.com/cxdy/grain/tree/main/recipes) (ind
 | `git-lab` | Minimal bootstrap (git) |
 | `node-dev` | Repo mount + git/curl |
 | `python-dev` | python3/pip/venv bootstrap |
+| `go-dev` | Go toolchain bootstrap (git + golang) |
 | `docker-lab` | Preset `docker` |
 | `k3s-lab` | Preset `k3s` + publish 6443 |
 | `act-lab` | Preset `act` + mount `.` → `/work` |
@@ -107,7 +108,7 @@ In-repo under [`recipes/`](https://github.com/cxdy/grain/tree/main/recipes) (ind
 
 **Contributing official recipes:** open a PR that adds `recipes/<id>.yaml` and updates `catalog.json` (sha256 of the file). No accounts or marketplace backend — GitHub PRs only.
 
-**Download counts (no extra infra):** when recipe bundles ship as GitHub Release assets, use the Releases API `download_count` per asset (`gh api repos/cxdy/grain/releases` / browser on the release page). The catalog itself is git-sourced until a release pin is published.
+**Download counts (no extra infra):** when recipe or image bundles ship as GitHub Release assets, use the public Releases API `download_count` per asset (`gh api repos/cxdy/grain/releases` / release page). Library code can call `internal/recipe.FetchReleaseAssetDownloads` for the same numbers. The official catalog index itself is git-sourced (`recipes/catalog.json`) until a release pin is published.
 
 ### Fast sandboxes (snapshot spawn + warm pool)
 
@@ -123,20 +124,26 @@ grain suspend golden          # qcow2 savevm grain-suspend when possible
 grain new --from golden -n work1
 grain new --from golden -n work2
 
-# Warm pool: pre-clone suspended members, claim without re-cloning
+# Warm pool: pre-clone members, claim without re-cloning
 # ~/.grain/config.yaml:
 #   warm_pool:
 #     template: golden
 #     size: 2
+#     running: false   # optional: true = agent-ready members (RAM)
 grain pool fill
 grain new --from-pool -n work3   # or: grain pool claim -n work3
 grain pool status
 ```
 
 API: `POST /vms` with `{"from":"golden","name":"work1"}` or `{"from_pool":true,"name":"work3"}`.
-Also `GET /pool`, `POST /pool/fill|claim|drain`. See [lifecycle](../guides/lifecycle/).
+Also `GET /pool`, `POST /pool/fill|claim|drain`. See [lifecycle](../../guides/lifecycle/).
 
-**Desktop:** **Recipes** tab → Import file / URL / Browse official → Edit YAML (valid-only save) → **Deploy…** (name override + wait until ready).
+**Desktop:**
+
+- **Recipes** tab → Import file / URL / Browse official → Edit YAML → **Deploy…** (preflight + name + wait).
+- **New sandbox** modes: cold / from template / from warm pool (prefers pool when ready &gt; 0).
+- **More → Promote to golden + fill pool** on a prepared sandbox.
+- **More → Export as recipe…** / **Save as library recipe**.
 
 **Trust:** URL import is **preview then add** (Desktop fetches and validates, shows name/image/resources/mounts/bootstrap, then you confirm install). Official **Add** and CLI `recipe add <url>` install into the library only. Deploy/create is always a separate step. Prefer HTTPS; HTTP is allowed with a warning. Catalog entries may pin `sha256` (fail closed on mismatch). Offline: library always works; `recipe search` uses a cached index when present.
 

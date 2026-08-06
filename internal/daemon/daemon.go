@@ -57,9 +57,11 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	mgr.StartMetricsSampler(ctx)
 
 	// Warm pool: best-effort background fill when configured (does not block listen).
+	// Detach from the parent cancel so fill can finish even if the startup
+	// path returns early; still bound by a 30m timeout.
 	if cfg.WarmPool.Enabled() {
 		go func() {
-			bg, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Minute)
 			defer cancel()
 			if err := mgr.EnsureWarmPool(bg); err != nil {
 				log.Warn("warm pool fill on start", "err", err)
