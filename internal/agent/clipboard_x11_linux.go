@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -255,9 +254,9 @@ func runX11ClipboardOwner(X *xgb.Conn, wid xproto.Window, atoms *x11Atoms, fetch
 		}
 		switch e := ev.(type) {
 		case xproto.SelectionRequestEvent:
-			handleSelectionRequest(X, wid, atoms, e, fetch, log, maxDirect, pending)
+			handleSelectionRequest(X, atoms, e, fetch, log, maxDirect, pending)
 		case xproto.PropertyNotifyEvent:
-			handlePropertyNotify(X, atoms, e, log, pending, maxDirect)
+			handlePropertyNotify(X, e, log, pending, maxDirect)
 		case xproto.SelectionClearEvent:
 			// Re-claim if something else took CLIPBOARD.
 			_ = xproto.SetSelectionOwnerChecked(X, wid, atoms.clipboard, xproto.TimeCurrentTime).Check()
@@ -271,7 +270,6 @@ func incrKey(requestor xproto.Window, property xproto.Atom) uint64 {
 
 func handleSelectionRequest(
 	X *xgb.Conn,
-	wid xproto.Window,
 	atoms *x11Atoms,
 	e xproto.SelectionRequestEvent,
 	fetch func(context.Context) ([]byte, error),
@@ -325,7 +323,7 @@ func handleSelectionRequest(
 		}
 		reply.Property = prop
 
-	case atoms.png, atoms.jpeg, atoms.utf8, atoms.text, xproto.AtomString:
+	case atoms.png, atoms.jpeg:
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		raw, err := fetch(ctx)
 		cancel()
@@ -334,58 +332,32 @@ func handleSelectionRequest(
 			break
 		}
 		typ := e.Target
-		refuse := false
-		switch {
-		case e.Target == atoms.png || e.Target == atoms.jpeg:
-			if e.Target == atoms.png && isJPEG(raw) {
-				typ = atoms.jpeg
-			}
-			if e.Target == atoms.jpeg && isPNG(raw) {
-				typ = atoms.png
-			}
-		case e.Target == atoms.utf8 || e.Target == atoms.text || e.Target == xproto.AtomString:
-			if isPNG(raw) || isJPEG(raw) {
-				// Client asked for text but clipboard is image — refuse so
-				// they retry with image targets (arboard does this).
-				refuse = true
-			}
+		if e.Target == atoms.png && isJPEG(raw) {
+			typ = atoms.jpeg
 		}
-		if refuse {
+		if e.Target == atoms.jpeg && isPNG(raw) {
+			typ = atoms.png
+		}
+		if !serveClipboardBytes(X, atoms, e, prop, typ, raw, maxDirect, pending, log, &reply) {
 			break
 		}
 
-		if len(raw) <= maxDirect {
-			if err := xproto.ChangePropertyChecked(X, xproto.PropModeReplace, e.Requestor, prop,
-				typ, 8, uint32(len(raw)), raw).Check(); err != nil {
-				log.Debug("clipboard x11 direct ChangeProperty failed", "err", err, "bytes", len(raw))
-				break
-			}
-			reply.Property = prop
+	case atoms.utf8, atoms.text, xproto.AtomString:
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		raw, err := fetch(ctx)
+		cancel()
+		if err != nil || len(raw) == 0 {
+			log.Debug("clipboard x11 fetch failed", "err", err, "len", len(raw))
 			break
 		}
-
-		// ICCCM INCR: property type INCR, format 32, value = total size.
-		// Requestor deletes property; we send chunks on PropertyNotify Delete.
-		sizeBuf := make([]byte, 4)
-		xgb.Put32(sizeBuf, uint32(len(raw)))
-		if err := xproto.ChangePropertyChecked(X, xproto.PropModeReplace, e.Requestor, prop,
-			atoms.incr, 32, 1, sizeBuf).Check(); err != nil {
-			log.Debug("clipboard x11 INCR start ChangeProperty failed", "err", err, "bytes", len(raw))
+		if isPNG(raw) || isJPEG(raw) {
+			// Client asked for text but clipboard is image — refuse so
+			// they retry with image targets (arboard does this).
 			break
 		}
-		// Need PropertyNotify when requestor deletes the property.
-		_ = xproto.ChangeWindowAttributesChecked(X, e.Requestor, xproto.CwEventMask,
-			[]uint32{xproto.EventMaskPropertyChange}).Check()
-
-		pending[incrKey(e.Requestor, prop)] = &incrTransfer{
-			requestor: e.Requestor,
-			property:  prop,
-			dataType:  typ,
-			data:      raw,
-			offset:    0,
+		if !serveClipboardBytes(X, atoms, e, prop, e.Target, raw, maxDirect, pending, log, &reply) {
+			break
 		}
-		log.Debug("clipboard x11 INCR start", "bytes", len(raw), "max_direct", maxDirect)
-		reply.Property = prop
 
 	default:
 		// Unknown target — refuse.
@@ -401,9 +373,57 @@ func handleSelectionRequest(
 		}.Bytes())).Check()
 }
 
-func handlePropertyNotify(
+// serveClipboardBytes writes raw as a direct property or starts ICCCM INCR.
+// Returns false if the transfer could not be started (caller should refuse).
+func serveClipboardBytes(
 	X *xgb.Conn,
 	atoms *x11Atoms,
+	e xproto.SelectionRequestEvent,
+	prop xproto.Atom,
+	typ xproto.Atom,
+	raw []byte,
+	maxDirect int,
+	pending map[uint64]*incrTransfer,
+	log *slog.Logger,
+	reply *xproto.SelectionNotifyEvent,
+) bool {
+	if len(raw) <= maxDirect {
+		if err := xproto.ChangePropertyChecked(X, xproto.PropModeReplace, e.Requestor, prop,
+			typ, 8, uint32(len(raw)), raw).Check(); err != nil {
+			log.Debug("clipboard x11 direct ChangeProperty failed", "err", err, "bytes", len(raw))
+			return false
+		}
+		reply.Property = prop
+		return true
+	}
+
+	// ICCCM INCR: property type INCR, format 32, value = total size.
+	// Requestor deletes property; we send chunks on PropertyNotify Delete.
+	sizeBuf := make([]byte, 4)
+	xgb.Put32(sizeBuf, uint32(len(raw)))
+	if err := xproto.ChangePropertyChecked(X, xproto.PropModeReplace, e.Requestor, prop,
+		atoms.incr, 32, 1, sizeBuf).Check(); err != nil {
+		log.Debug("clipboard x11 INCR start ChangeProperty failed", "err", err, "bytes", len(raw))
+		return false
+	}
+	// Need PropertyNotify when requestor deletes the property.
+	_ = xproto.ChangeWindowAttributesChecked(X, e.Requestor, xproto.CwEventMask,
+		[]uint32{xproto.EventMaskPropertyChange}).Check()
+
+	pending[incrKey(e.Requestor, prop)] = &incrTransfer{
+		requestor: e.Requestor,
+		property:  prop,
+		dataType:  typ,
+		data:      raw,
+		offset:    0,
+	}
+	log.Debug("clipboard x11 INCR start", "bytes", len(raw), "max_direct", maxDirect)
+	reply.Property = prop
+	return true
+}
+
+func handlePropertyNotify(
+	X *xgb.Conn,
 	e xproto.PropertyNotifyEvent,
 	log *slog.Logger,
 	pending map[uint64]*incrTransfer,
@@ -451,10 +471,4 @@ func handlePropertyNotify(
 		return
 	}
 	tr.offset = end
-}
-
-// parseDisplayNum returns the integer display number for logging.
-func parseDisplayNum(display string) int {
-	n, _ := strconv.Atoi(strings.TrimPrefix(display, ":"))
-	return n
 }
