@@ -252,16 +252,34 @@ a:hover { text-decoration: underline; }
   overflow: auto;
 }
 .main > .view[hidden] { display: none !important; }
-/* Sandboxes + workspace: no page scroll — workspace absorbs remaining height */
+/* Sandboxes + workspace: no page scroll — list and workspace share the column */
 #view-sandboxes.view {
   overflow: hidden;
 }
 #view-sandboxes .view-head { flex-shrink: 0; }
-#view-sandboxes .table-wrap { flex-shrink: 0; }
-/* When a sandbox is selected, keep the list compact and give the workspace the rest */
+/*
+ * List must always be height-bounded so overflow-y:auto works.
+ * Unselected: fill remaining viewport (scroll the table).
+ * Selected: cap height so Overview/Shell keep most of the column.
+ * (Previously flex-shrink:0 with no max-height → tall list + parent overflow:hidden
+ *  = no scroll until a row was selected and the compact max-height kicked in.)
+ */
+#view-sandboxes .table-wrap {
+  flex: 1 1 auto;
+  min-height: 6rem;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
 #view-sandboxes.view:has(#workspace:not([hidden])) .table-wrap {
-  max-height: 11rem;
-  overflow: auto;
+  flex: 0 1 auto;
+  /* ~8–10 rows visible; enough to scroll through 30+ without eating the workspace */
+  max-height: min(40vh, 18rem);
+  min-height: 5.5rem;
+}
+#view-sandboxes #workspace:not([hidden]) {
+  flex: 1 1 auto;
+  min-height: 12rem;
 }
 .view-head {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
