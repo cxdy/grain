@@ -133,39 +133,129 @@ func (c *Catalog) ResolveEntryURL(e CatalogEntry) (string, error) {
 	return base + "/" + strings.TrimLeft(p, "/"), nil
 }
 
-// AddFromURL downloads YAML from url, validates, optional expectedSHA256, saves to library.
-// Does not create a VM.
-func AddFromURL(client HTTPDoer, libDir, url, expectedSHA256 string, opts SaveOptions) (LibraryEntry, error) {
+// RecipePreview is a validated remote/local recipe without writing the library.
+// Used for Desktop/CLI trust UX: inspect then explicit Add.
+type RecipePreview struct {
+	URL            string   `json:"url,omitempty"`
+	SuggestedID    string   `json:"suggested_id"`
+	Name           string   `json:"name,omitempty"`
+	Description    string   `json:"description,omitempty"`
+	Image          string   `json:"image,omitempty"`
+	CPUs           int      `json:"cpus,omitempty"`
+	MemoryMB       int      `json:"memory_mb,omitempty"`
+	DiskGB         int      `json:"disk_gb,omitempty"`
+	Persistent     bool     `json:"persistent,omitempty"`
+	HasBootstrap   bool     `json:"has_bootstrap,omitempty"`
+	BootstrapSteps []string `json:"bootstrap_steps,omitempty"`
+	Mounts         []string `json:"mounts,omitempty"`   // "host → guest"
+	Forwards       []string `json:"forwards,omitempty"` // ":guest" or "host:guest"
+	Warnings       []string `json:"warnings,omitempty"`
+	YAML           string   `json:"yaml"` // full document for confirm-add (no re-fetch)
+	SHA256         string   `json:"sha256,omitempty"`
+}
+
+// PreviewFromURL fetches and validates recipe YAML without writing the library or creating a VM.
+func PreviewFromURL(client HTTPDoer, url, expectedSHA256 string) (RecipePreview, error) {
+	var zero RecipePreview
 	if client == nil {
 		client = &http.Client{Timeout: 60 * time.Second}
 	}
 	url = strings.TrimSpace(url)
 	if url == "" {
-		return LibraryEntry{}, fmt.Errorf("url is required")
+		return zero, fmt.Errorf("url is required")
 	}
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return LibraryEntry{}, fmt.Errorf("url must be http or https")
+		return zero, fmt.Errorf("url must be http or https")
 	}
 	body, err := httpGet(client, url)
 	if err != nil {
-		return LibraryEntry{}, err
+		return zero, err
 	}
 	if len(body) > 2*1024*1024 {
-		return LibraryEntry{}, fmt.Errorf("recipe too large (%d bytes)", len(body))
+		return zero, fmt.Errorf("recipe too large (%d bytes)", len(body))
 	}
+	sum := sha256.Sum256(body)
+	got := hex.EncodeToString(sum[:])
 	if exp := strings.TrimSpace(expectedSHA256); exp != "" {
-		sum := sha256.Sum256(body)
-		got := hex.EncodeToString(sum[:])
 		if !strings.EqualFold(got, strings.TrimPrefix(exp, "sha256:")) {
-			return LibraryEntry{}, fmt.Errorf("sha256 mismatch: got %s want %s", got, exp)
+			return zero, fmt.Errorf("sha256 mismatch: got %s want %s", got, exp)
 		}
 	}
-	if opts.ID == "" {
-		// derive from URL path
-		base := filepath.Base(strings.Split(url, "?")[0])
-		opts.ID = libraryIDFromFilename(base)
+	prev, err := PreviewFromYAML(body)
+	if err != nil {
+		return zero, err
 	}
-	return SaveLibrary(libDir, body, opts)
+	prev.URL = url
+	prev.SHA256 = got
+	if prev.SuggestedID == "" {
+		base := filepath.Base(strings.Split(url, "?")[0])
+		prev.SuggestedID = libraryIDFromFilename(base)
+	}
+	if strings.HasPrefix(url, "http://") {
+		prev.Warnings = append(prev.Warnings, "cleartext HTTP — prefer HTTPS")
+	}
+	return prev, nil
+}
+
+// PreviewFromYAML validates bytes and builds a summary (no library write).
+func PreviewFromYAML(body []byte) (RecipePreview, error) {
+	var zero RecipePreview
+	f, err := Parse(body)
+	if err != nil {
+		return zero, err
+	}
+	c, err := f.Compile()
+	if err != nil {
+		return zero, fmt.Errorf("compile: %w", err)
+	}
+	prev := RecipePreview{
+		SuggestedID:  sanitizeRecipeID(f.Metadata.Name),
+		Name:         f.Metadata.Name,
+		Description:  f.Metadata.Description,
+		Image:        c.Image,
+		CPUs:         c.CPUs,
+		MemoryMB:     c.MemoryMB,
+		DiskGB:       c.DiskGB,
+		Persistent:   c.Persistent,
+		HasBootstrap: c.HasBootstrap,
+		YAML:         string(body),
+	}
+	if prev.SuggestedID == "" {
+		prev.SuggestedID = "recipe"
+	}
+	for _, s := range f.Spec.Bootstrap.Steps {
+		prev.BootstrapSteps = append(prev.BootstrapSteps, strings.TrimSpace(s.Name))
+	}
+	for _, m := range c.Mounts {
+		prev.Mounts = append(prev.Mounts, m.Host+" → "+m.Guest)
+		if filepath.IsAbs(m.Host) {
+			prev.Warnings = append(prev.Warnings, "absolute mount host path may not exist on this machine: "+m.Host)
+		}
+	}
+	for _, fwd := range c.Forwards {
+		if fwd.HostPort > 0 {
+			prev.Forwards = append(prev.Forwards, fmt.Sprintf("%d:%d", fwd.HostPort, fwd.GuestPort))
+		} else {
+			prev.Forwards = append(prev.Forwards, fmt.Sprintf(":%d", fwd.GuestPort))
+		}
+	}
+	if c.HasBootstrap || strings.TrimSpace(c.Userdata) != "" {
+		prev.Warnings = append(prev.Warnings, "recipe includes bootstrap/userdata that runs scripts in the guest on deploy")
+	}
+	return prev, nil
+}
+
+// AddFromURL downloads YAML from url, validates, optional expectedSHA256, saves to library.
+// Does not create a VM. Prefer PreviewFromURL then SaveLibrary for interactive UX.
+func AddFromURL(client HTTPDoer, libDir, url, expectedSHA256 string, opts SaveOptions) (LibraryEntry, error) {
+	prev, err := PreviewFromURL(client, url, expectedSHA256)
+	if err != nil {
+		return LibraryEntry{}, err
+	}
+	if opts.ID == "" {
+		opts.ID = prev.SuggestedID
+	}
+	return SaveLibrary(libDir, []byte(prev.YAML), opts)
 }
 
 // AddFromCatalog installs one official recipe by id into the library.

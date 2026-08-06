@@ -598,7 +598,7 @@
     </div>
 
     <div class="modal-backdrop" id="modal-recipe-url" hidden>
-      <div class="modal sm" role="dialog">
+      <div class="modal" role="dialog">
         <div class="modal-head no-select">
           <strong>Import recipe from URL</strong>
           <button type="button" class="btn-icon" data-close="modal-recipe-url" aria-label="Close">×</button>
@@ -607,10 +607,19 @@
           <label class="field"><span>HTTPS or HTTP URL to a grain/v1 recipe YAML</span>
             <input class="input" name="url" id="recipe-url-input" type="url" required placeholder="https://…/lab.yaml" />
           </label>
-          <p class="hint">Adds to your library only — does not create a sandbox.</p>
+          <p class="hint">Step 1: Preview (fetch + validate). Step 2: Add to library. Never creates a sandbox.</p>
           <div class="modal-foot no-select">
             <button type="button" class="btn btn-ghost" data-close="modal-recipe-url">Cancel</button>
-            <button type="submit" class="btn btn-primary">Add to library</button>
+            <button type="submit" class="btn btn-primary" id="recipe-url-preview-btn">Preview</button>
+          </div>
+          <div id="recipe-url-preview" class="recipe-url-preview" hidden>
+            <h4 class="mt">Preview</h4>
+            <dl class="insp-kv" id="recipe-url-preview-kv"></dl>
+            <ul class="recipe-warn-list" id="recipe-url-preview-warn"></ul>
+            <p class="error-text" id="recipe-url-preview-err" hidden></p>
+            <div class="modal-foot no-select">
+              <button type="button" class="btn btn-primary" id="recipe-url-confirm-btn" disabled>Add to library</button>
+            </div>
           </div>
         </form>
       </div>

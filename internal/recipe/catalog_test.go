@@ -98,6 +98,69 @@ spec:
 	}
 }
 
+func TestPreviewFromURLNoLibraryWrite(t *testing.T) {
+	t.Parallel()
+	body := []byte(`
+apiVersion: grain/v1
+kind: Sandbox
+metadata:
+  name: preview-lab
+  description: preview only
+spec:
+  image: grain-ubuntu
+  cpus: 2
+  memory_mb: 2048
+  mounts:
+    - host: /Users/other/proj
+      guest: /work
+  bootstrap:
+    steps:
+      - name: packages
+        run: true
+`)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/p.yaml", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(body)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	lib := t.TempDir()
+	prev, err := PreviewFromURL(srv.Client(), srv.URL+"/p.yaml", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prev.Name != "preview-lab" || prev.Image != "grain-ubuntu" || prev.CPUs != 2 {
+		t.Fatalf("%+v", prev)
+	}
+	if !prev.HasBootstrap || len(prev.BootstrapSteps) != 1 || prev.BootstrapSteps[0] != "packages" {
+		t.Fatalf("steps %+v", prev.BootstrapSteps)
+	}
+	if len(prev.Mounts) != 1 || !strings.Contains(prev.Mounts[0], "/work") {
+		t.Fatalf("mounts %+v", prev.Mounts)
+	}
+	if prev.YAML == "" || prev.SuggestedID != "preview-lab" {
+		t.Fatalf("%+v", prev)
+	}
+	// must not write library
+	list, err := ListLibrary(lib)
+	if err != nil || len(list) != 0 {
+		t.Fatalf("preview must not install: %+v %v", list, err)
+	}
+	// confirm add uses YAML from preview
+	ent, err := SaveLibrary(lib, []byte(prev.YAML), SaveOptions{ID: prev.SuggestedID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ent.ID != "preview-lab" {
+		t.Fatalf("%+v", ent)
+	}
+	list, _ = ListLibrary(lib)
+	if len(list) != 1 {
+		t.Fatalf("%+v", list)
+	}
+}
+
 func TestParseCatalogRejectsBadVersion(t *testing.T) {
 	t.Parallel()
 	if _, err := ParseCatalog([]byte(`{"apiVersion":"nope","recipes":[]}`)); err == nil {

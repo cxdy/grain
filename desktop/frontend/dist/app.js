@@ -1859,10 +1859,72 @@
     }
   }
 
-  async function importRecipeURL(url) {
-    const ent = await act("import recipe URL", () => call("ImportRecipeURL", url, false), {});
-    toast(`Added ${ent?.id || "recipe"}`);
+  function resetRecipeURLModal() {
+    state.recipeURLPreview = null;
+    const prev = $("#recipe-url-preview");
+    if (prev) prev.hidden = true;
+    const btn = $("#recipe-url-confirm-btn");
+    if (btn) btn.disabled = true;
+    const err = $("#recipe-url-preview-err");
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    const kv = $("#recipe-url-preview-kv");
+    if (kv) kv.innerHTML = "";
+    const warn = $("#recipe-url-preview-warn");
+    if (warn) warn.innerHTML = "";
+  }
+
+  function renderRecipeURLPreview(p) {
+    const panel = $("#recipe-url-preview");
+    const kv = $("#recipe-url-preview-kv");
+    const warn = $("#recipe-url-preview-warn");
+    const btn = $("#recipe-url-confirm-btn");
+    const err = $("#recipe-url-preview-err");
+    if (!panel || !kv) return;
+    panel.hidden = false;
+    if (err) err.hidden = true;
+    const rows = [
+      ["ID", p.suggested_id || "—"],
+      ["Name", p.name || "—"],
+      ["Description", p.description || "—"],
+      ["Image", p.image || "—"],
+      ["Resources", `${p.cpus || "—"} vCPU / ${p.memory_mb || "—"} MiB` + (p.disk_gb ? ` / ${p.disk_gb} GiB` : "")],
+      ["Persistent", p.persistent ? "yes" : "no"],
+      ["Bootstrap", p.has_bootstrap ? (p.bootstrap_steps || []).join(", ") || "yes" : "no"],
+      ["Mounts", (p.mounts || []).length ? (p.mounts || []).join("; ") : "—"],
+      ["Forwards", (p.forwards || []).length ? (p.forwards || []).join("; ") : "—"],
+    ];
+    setKV(kv, rows);
+    if (warn) {
+      warn.innerHTML = (p.warnings || []).map((w) => `<li>${escapeHtml(w)}</li>`).join("");
+    }
+    if (btn) btn.disabled = !p.yaml;
+    state.recipeURLPreview = p;
+  }
+
+  async function previewRecipeURL(url) {
+    resetRecipeURLModal();
+    const p = await act("preview recipe URL", () => call("PreviewRecipeURL", url), { target: url });
+    renderRecipeURLPreview(p);
+    return p;
+  }
+
+  async function confirmRecipeURLPreview() {
+    const p = state.recipeURLPreview;
+    if (!p?.yaml) throw new Error("Preview the URL first");
+    const ent = await act(
+      "add recipe to library",
+      () => call("ConfirmRecipeYAML", p.yaml, p.suggested_id || "", false),
+      { target: p.suggested_id }
+    );
+    toast(`Added ${ent?.id || p.suggested_id || "recipe"}`);
     state.selectedRecipe = ent?.id;
+    state.recipeURLPreview = null;
+    closeModal("modal-recipe-url");
+    $("#recipe-url-input").value = "";
+    resetRecipeURLModal();
     await loadRecipesPage();
     if (ent?.id) openRecipe(ent.id);
   }
@@ -2556,7 +2618,10 @@
     $$(".ws-tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 
     $("#btn-recipe-import-file")?.addEventListener("click", () => importRecipeFile());
-    $("#btn-recipe-import-url")?.addEventListener("click", () => openModal("modal-recipe-url"));
+    $("#btn-recipe-import-url")?.addEventListener("click", () => {
+      resetRecipeURLModal();
+      openModal("modal-recipe-url");
+    });
     $("#btn-recipe-browse")?.addEventListener("click", () => loadOfficialCatalog());
     $("#btn-recipe-refresh")?.addEventListener("click", () => loadRecipesPage());
     $("#btn-recipe-catalog-close")?.addEventListener("click", () => {
@@ -2571,9 +2636,22 @@
       const url = $("#recipe-url-input")?.value?.trim();
       if (!url) return;
       try {
-        await importRecipeURL(url);
-        closeModal("modal-recipe-url");
-        $("#recipe-url-input").value = "";
+        await previewRecipeURL(url);
+      } catch (err) {
+        const errEl = $("#recipe-url-preview-err");
+        const panel = $("#recipe-url-preview");
+        if (panel) panel.hidden = false;
+        if (errEl) {
+          errEl.hidden = false;
+          errEl.textContent = String(err);
+        }
+        toast(String(err), true);
+      }
+    });
+    $("#recipe-url-confirm-btn")?.addEventListener("click", async (e) => {
+      e.preventDefault();
+      try {
+        await confirmRecipeURLPreview();
       } catch (err) {
         toast(String(err), true);
       }

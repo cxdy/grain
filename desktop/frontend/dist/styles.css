@@ -723,3 +723,15 @@ a:hover { text-decoration: underline; }
 .error-text { color: var(--danger, #e35); font-size: 0.85rem; margin-top: 0.35rem; }
 .empty-hint { padding: 1rem 0.25rem; }
 .field-label { display: block; font-size: 0.8rem; font-weight: 500; margin: 0.5rem 0 0.25rem; }
+.recipe-url-preview {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.recipe-warn-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--warn, #c90);
+  font-size: 0.85rem;
+}
+.recipe-warn-list:empty { display: none; }

@@ -92,7 +92,7 @@ grain recipe delete git-lab                     # library file only — not sand
 
 **Desktop:** **Recipes** tab → Import file / URL / Browse official → Edit YAML (valid-only save) → **Deploy…** (name override + wait until ready).
 
-**Trust:** URL and official **Add** only install into the library. Deploy/create is a separate step. Prefer HTTPS; HTTP is allowed with a warning. Catalog entries may pin `sha256` (fail closed on mismatch). Offline: library always works; `recipe search` uses a cached index when present.
+**Trust:** URL import is **preview then add** (Desktop fetches and validates, shows name/image/resources/mounts/bootstrap, then you confirm install). Official **Add** and CLI `recipe add <url>` install into the library only. Deploy/create is always a separate step. Prefer HTTPS; HTTP is allowed with a warning. Catalog entries may pin `sha256` (fail closed on mismatch). Offline: library always works; `recipe search` uses a cached index when present.
 
 Env overrides: `GRAIN_HOME` (library under `$GRAIN_HOME/recipes`), `GRAIN_RECIPE_CATALOG_URL` (official index URL).
 

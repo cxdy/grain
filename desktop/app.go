@@ -795,7 +795,26 @@ func (a *App) PickAndImportRecipe() (desktop.RecipeInfo, error) {
 	return a.ImportRecipeFilePath(path, false)
 }
 
-// ImportRecipeURL downloads a recipe into the library.
+// PreviewRecipeURL fetches and validates a recipe URL without writing the library.
+func (a *App) PreviewRecipeURL(url string) (desktop.RecipeURLPreview, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeURLPreview{}, err
+	}
+	return svc.PreviewRecipeURL(url)
+}
+
+// ConfirmRecipeYAML installs previewed YAML into the library (no VM create).
+func (a *App) ConfirmRecipeYAML(yamlText, id string, overwrite bool) (desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeInfo{}, err
+	}
+	return svc.ConfirmRecipeYAML(yamlText, id, overwrite)
+}
+
+// ImportRecipeURL downloads and installs a recipe into the library (no preview).
+// Prefer PreviewRecipeURL + ConfirmRecipeYAML for interactive UI.
 func (a *App) ImportRecipeURL(url string, overwrite bool) (desktop.RecipeInfo, error) {
 	svc, err := a.service()
 	if err != nil {

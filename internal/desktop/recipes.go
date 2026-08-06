@@ -101,7 +101,60 @@ func (s *Service) ImportRecipeFile(path string, overwrite bool) (RecipeInfo, err
 	}, nil
 }
 
+// RecipeURLPreview is a validated remote recipe summary (no library write).
+type RecipeURLPreview struct {
+	URL            string   `json:"url,omitempty"`
+	SuggestedID    string   `json:"suggested_id"`
+	Name           string   `json:"name,omitempty"`
+	Description    string   `json:"description,omitempty"`
+	Image          string   `json:"image,omitempty"`
+	CPUs           int      `json:"cpus,omitempty"`
+	MemoryMB       int      `json:"memory_mb,omitempty"`
+	DiskGB         int      `json:"disk_gb,omitempty"`
+	Persistent     bool     `json:"persistent,omitempty"`
+	HasBootstrap   bool     `json:"has_bootstrap,omitempty"`
+	BootstrapSteps []string `json:"bootstrap_steps,omitempty"`
+	Mounts         []string `json:"mounts,omitempty"`
+	Forwards       []string `json:"forwards,omitempty"`
+	Warnings       []string `json:"warnings,omitempty"`
+	YAML           string   `json:"yaml"`
+	SHA256         string   `json:"sha256,omitempty"`
+}
+
+// PreviewRecipeURL fetches and validates a recipe URL without writing the library.
+func (s *Service) PreviewRecipeURL(url string) (RecipeURLPreview, error) {
+	prev, err := recipe.PreviewFromURL(nil, url, "")
+	if err != nil {
+		return RecipeURLPreview{}, err
+	}
+	return RecipeURLPreview{
+		URL: prev.URL, SuggestedID: prev.SuggestedID, Name: prev.Name,
+		Description: prev.Description, Image: prev.Image, CPUs: prev.CPUs,
+		MemoryMB: prev.MemoryMB, DiskGB: prev.DiskGB, Persistent: prev.Persistent,
+		HasBootstrap: prev.HasBootstrap, BootstrapSteps: prev.BootstrapSteps,
+		Mounts: prev.Mounts, Forwards: prev.Forwards, Warnings: prev.Warnings,
+		YAML: prev.YAML, SHA256: prev.SHA256,
+	}, nil
+}
+
+// ConfirmRecipeYAML installs a previously previewed recipe YAML into the library.
+// Does not create a VM. Prefer PreviewRecipeURL then this for URL imports.
+func (s *Service) ConfirmRecipeYAML(yamlText, id string, overwrite bool) (RecipeInfo, error) {
+	ent, err := recipe.SaveLibrary(recipe.DefaultLibraryDir(), []byte(yamlText), recipe.SaveOptions{
+		Overwrite: overwrite,
+		ID:        strings.TrimSpace(id),
+	})
+	if err != nil {
+		return RecipeInfo{}, err
+	}
+	return RecipeInfo{
+		ID: ent.ID, Path: ent.Path, Name: ent.Name, Description: ent.Description,
+		Image: ent.Image, HasBootstrap: ent.HasBootstrap, InLibrary: true, Source: "library",
+	}, nil
+}
+
 // ImportRecipeURL downloads and installs a recipe (no VM create).
+// Interactive Desktop should use PreviewRecipeURL then ConfirmRecipeYAML.
 func (s *Service) ImportRecipeURL(url string, overwrite bool) (RecipeInfo, error) {
 	ent, err := recipe.AddFromURL(nil, recipe.DefaultLibraryDir(), url, "", recipe.SaveOptions{Overwrite: overwrite})
 	if err != nil {
