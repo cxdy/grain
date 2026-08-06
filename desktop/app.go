@@ -659,6 +659,19 @@ func (a *App) OpenDocs() {
 	runtime.BrowserOpenURL(a.ctx, "https://grainvm.com")
 }
 
+// GetSandboxMetrics returns host-side metrics history for Overview charts.
+func (a *App) GetSandboxMetrics(name string) (desktop.MetricsHistoryDTO, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.MetricsHistoryDTO{}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.SandboxMetrics(ctx, name)
+}
+
 // DoctorRepair runs an allowlisted repair command (e.g. grain up).
 func (a *App) DoctorRepair(command string) (desktop.RepairResult, error) {
 	svc, err := a.service()

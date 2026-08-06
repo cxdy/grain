@@ -15,6 +15,8 @@ var (
 	procUptime  = "/proc/uptime"
 	procMeminfo = "/proc/meminfo"
 	procLoadavg = "/proc/loadavg"
+	procNetDev  = "/proc/net/dev"
+	procCPUInfo = "/proc/cpuinfo"
 )
 
 // SetProcPathsForTest overrides /proc file paths; returns a restore func.
@@ -43,6 +45,8 @@ func CollectStats() Stats {
 	_ = readUptime(&st)
 	_ = readMeminfo(&st)
 	_ = readLoadavg(&st)
+	_ = readNetDev(&st)
+	_ = readCPUCount(&st)
 	// Best-effort root filesystem size via Statfs (works on linux + darwin).
 	var fs syscall.Statfs_t
 	if err := syscall.Statfs("/", &fs); err == nil {
@@ -53,8 +57,64 @@ func CollectStats() Stats {
 	}
 	// On pure darwin without /proc overrides, leave mem/load/uptime at 0
 	// (stubs for local agent tests that do not inject /proc).
+	if st.CPUs == 0 {
+		st.CPUs = runtime.NumCPU()
+	}
 	_ = runtime.GOOS
 	return st
+}
+
+func readNetDev(st *Stats) error {
+	f, err := os.Open(procNetDev)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	sc := bufio.NewScanner(f)
+	// Skip two header lines.
+	for i := 0; i < 2 && sc.Scan(); i++ {
+	}
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		// "eth0: 123 0 0 ... 456 0 0 ..."
+		colon := strings.Index(line, ":")
+		if colon < 0 {
+			continue
+		}
+		iface := strings.TrimSpace(line[:colon])
+		if iface == "lo" {
+			continue
+		}
+		fields := strings.Fields(line[colon+1:])
+		if len(fields) < 9 {
+			continue
+		}
+		rx, err1 := strconv.ParseUint(fields[0], 10, 64)
+		tx, err2 := strconv.ParseUint(fields[8], 10, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		st.NetRxBytes += rx
+		st.NetTxBytes += tx
+	}
+	return sc.Err()
+}
+
+func readCPUCount(st *Stats) error {
+	b, err := os.ReadFile(procCPUInfo)
+	if err != nil {
+		return err
+	}
+	n := 0
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "processor") {
+			n++
+		}
+	}
+	if n > 0 {
+		st.CPUs = n
+	}
+	return nil
 }
 
 func readUptime(st *Stats) error {

@@ -72,6 +72,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /vms/{name}/agent/health", s.agentHealth)
 	mux.HandleFunc("POST /vms/{name}/agent/deploy", s.agentDeploy)
 	mux.HandleFunc("GET /vms/{name}/stats", s.vmStats)
+	mux.HandleFunc("GET /vms/{name}/metrics", s.vmMetrics)
 	mux.HandleFunc("PUT /vms/{name}/cp", s.putCP)
 	mux.HandleFunc("GET /vms/{name}/cp", s.getCP)
 	mux.HandleFunc("GET /vms/{name}/fs/readdir", s.fsReadDir)
@@ -137,6 +138,7 @@ type createBody struct {
 	Forwards       []vm.PortForward   `json:"forwards"`
 	Mounts         []vm.Mount         `json:"mounts"`
 	SocketForwards []vm.SocketForward `json:"socket_forwards"`
+	MetricsEnabled bool               `json:"metrics_enabled"`
 }
 
 func wantsCreateStream(r *http.Request) bool {
@@ -211,6 +213,7 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		SocketForwards: body.SocketForwards,
 		WaitMode:       waitMode,
 		WaitTimeout:    waitTimeout,
+		MetricsEnabled: body.MetricsEnabled,
 	}
 
 	if wantsCreateStream(r) {
@@ -1008,7 +1011,26 @@ func (s *Server) vmStats(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
+	// Opportunistic sample into host ring when metrics enabled.
+	_ = s.mgr.SampleMetrics(name, st)
 	writeJSON(w, http.StatusOK, st)
+}
+
+// vmMetrics returns host-side metrics ring history for Desktop charts.
+func (s *Server) vmMetrics(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	// Live sample first when possible (fills ring for active sessions).
+	if ac, _, err := s.agentClient(name); err == nil {
+		if st, err := ac.Stats(r.Context()); err == nil {
+			_ = s.mgr.SampleMetrics(name, st)
+		}
+	}
+	hist, err := s.mgr.MetricsHistory(name)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, hist)
 }
 
 // --- host secrets ----------------------------------------------------------

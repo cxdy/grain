@@ -123,7 +123,36 @@
                   <button type="button" class="ws-tab" data-tab="logs" role="tab">Logs</button>
                 </div>
                 <div id="tab-overview" class="tab-panel" role="tabpanel">
-                  <dl class="meta" id="detail-meta"></dl>
+                  <div id="metrics-panel" class="metrics-panel">
+                    <p class="muted" id="metrics-hint">Select a sandbox to view metrics.</p>
+                    <div id="metrics-charts" hidden>
+                      <div class="metric-card">
+                        <div class="metric-head"><span>CPU load (1m)</span><strong id="m-cpu-val">—</strong></div>
+                        <canvas id="chart-cpu" width="640" height="80"></canvas>
+                      </div>
+                      <div class="metric-card">
+                        <div class="metric-head"><span>Memory</span><strong id="m-mem-val">—</strong></div>
+                        <canvas id="chart-mem" width="640" height="80"></canvas>
+                      </div>
+                      <div class="metric-card">
+                        <div class="metric-head"><span>Disk</span><strong id="m-disk-val">—</strong></div>
+                        <canvas id="chart-disk" width="640" height="80"></canvas>
+                      </div>
+                      <div class="metric-card">
+                        <div class="metric-head"><span>Network (cumulative)</span><strong id="m-net-val">—</strong></div>
+                        <canvas id="chart-net" width="640" height="80"></canvas>
+                      </div>
+                      <p class="hint" id="metrics-meta"></p>
+                    </div>
+                    <div id="metrics-disabled" hidden>
+                      <p class="muted">Metrics are off for this sandbox.</p>
+                      <p class="hint">Enable at create time, or set <code>metrics_enabled: true</code> in meta / config default <code>sandbox_metrics_enabled</code>. Samples are stored on the Grain <strong>host</strong> under the VM dir (works for remote Desktop connections).</p>
+                    </div>
+                  </div>
+                  <details class="adv mt" id="overview-extra">
+                    <summary>Details</summary>
+                    <dl class="meta mt-sm" id="detail-meta"></dl>
+                  </details>
                 </div>
                 <div id="tab-shell" class="tab-panel" role="tabpanel" hidden>
                   <div class="shell-toolbar">
@@ -294,7 +323,7 @@
                   </div>
                 </div>
               </div>
-              <dl class="meta insp-meta" id="inspector-meta"></dl>
+              <p class="insp-summary muted selectable" id="inspector-summary"></p>
             </div>
           </aside>
         </div>
@@ -337,6 +366,7 @@
             <label class="field"><span>Disk (GiB)</span><input class="input" name="disk_gb" type="number" min="1" /></label>
           </div>
           <label class="check-label"><input type="checkbox" name="persistent" /> Persistent disk</label>
+          <label class="check-label"><input type="checkbox" name="metrics_enabled" /> Collect metrics (guest stats on host)</label>
           <details class="adv">
             <summary>Advanced</summary>
             <div class="field-grid mt-sm">

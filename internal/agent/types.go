@@ -133,6 +133,11 @@ type Stats struct {
 	// Optional disk fields (bytes); zero when unavailable.
 	DiskTotal uint64 `json:"disk_total_bytes,omitempty"`
 	DiskFree  uint64 `json:"disk_free_bytes,omitempty"`
+	// NetRxBytes / NetTxBytes are cumulative interface counters (all non-lo).
+	NetRxBytes uint64 `json:"net_rx_bytes,omitempty"`
+	NetTxBytes uint64 `json:"net_tx_bytes,omitempty"`
+	// CPUs is online logical CPU count (0 if unknown).
+	CPUs int `json:"cpus,omitempty"`
 }
 
 // DefaultSecretsDir is the default guest path prefix for materialised secrets.

@@ -282,8 +282,24 @@ a:hover { text-decoration: underline; }
 }
 .inspector-actions .btn-sm { flex-shrink: 0; white-space: nowrap; }
 .insp-meta { padding: 0.85rem; }
+.insp-summary {
+  padding: 0.75rem 0.85rem; font-size: 0.85rem; line-height: 1.45;
+  border-top: 1px solid var(--border); margin: 0;
+}
 .inspector { overflow: visible; }
 .inspector-body { overflow: visible; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+
+.metrics-panel { display: flex; flex-direction: column; gap: 0.75rem; }
+.metric-card {
+  border: 1px solid var(--border); border-radius: 0.45rem; padding: 0.55rem 0.65rem;
+  background: var(--bg);
+}
+.metric-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 0.35rem; font-size: 0.82rem; color: var(--muted);
+}
+.metric-head strong { color: var(--text); font-family: var(--mono); font-size: 0.88rem; font-weight: 600; }
+.metric-card canvas { width: 100%; height: 72px; display: block; }
 
 .dropdown { position: relative; display: inline-block; }
 .dropdown-menu {

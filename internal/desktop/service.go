@@ -26,6 +26,8 @@ type Sandbox struct {
 	AgentOK *bool `json:"agent_ok,omitempty"`
 	// AgentVersion from guest health when AgentOK.
 	AgentVersion string `json:"agent_version,omitempty"`
+	// MetricsEnabled when the host samples guest stats for this sandbox.
+	MetricsEnabled bool `json:"metrics_enabled,omitempty"`
 }
 
 // CreateOpts are create options for the Desktop create form (including advanced).
@@ -47,6 +49,8 @@ type CreateOpts struct {
 	Publish string `json:"publish"`
 	// Mounts is newline or comma separated HOST:GUEST paths.
 	Mounts string `json:"mounts"`
+	// MetricsEnabled opt-in host-side guest stats ring (default false).
+	MetricsEnabled bool `json:"metrics_enabled"`
 }
 
 // HealthStatus is returned by Service.Health.
@@ -268,18 +272,19 @@ func (s *Service) CreateSandbox(ctx context.Context, opts CreateOpts) (*Sandbox,
 // buildCreateRequest applies service/config defaults to create options.
 func buildCreateRequest(opts CreateOpts, cfg Config) (client.CreateRequest, error) {
 	req := client.CreateRequest{
-		Name:       opts.Name,
-		Image:      opts.Image,
-		Persistent: opts.Persistent,
-		CPUs:       opts.CPUs,
-		MemoryMB:   opts.MemoryMB,
-		DiskGB:     opts.DiskGB,
-		Wait:       opts.Wait,
-		Timeout:    opts.Timeout,
-		Arch:       opts.Arch,
-		GPU:        opts.GPU,
-		Network:    opts.Network,
-		Userdata:   opts.Userdata,
+		Name:           opts.Name,
+		Image:          opts.Image,
+		Persistent:     opts.Persistent,
+		CPUs:           opts.CPUs,
+		MemoryMB:       opts.MemoryMB,
+		DiskGB:         opts.DiskGB,
+		Wait:           opts.Wait,
+		Timeout:        opts.Timeout,
+		Arch:           opts.Arch,
+		GPU:            opts.GPU,
+		Network:        opts.Network,
+		Userdata:       opts.Userdata,
+		MetricsEnabled: opts.MetricsEnabled,
 	}
 	if req.Image == "" {
 		req.Image = cfg.Image
@@ -360,6 +365,53 @@ func splitList(s string) []string {
 		}
 	}
 	return parts
+}
+
+// MetricsHistoryDTO is UI-facing metrics ring data.
+type MetricsHistoryDTO struct {
+	Enabled  bool                   `json:"enabled"`
+	Interval string                 `json:"interval,omitempty"`
+	Points   []MetricsSampleDTO     `json:"points"`
+}
+
+// MetricsSampleDTO is one chart point.
+type MetricsSampleDTO struct {
+	TimeMS     int64   `json:"t_ms"`
+	Load1      float64 `json:"load1"`
+	MemTotal   uint64  `json:"mem_total_bytes"`
+	MemAvail   uint64  `json:"mem_available_bytes"`
+	DiskTotal  uint64  `json:"disk_total_bytes"`
+	DiskFree   uint64  `json:"disk_free_bytes"`
+	NetRxBytes uint64  `json:"net_rx_bytes"`
+	NetTxBytes uint64  `json:"net_tx_bytes"`
+}
+
+// SandboxMetrics fetches host-side metrics history for a VM.
+func (s *Service) SandboxMetrics(ctx context.Context, name string) (MetricsHistoryDTO, error) {
+	var out MetricsHistoryDTO
+	c, err := s.ensureClient()
+	if err != nil {
+		return out, err
+	}
+	h, err := c.Metrics(ctx, name)
+	if err != nil {
+		return out, err
+	}
+	if h == nil {
+		return out, nil
+	}
+	out.Enabled = h.Enabled
+	out.Interval = h.Interval
+	out.Points = make([]MetricsSampleDTO, 0, len(h.Points))
+	for _, p := range h.Points {
+		out.Points = append(out.Points, MetricsSampleDTO{
+			TimeMS: p.TimeMS, Load1: p.Load1,
+			MemTotal: p.MemTotal, MemAvail: p.MemAvail,
+			DiskTotal: p.DiskTotal, DiskFree: p.DiskFree,
+			NetRxBytes: p.NetRxBytes, NetTxBytes: p.NetTxBytes,
+		})
+	}
+	return out, nil
 }
 
 // StartSandbox boots a stopped VM. Before start, grows the qcow2 if meta disk_gb
@@ -544,14 +596,15 @@ func instanceToSandbox(inst *client.Instance) Sandbox {
 		return Sandbox{}
 	}
 	return Sandbox{
-		Name:       inst.Name,
-		Status:     string(inst.Status),
-		Image:      inst.Image,
-		Persistent: inst.Persistent,
-		CPUs:       inst.CPUs,
-		MemoryMB:   inst.MemoryMB,
-		DiskGB:     inst.DiskGB,
-		SSHPort:    inst.SSHPort,
-		Error:      inst.Error,
+		Name:           inst.Name,
+		Status:         string(inst.Status),
+		Image:          inst.Image,
+		Persistent:     inst.Persistent,
+		CPUs:           inst.CPUs,
+		MemoryMB:       inst.MemoryMB,
+		DiskGB:         inst.DiskGB,
+		SSHPort:        inst.SSHPort,
+		Error:          inst.Error,
+		MetricsEnabled: inst.MetricsEnabled,
 	}
 }

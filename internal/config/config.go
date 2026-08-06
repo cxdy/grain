@@ -48,6 +48,13 @@ type Config struct {
 	AuthToken string `yaml:"auth_token"`
 	// MetricsAddr is Prometheus scrape address (empty = disabled).
 	MetricsAddr string `yaml:"metrics_addr"`
+	// SandboxMetricsEnabled is the default for new sandboxes (guest stats ring on host).
+	// Per-VM opt-in via create metrics_enabled; default false.
+	SandboxMetricsEnabled bool `yaml:"sandbox_metrics_enabled"`
+	// SandboxMetricsInterval is how often to sample guest /stats into the ring (default 15s).
+	SandboxMetricsInterval time.Duration `yaml:"sandbox_metrics_interval"`
+	// SandboxMetricsPoints is ring capacity (default 5760 ≈ 24h at 15s).
+	SandboxMetricsPoints int `yaml:"sandbox_metrics_points"`
 	// DefaultCPUs for new sandboxes.
 	DefaultCPUs int `yaml:"cpus"`
 	// DefaultMemoryMB for new sandboxes.
@@ -405,8 +412,11 @@ func Defaults() Config {
 		DataDir:         dir,
 		Socket:          filepath.Join(dir, "grain.sock"),
 		API:             "127.0.0.1:7474",
-		MetricsAddr:     "127.0.0.1:9091",
-		DefaultCPUs:     2,
+		MetricsAddr:                "127.0.0.1:9091",
+		SandboxMetricsEnabled:      false,
+		SandboxMetricsInterval:     15 * time.Second,
+		SandboxMetricsPoints:       5760, // ~24h at 15s
+		DefaultCPUs:                2,
 		DefaultMemoryMB: 2048,
 		DefaultDiskGB:   8,
 		Hypervisor:      "qemu",
@@ -480,6 +490,12 @@ func (c *Config) applyDefaults() {
 	}
 	if c.ReadyTimeout <= 0 {
 		c.ReadyTimeout = d.ReadyTimeout
+	}
+	if c.SandboxMetricsInterval <= 0 {
+		c.SandboxMetricsInterval = d.SandboxMetricsInterval
+	}
+	if c.SandboxMetricsPoints <= 0 {
+		c.SandboxMetricsPoints = d.SandboxMetricsPoints
 	}
 	if c.LogLevel == "" {
 		c.LogLevel = d.LogLevel

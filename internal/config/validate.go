@@ -13,7 +13,8 @@ import (
 // knownTopLevelKeys are allowed keys in config.yaml (strict check-config).
 var knownTopLevelKeys = map[string]struct{}{
 	"data_dir": {}, "socket": {}, "api": {}, "api_url": {}, "api_token": {}, "auth_token": {},
-	"metrics_addr": {}, "cpus": {}, "memory_mb": {}, "disk_gb": {},
+	"metrics_addr": {}, "sandbox_metrics_enabled": {}, "sandbox_metrics_interval": {}, "sandbox_metrics_points": {},
+	"cpus": {}, "memory_mb": {}, "disk_gb": {},
 	"hypervisor": {}, "qemu_binary": {}, "firecracker_binary": {}, "kernel_path": {},
 	"image": {}, "ssh_user": {}, "ready_timeout": {}, "log_level": {},
 	"mount_driver": {}, "agent_transport": {}, "guest_arch": {}, "gpu": {}, "network": {},

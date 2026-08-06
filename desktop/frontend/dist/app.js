@@ -27,6 +27,7 @@
     mcpAgent: "cursor",
     mcpSnippets: {},
     pollTimer: null,
+    metricsTimer: null,
     confirm: null,
     expandedEvent: null,
     currentView: "sandboxes",
@@ -498,7 +499,153 @@
             ? "not installed"
             : "—"
       }</dd>
+      <dt>Metrics</dt><dd>${vm.metrics_enabled ? "on (host ring)" : "off"}</dd>
       <dt>Error</dt><dd class="selectable">${escapeHtml(vm.error || "—")}</dd>`;
+  }
+
+  function fillInspectorSummary(vm) {
+    const el = $("#inspector-summary");
+    if (!el || !vm) return;
+    const agent =
+      vm.agent_ok === true
+        ? vm.agent_version || "ok"
+        : vm.agent_ok === false
+          ? "agent not installed"
+          : "agent —";
+    el.textContent = `${vm.image || "—"} · ${vm.cpus || "—"} vCPUs · ${vm.memory_mb || "—"} MiB · ${agent}${vm.metrics_enabled ? " · metrics on" : ""}`;
+  }
+
+  function fmtBytesShort(n) {
+    if (n == null || n === 0) return "0";
+    if (n > 1e9) return (n / 1e9).toFixed(1) + "G";
+    if (n > 1e6) return (n / 1e6).toFixed(0) + "M";
+    if (n > 1e3) return (n / 1e3).toFixed(0) + "K";
+    return String(n);
+  }
+
+  function drawSpark(canvasId, values, color) {
+    const c = $(canvasId);
+    if (!c) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth || 640;
+    const h = 72;
+    c.width = Math.floor(w * dpr);
+    c.height = Math.floor(h * dpr);
+    const ctx = c.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (!values || values.length < 2) {
+      ctx.fillStyle = "rgba(128,128,128,0.35)";
+      ctx.font = "12px sans-serif";
+      ctx.fillText("No samples yet — wait for collection interval", 8, h / 2);
+      return;
+    }
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    if (min === max) {
+      min -= 1;
+      max += 1;
+    }
+    const pad = 4;
+    ctx.strokeStyle = color || "#3ddea8";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    values.forEach((v, i) => {
+      const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+      const y = h - pad - ((v - min) / (max - min)) * (h - pad * 2);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  async function loadMetrics(name) {
+    const charts = $("#metrics-charts");
+    const disabled = $("#metrics-disabled");
+    const hint = $("#metrics-hint");
+    if (!name) {
+      if (hint) {
+        hint.hidden = false;
+        hint.textContent = "Select a sandbox to view metrics.";
+      }
+      if (charts) charts.hidden = true;
+      if (disabled) disabled.hidden = true;
+      return;
+    }
+    try {
+      const h = await call("GetSandboxMetrics", name);
+      if (hint) hint.hidden = true;
+      if (!h.enabled) {
+        if (charts) charts.hidden = true;
+        if (disabled) disabled.hidden = false;
+        return;
+      }
+      if (disabled) disabled.hidden = true;
+      if (charts) charts.hidden = false;
+      const pts = h.points || [];
+      const loads = pts.map((p) => p.load1 || 0);
+      const memUsed = pts.map((p) => {
+        const t = p.mem_total_bytes || 0;
+        const a = p.mem_available_bytes || 0;
+        return t > 0 ? ((t - a) / t) * 100 : 0;
+      });
+      const diskUsed = pts.map((p) => {
+        const t = p.disk_total_bytes || 0;
+        const f = p.disk_free_bytes || 0;
+        return t > 0 ? ((t - f) / t) * 100 : 0;
+      });
+      const net = pts.map((p) => (p.net_rx_bytes || 0) + (p.net_tx_bytes || 0));
+      drawSpark("#chart-cpu", loads, "#3ddea8");
+      drawSpark("#chart-mem", memUsed, "#6cb6ff");
+      drawSpark("#chart-disk", diskUsed, "#e0b050");
+      drawSpark("#chart-net", net, "#c084fc");
+      const last = pts[pts.length - 1];
+      if (last) {
+        const mt = last.mem_total_bytes || 0;
+        const ma = last.mem_available_bytes || 0;
+        const mu = mt > 0 ? mt - ma : 0;
+        const dt = last.disk_total_bytes || 0;
+        const df = last.disk_free_bytes || 0;
+        const du = dt > 0 ? dt - df : 0;
+        $("#m-cpu-val").textContent = (last.load1 || 0).toFixed(2);
+        $("#m-mem-val").textContent =
+          mt > 0 ? `${fmtBytesShort(mu)} / ${fmtBytesShort(mt)} (${((mu / mt) * 100).toFixed(0)}%)` : "—";
+        $("#m-disk-val").textContent =
+          dt > 0 ? `${fmtBytesShort(du)} / ${fmtBytesShort(dt)} (${((du / dt) * 100).toFixed(0)}%)` : "—";
+        $("#m-net-val").textContent = `↓${fmtBytesShort(last.net_rx_bytes || 0)} ↑${fmtBytesShort(last.net_tx_bytes || 0)}`;
+      } else {
+        $("#m-cpu-val").textContent = "—";
+        $("#m-mem-val").textContent = "—";
+        $("#m-disk-val").textContent = "—";
+        $("#m-net-val").textContent = "—";
+      }
+      const meta = $("#metrics-meta");
+      if (meta) {
+        meta.textContent = `${pts.length} samples · interval ${h.interval || "—"} · stored on Grain host (data_dir/vms/${name}/metrics.ring)`;
+      }
+    } catch (e) {
+      if (hint) {
+        hint.hidden = false;
+        hint.textContent = String(e).replace(/^Error:\s*/i, "");
+      }
+      if (charts) charts.hidden = true;
+      if (disabled) disabled.hidden = true;
+    }
+  }
+
+  function startMetricsPoll(name) {
+    stopMetricsPoll();
+    if (!name) return;
+    loadMetrics(name);
+    state.metricsTimer = setInterval(() => {
+      if (state.selected === name && state.activeTab === "overview") loadMetrics(name);
+    }, 5000);
+  }
+  function stopMetricsPoll() {
+    if (state.metricsTimer) {
+      clearInterval(state.metricsTimer);
+      state.metricsTimer = null;
+    }
   }
 
   function showInspector(show) {
@@ -541,16 +688,21 @@
       updateActionButtons(vm.status);
       $("#detail-status-pill").innerHTML = statusBadge(vm.status);
       fillMeta(vm, $("#detail-meta"));
-      fillMeta(vm, $("#inspector-meta"));
+      fillInspectorSummary(vm);
       if (switched && state.activeTab === "shell" && state.term) {
         try {
           state.term.reset();
         } catch (_) {}
       }
+      if (state.activeTab === "overview") startMetricsPoll(name);
       if (state.activeTab === "shell") {
+        stopMetricsPoll();
         const term = ensureTerm();
         if (term) await attachShell(name, term);
-      } else if (state.activeTab === "logs") await loadLogs();
+      } else if (state.activeTab === "logs") {
+        stopMetricsPoll();
+        await loadLogs();
+      }
     } catch (e) {
       toast(String(e), true, { action: "get", target: name });
     }
@@ -563,6 +715,11 @@
       const p = $(`#tab-${t}`);
       if (p) p.hidden = t !== name;
     });
+    if (name === "overview" && state.selected) {
+      startMetricsPoll(state.selected);
+    } else {
+      stopMetricsPoll();
+    }
     if (name === "shell" && state.selected) {
       const term = ensureTerm();
       requestAnimationFrame(() => {
@@ -596,7 +753,7 @@
           $("#detail-status-pill").innerHTML = statusBadge(vm.status);
           if (state.activeTab === "overview") {
             fillMeta(vm, $("#detail-meta"));
-            fillMeta(vm, $("#inspector-meta"));
+            fillInspectorSummary(vm);
           }
         }
       } else if (state.selected && !names.has(state.selected)) {
@@ -1165,6 +1322,7 @@
       memory_mb: Number(fd.get("memory_mb") || 0),
       disk_gb: Number(fd.get("disk_gb") || 0),
       persistent: !!fd.get("persistent"),
+      metrics_enabled: !!fd.get("metrics_enabled"),
       wait: fd.get("wait") || "auto",
       timeout: fd.get("timeout") || "",
       arch: fd.get("arch") || "",
