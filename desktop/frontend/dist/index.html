@@ -223,7 +223,7 @@
               <div class="view-head">
                 <h2>Recipes</h2>
                 <div class="btn-row">
-                  <button type="button" class="btn btn-primary btn-sm" id="btn-recipe-new-form">New from form…</button>
+                  <button type="button" class="btn btn-primary btn-sm" id="btn-recipe-new-form">New</button>
                   <div class="dropdown" id="recipe-import-dropdown">
                     <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-import" aria-haspopup="true" aria-expanded="false">Import…</button>
                     <ul class="dropdown-menu" id="recipe-import-menu" role="menu">
@@ -680,27 +680,34 @@
     </div>
 
     <div class="modal-backdrop" id="modal-recipe-form" hidden>
-      <div class="modal" role="dialog">
+      <div class="modal modal-recipe-form" role="dialog">
         <div class="modal-head no-select">
-          <strong>New recipe from form</strong>
+          <strong>New recipe</strong>
           <button type="button" class="btn-icon" data-close="modal-recipe-form" aria-label="Close">×</button>
         </div>
-        <form id="recipe-form-builder" class="modal-body">
+        <form id="recipe-form-builder" class="modal-body recipe-form-body">
           <p class="hint">Builds a grain/v1 YAML recipe. Advanced bootstrap still works best in the YAML editor.</p>
-          <div class="field-grid">
+          <div class="field-grid field-grid-2">
             <label class="field"><span>Library id</span><input class="input" name="id" id="rf-id" required placeholder="my-lab" /></label>
             <label class="field"><span>Sandbox name</span><input class="input" name="name" id="rf-name" placeholder="my-lab" /></label>
           </div>
           <label class="field"><span>Description</span><input class="input" name="description" id="rf-desc" /></label>
-          <div class="field-grid">
+          <div class="field-grid field-grid-2">
             <label class="field"><span>Image</span><input class="input" name="image" id="rf-image" value="grain-ubuntu" /></label>
             <label class="field"><span>Preset</span>
-              <select class="input" id="rf-preset">
-                <option value="">(none)</option>
-                <option value="docker">docker</option>
-                <option value="k3s">k3s</option>
-                <option value="act">act</option>
-              </select>
+              <div class="host-menu settings-host-menu rf-preset-menu" id="rf-preset-menu">
+                <input type="hidden" id="rf-preset" value="" />
+                <button type="button" class="host-btn" id="rf-preset-btn" aria-haspopup="listbox" aria-expanded="false">
+                  <span id="rf-preset-label">(none)</span>
+                  <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+                </button>
+                <div class="host-popover" id="rf-preset-popover" hidden role="listbox">
+                  <button type="button" class="host-item active" data-preset="" role="option">(none)</button>
+                  <button type="button" class="host-item" data-preset="docker" role="option">docker</button>
+                  <button type="button" class="host-item" data-preset="k3s" role="option">k3s</button>
+                  <button type="button" class="host-item" data-preset="act" role="option">act</button>
+                </div>
+              </div>
             </label>
           </div>
           <div class="field-grid">
@@ -708,14 +715,14 @@
             <label class="field"><span>Memory MiB</span><input class="input" type="number" min="256" id="rf-mem" value="4096" /></label>
             <label class="field"><span>Disk GiB</span><input class="input" type="number" min="1" id="rf-disk" value="20" /></label>
           </div>
-          <label class="check-label"><input type="checkbox" id="rf-persist" /> Persistent</label>
-          <div class="field-grid">
+          <div class="field-grid field-grid-3-persist">
             <label class="field"><span>Mount host</span><input class="input" id="rf-mhost" placeholder="." /></label>
             <label class="field"><span>Mount guest</span><input class="input" id="rf-mguest" placeholder="/work" /></label>
+            <label class="field"><span>Publish guest port</span><input class="input" type="number" id="rf-gport" placeholder="optional" /></label>
           </div>
-          <label class="field"><span>Publish guest port</span><input class="input" type="number" id="rf-gport" placeholder="optional" /></label>
-          <label class="field"><span>Bootstrap shell (optional)</span>
-            <textarea class="input recipe-yaml" id="rf-boot" rows="4" placeholder="apt-get install -y git"></textarea>
+          <label class="check-label"><input type="checkbox" id="rf-persist" /> Persistent</label>
+          <label class="field field-compact"><span>Bootstrap shell (optional)</span>
+            <textarea class="input recipe-yaml recipe-yaml-sm" id="rf-boot" rows="3" placeholder="apt-get install -y git"></textarea>
           </label>
           <p class="error-text" id="rf-err" hidden></p>
           <div class="modal-foot no-select">

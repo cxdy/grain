@@ -2827,6 +2827,7 @@
     document.addEventListener("click", (e) => {
       if (!$("#host-menu")?.contains(e.target)) closeHostMenu();
       if (!$("#set-default-conn-menu")?.contains(e.target)) closeDefaultConnMenu();
+      if (!$("#rf-preset-menu")?.contains(e.target)) closePresetMenu();
     });
     $("#host-add")?.addEventListener("click", () => {
       closeHostMenu();
@@ -2836,8 +2837,45 @@
     $$(".nav-item").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.view)));
     $$(".ws-tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 
+    function closePresetMenu() {
+      const pop = $("#rf-preset-popover");
+      const btn = $("#rf-preset-btn");
+      if (pop) pop.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    }
+    function setPresetValue(val) {
+      const v = val || "";
+      const hidden = $("#rf-preset");
+      const label = $("#rf-preset-label");
+      if (hidden) hidden.value = v;
+      if (label) label.textContent = v || "(none)";
+      $$("#rf-preset-popover .host-item").forEach((item) => {
+        item.classList.toggle("active", (item.getAttribute("data-preset") || "") === v);
+      });
+    }
+    $("#rf-preset-btn")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const pop = $("#rf-preset-popover");
+      const btn = $("#rf-preset-btn");
+      if (!pop) return;
+      const open = pop.hidden;
+      pop.hidden = !open;
+      btn?.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    $$("#rf-preset-popover .host-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setPresetValue(item.getAttribute("data-preset") || "");
+        closePresetMenu();
+      });
+    });
+
     $("#btn-recipe-new-form")?.addEventListener("click", () => {
       $("#rf-err").hidden = true;
+      setPresetValue("");
+      closePresetMenu();
       openModal("modal-recipe-form");
     });
     $("#recipe-form-builder")?.addEventListener("submit", async (e) => {
