@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Firecracker create-time `-P` reply path** — OUTPUT DNAT alone left saddr=`127.0.0.1`, so guests could not reply to host loopback publishes. Add POSTROUTING **SNAT to TAP HostIP** for traffic leaving the TAP with source `127.0.0.1`. Smoke now starts a guest HTTP listener and `curl`s both create-time `-P` and live `fwd`.
+- **Firecracker create-time `-P` host→guest** — OUTPUT DNAT of `127.0.0.1` never delivers packets onto the TAP (even with SNAT). Create-time publishes now use the **same host TCP proxy** as live `grain fwd add` after guest eth0 is configured. Smoke starts a guest HTTP listener and `curl`s both create-time `-P` and live `fwd`.
 - **Firecracker doctor / guide pull-first** — missing `fc-kernel` / `grain-ubuntu-fc` recommend `grain image pull …` (BYO import remains fallback); soft notes no longer say “not imported” / “not published yet”. Guide operator checklist + known-limitations table align with vFC-1 agent production (net still QEMU-only); boot sample p50/p95 match AWS `m7i-flex.large` post-merge bench.
 - **Install / `grain update` quieter when already set up** — `scripts/install.sh` skips the MCP enable prompt when `~/.grain/config.yaml` already exists, and drops the long “Next steps” footer (install progress + short “grain X installed” / PATH line only).
 - **Paste screenshots into `grain sh`** — host clipboard paste prefers **images** (macOS: PNG/TIFF/JPEG via AppKit, converting screenshot TIFF→PNG; Linux: `wl-paste`/`xclip` image MIME types) before plain text. Guest `pbpaste`/xclip shims fetch via the shell control channel. Longer paste timeout for large images.

@@ -20,10 +20,10 @@ import (
 //   - One TAP per VM (host_dev_name), attached as Firecracker network-interfaces.
 //   - Host TAP address 10.77.<slot>.1/24, guest 10.77.<slot>.2/24 (static).
 //   - Guest IP configured after agent is up (vsock exec) so bake need not change.
-//   - Create-time publish: iptables DNAT 127.0.0.1:host → guestIP:guest, plus
-//     POSTROUTING SNAT saddr 127.0.0.1 → HostIP on the TAP (guest cannot reply to
-//     127.0.0.1). Guest egress uses MASQUERADE off the TAP.
-//   - Live grain fwd add: host TCP proxy 127.0.0.1:host → guestIP:guest (no SSH).
+//   - Guest egress: MASQUERADE off the TAP subnet.
+//   - Create-time -P and live grain fwd: host TCP proxy 127.0.0.1:host →
+//     guestIP:guest (manager; same path). OUTPUT DNAT of 127.0.0.1 does not
+//     deliver packets onto the TAP, so publish is userspace proxy-based.
 //   - Overlay L2 and 9p/virtiofs mounts remain QEMU-only.
 //
 // Agent path stays on Firecracker vsock UDS + CONNECT (independent of TAP).

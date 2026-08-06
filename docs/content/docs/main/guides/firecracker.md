@@ -25,7 +25,7 @@ grain can launch sandboxes with [Firecracker](https://firecracker-microvm.github
 | Tier | Status | What works |
 |------|--------|------------|
 | **FC agent production (vFC-1)** | **Supported** | Pull `fc-kernel` + `grain-ubuntu-fc`; doctor; `grain new --wait agent`; `grain x` / agent shell / cp / sync / MCP guest tools over vsock UDS + `CONNECT` |
-| **FC net (vFC-2 partial)** | **Supported** | TAP + create-time `-P` / `--publish` (DNAT + SNAT to TAP HostIP so loopback clients work), `grain fwd add/ls/rm` (TCP proxy to guest IP), optional SSH/agent host ports. Requires **CAP_NET_ADMIN** and `/dev/net/tun`. |
+| **FC net (vFC-2 partial)** | **Supported** | TAP + guest IP; create-time `-P` / `--publish` and `grain fwd add/ls/rm` via host TCP proxy to guest IP (needs CAP_NET_ADMIN + `/dev/net/tun`; socat or python3 for proxies). |
 | **Still QEMU-only** | — | Overlay L2, 9p/virtiofs mounts, SLIRP `10.0.2.2` proxy, virtio GPU |
 | **Default product path** | **QEMU** | macOS + Linux; full SLIRP/publish/mounts/overlay/GPU where applicable |
 
@@ -179,11 +179,11 @@ See also [Images](../images/#firecracker-rootfs-experimental) for the QEMU/golde
 
 ## Networking and agent
 
-This backend is **CNI-less / jailer-less**. Agent uses vsock; optional TAP + DNAT/SNAT provides publish/fwd (not SLIRP).
+This backend is **CNI-less / jailer-less**. Agent uses vsock; optional TAP + host TCP proxy provides publish/fwd (not SLIRP).
 
 | Channel | Status |
 |---------|--------|
-| SSH / port forwards (`-P`, `grain fwd`) | **Supported (vFC-2)** — TAP + DNAT/SNAT / TCP proxy (needs CAP_NET_ADMIN) |
+| SSH / port forwards (`-P`, `grain fwd`) | **Supported (vFC-2)** — TAP guest IP + host TCP proxy (needs CAP_NET_ADMIN; socat/python3) |
 | Overlay / shared L2 | **Not available** (use QEMU) |
 | grain-agent | **Supported** — Firecracker vsock UDS + `CONNECT` (vFC-1); optional TCP DNAT |
 
@@ -206,7 +206,7 @@ Smoke: `./scripts/smoke-fc-net.sh` (guest HTTP listener + host `curl` for create
 On Start, grain:
 
 - Allocates a guest **CID** (`AgentCID`) and configures Firecracker `vsock` with `uds_path` = `…/fc-vsock.sock`
-- When net is enabled: creates TAP, allocates SSH/agent host ports, applies DNAT for `-P` publishes **and SNAT** so DNATed loopback clients appear as the TAP HostIP; after agent is up, configures guest eth0 via agent exec
+- When net is enabled: creates TAP, allocates SSH/agent/publish host ports; after agent is up, configures guest eth0 via agent exec and starts host TCP proxies for create-time `-P` (same path as live `grain fwd add`)
 
 Firecracker’s host-side vsock is **not** AF_VSOCK/`/dev/vhost-vsock`. Host clients connect to the UDS and send `CONNECT <port>\n` (see [Firecracker vsock docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md)). Guest agent listens on AF_VSOCK port **7475**. Host `agent.Dial` prefers UDS + CONNECT (vFC-1).
 

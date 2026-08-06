@@ -511,10 +511,15 @@ func (m *Manager) waitAgentMode(
 	probeCancel()
 	if probeErr == nil {
 		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID)
-		// vFC-2: configure guest eth0 once agent is up (vsock); TAP/DNAT already on host.
+		// vFC-2: configure guest eth0 once agent is up (vsock); TAP already on host.
 		if err := m.configureFCGuestNet(ctx, inst); err != nil {
 			m.log.Warn("fc guest net config failed", "name", inst.Name, "err", err)
 			// Non-fatal for agent wait — publish may fail until reconfigured.
+		}
+		// Create-time -P: same host TCP proxy path as live grain fwd (OUTPUT DNAT
+		// of 127.0.0.1 does not deliver to TAP guests).
+		if err := m.startFCCreateTimeProxies(inst); err != nil {
+			m.log.Warn("fc create-time publish proxies failed", "name", inst.Name, "err", err)
 		}
 		return nil
 	}
@@ -546,7 +551,7 @@ func (m *Manager) waitAgentMode(
 }
 
 // configureFCGuestNet applies static eth0 addressing inside the guest over the
-// agent (vsock). Host TAP/DNAT is already up from FirecrackerRuntime.Start.
+// agent (vsock). Host TAP is already up from FirecrackerRuntime.Start.
 func (m *Manager) configureFCGuestNet(ctx context.Context, inst *vm.Instance) error {
 	if m.cfg.Hypervisor != "firecracker" || inst == nil || inst.DiskPath == "" {
 		return nil
@@ -569,8 +574,79 @@ func (m *Manager) configureFCGuestNet(ctx context.Context, inst *vm.Instance) er
 	if res.ExitCode != 0 {
 		return fmt.Errorf("guest net script exit %d: %s%s", res.ExitCode, res.Stdout, res.Stderr)
 	}
+	// Ensure inst.IP matches the plan (proxy target).
+	if st.GuestIP != "" {
+		inst.IP = st.GuestIP
+	}
 	m.log.Info("fc guest net configured", "name", inst.Name, "guest_ip", st.GuestIP, "tap", st.TapName)
 	return nil
+}
+
+// FCCreateTimePublishSpecs returns create-time -P mappings that still need a
+// host TCP proxy (not already present in live forwards). Pure helper for tests.
+func FCCreateTimePublishSpecs(forwards []vm.PortForward, live []vm.LiveForward) []vm.PortForward {
+	var out []vm.PortForward
+	for _, f := range forwards {
+		if f.HostPort <= 0 || f.GuestPort <= 0 {
+			continue
+		}
+		proto := f.Proto
+		if proto == "" {
+			proto = "tcp"
+		}
+		if proto != "tcp" {
+			// TCP proxy only; UDP publishes stay unsupported on FC for now.
+			continue
+		}
+		covered := false
+		for _, lf := range live {
+			if lf.HostPort == f.HostPort {
+				covered = true
+				break
+			}
+		}
+		if covered {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// startFCCreateTimeProxies starts host TCP proxies for create-time -P publishes
+// after the guest has a reachable TAP IP. Same mechanism as grain fwd add.
+func (m *Manager) startFCCreateTimeProxies(inst *vm.Instance) error {
+	if m.cfg.Hypervisor != "firecracker" || inst == nil {
+		return nil
+	}
+	if inst.IP == "" || inst.IP == "127.0.0.1" {
+		return fmt.Errorf("no guest IP for create-time publish proxies")
+	}
+	specs := FCCreateTimePublishSpecs(inst.Forwards, inst.LiveForwards)
+	if len(specs) == 0 {
+		return nil
+	}
+	var first error
+	for _, f := range specs {
+		pid, err := startTCPProxy(f.HostPort, inst.IP, f.GuestPort)
+		if err != nil {
+			if first == nil {
+				first = fmt.Errorf("publish %d→%s:%d: %w", f.HostPort, inst.IP, f.GuestPort, err)
+			}
+			m.log.Warn("fc create-time proxy failed", "host_port", f.HostPort, "guest_port", f.GuestPort, "err", err)
+			continue
+		}
+		inst.LiveForwards = append(inst.LiveForwards, vm.LiveForward{
+			HostPort:  f.HostPort,
+			GuestPort: f.GuestPort,
+			PID:       pid,
+		})
+		m.log.Info("fc create-time publish proxy", "name", inst.Name, "host_port", f.HostPort, "guest_port", f.GuestPort, "guest_ip", inst.IP, "pid", pid)
+	}
+	if err := m.st.Put(inst); err != nil && first == nil {
+		first = err
+	}
+	return first
 }
 
 // wrapAgentWaitErr annotates agent wait failures. Firecracker guests only reach

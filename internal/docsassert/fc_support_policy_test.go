@@ -53,7 +53,7 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 			"vFC-1",
 			"vFC-2",
 			"grain fwd",
-			"TAP + DNAT",
+			"TCP proxy",
 			"CAP_NET_ADMIN",
 		}},
 		{"guide", fcGuide, []string{
@@ -66,6 +66,7 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 			"grain image pull grain-ubuntu-fc",
 			"p95 ≈ 2166 ms",
 			"CAP_NET_ADMIN",
+			"TCP proxy",
 		}},
 		{"parity", parity, []string{
 			"FC agent production (vFC-1)",

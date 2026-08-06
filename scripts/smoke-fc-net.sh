@@ -111,6 +111,18 @@ for _ in $(seq 1 40); do
 done
 [[ "$ready" -eq 1 ]] || die "guest listener on :${GUEST_PORT} never became ready"
 
+# Create-time -P is a host TCP proxy (LISTEN on 127.0.0.1:HOST_PORT).
+log "wait for create-time publish proxy LISTEN on :${HOST_PORT}"
+for _ in $(seq 1 40); do
+  if ss -lnt 2>/dev/null | grep -qE "127\\.0\\.0\\.1:${HOST_PORT}\\b|: ${HOST_PORT}\\b"; then
+    break
+  fi
+  sleep 0.25
+done
+if ss -lnt 2>/dev/null | grep -E "127\\.0\\.0\\.1:${HOST_PORT}\\b|:${HOST_PORT}\\b" || true; then
+  log "host LISTEN snapshot for :${HOST_PORT} ready or continuing"
+fi
+
 # Criterion: create-time -P host→guest HTTP success
 log "curl create-time publish http://127.0.0.1:${HOST_PORT}/"
 body=""
@@ -125,7 +137,7 @@ for _ in $(seq 1 30); do
   sleep 0.5
 done
 [[ "$ok" -eq 1 ]] || die "create-time -P failed: no ${MARKER} from http://127.0.0.1:${HOST_PORT}/ (body=${body:-empty})"
-log "create-time -P OK: $(printf '%s' "$body" | tr -d '\r' | head -c 80)"
+log "create-time -P OK body=$(printf '%s' "$body" | tr -d '\r' | head -c 80)"
 
 # Criterion: live grain fwd TCP proxy host→guest HTTP success
 log "fwd add live ${LIVE_HOST}:${GUEST_PORT}"
