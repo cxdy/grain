@@ -3,7 +3,7 @@
   "recipes": [
     {
       "id": "act-lab",
-      "title": "act-lab",
+      "title": "GitHub Actions (act)",
       "description": "Docker + nektos/act for local GitHub Actions (preset act)",
       "tags": [
         "official",
@@ -14,7 +14,7 @@
     },
     {
       "id": "docker-lab",
-      "title": "docker-lab",
+      "title": "Docker lab",
       "description": "grain-ubuntu with Docker Engine (preset docker)",
       "tags": [
         "official",
@@ -25,7 +25,7 @@
     },
     {
       "id": "git-lab",
-      "title": "git-lab",
+      "title": "Git bootstrap",
       "description": "Ubuntu sandbox with git installed before ready",
       "tags": [
         "official",
@@ -36,7 +36,7 @@
     },
     {
       "id": "k3s-lab",
-      "title": "k3s-lab",
+      "title": "k3s single-node",
       "description": "Persistent k3s single-node lab (preset k3s, publish 6443)",
       "tags": [
         "official",
@@ -47,7 +47,7 @@
     },
     {
       "id": "node-dev",
-      "title": "node-dev",
+      "title": "Node / JS dev",
       "description": "Repo mount + git/curl for node-ish workflows",
       "tags": [
         "official",
@@ -58,7 +58,7 @@
     },
     {
       "id": "python-dev",
-      "title": "python-dev",
+      "title": "Python dev",
       "description": "Ubuntu with python3, pip, venv, and git ready",
       "tags": [
         "official",
@@ -69,7 +69,7 @@
     },
     {
       "id": "remote-coding",
-      "title": "work",
+      "title": "Remote coding lab",
       "description": "Persistent coding sandbox (4 vCPU / 8 GiB / 32 GiB, grain-ubuntu)",
       "tags": [
         "official"

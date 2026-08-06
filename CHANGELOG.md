@@ -18,10 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Daemon activity feed** — `GET /activity` returns a ring of recent control-plane mutations (create/start/stop/rm/exec/…). Clients send `User-Agent` / `X-Grain-Client` (`cli`, `desktop`, `mcp`, `sdk`). Desktop Activity drawer polls and merges daemon events with local UI notes so CLI/MCP/API actions appear, not only Desktop clicks.
 - **Persistent activity log** — activity ring stored at `data_dir/activity.json` (survives `grain down` / restart).
 - **Background metrics sampler** — daemon periodically samples guest `/stats` into each VM’s on-disk `metrics.ring` when metrics are enabled (not only when Desktop polls).
+- **Desktop fast create** — New sandbox modes: cold boot, **from template** (stopped/suspended), **from warm pool** (status + Fill).
+- **Multi-host Run progressive results** — hosts stream in as each `ExecOne` finishes; recent command history.
+- **Sandbox list density** — Compact rows, sort by name/status/newest, status group headers.
 
 ### Changed
 
 - **Sandbox metrics default on** — `sandbox_metrics_enabled` defaults to **true**; new sandboxes write host-side history under `vms/<name>/metrics.ring`. Opt out with `sandbox_metrics_enabled: false` or per-create `metrics_enabled: false`. History is still readable after disable.
+- **Defer disk grow after agent** — when clone disk is larger than the base image, skip cloud-init growpart/resizefs during boot; grow root FS via agent after wait-ready (faster agent-ready path).
+- **Official recipe titles** — human-readable catalog titles (ids unchanged).
 
 ### Changed
 

@@ -39,6 +39,9 @@
     currentView: "sandboxes",
     hostTestedOK: false,
     sandboxFilter: "",
+    sandboxSort: "name",
+    sandboxCompact: false,
+    multiSSHHistory: [],
     bulkBusy: false,
     /** @type {any[]} daemon activity from GET /activity */
     daemonActivity: [],
@@ -639,19 +642,53 @@
 
   function filteredSandboxes() {
     const q = (state.sandboxFilter || "").trim().toLowerCase();
-    const list = state.sandboxes || [];
-    if (!q) return list;
-    return list.filter((vm) => sandboxMatchesFilter(vm, q));
+    let list = state.sandboxes || [];
+    if (q) list = list.filter((vm) => sandboxMatchesFilter(vm, q));
+    const sort = state.sandboxSort || "name";
+    const statusRank = (s) => {
+      switch ((s || "").toLowerCase()) {
+        case "running":
+          return 0;
+        case "creating":
+          return 1;
+        case "paused":
+          return 2;
+        case "suspended":
+          return 3;
+        case "stopped":
+          return 4;
+        case "error":
+          return 5;
+        default:
+          return 6;
+      }
+    };
+    list = [...list].sort((a, b) => {
+      if (sort === "status") {
+        const d = statusRank(a.status) - statusRank(b.status);
+        if (d !== 0) return d;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+      if (sort === "created") {
+        const ta = Date.parse(a.created_at || 0) || 0;
+        const tb = Date.parse(b.created_at || 0) || 0;
+        return tb - ta;
+      }
+      return (a.name || "").localeCompare(b.name || "");
+    });
+    return list;
   }
 
   function renderTable() {
     const tb = $("#vm-tbody");
+    const table = $("#vm-table");
     if (!tb) return;
     const all = state.sandboxes || [];
     const list = filteredSandboxes();
     const multi = all.length >= 2;
     if (!multi) state.selectedSet.clear();
     updateBulkBar();
+    if (table) table.classList.toggle("compact", !!state.sandboxCompact);
 
     if (!all.length) {
       updateBulkBar();
@@ -664,23 +701,34 @@
       tb.innerHTML = `<tr><td colspan="6" class="empty-cell muted">No sandboxes match “${escapeHtml(state.sandboxFilter)}”.</td></tr>`;
       return;
     }
-    tb.innerHTML = list
-      .map((vm) => {
-        const sel = state.selected === vm.name ? "selected" : "";
-        const checked = state.selectedSet.has(vm.name) ? "checked" : "";
-        const check = multi
-          ? `<td><input type="checkbox" class="row-check" data-name="${escapeHtml(vm.name)}" ${checked} /></td>`
-          : "";
-        return `<tr data-name="${escapeHtml(vm.name)}" class="${sel}">
+    // Optional status group headers when sorting by status
+    const rows = [];
+    let lastStatus = null;
+    for (const vm of list) {
+      if ((state.sandboxSort || "name") === "status") {
+        const st = (vm.status || "unknown").toLowerCase();
+        if (st !== lastStatus) {
+          lastStatus = st;
+          rows.push(
+            `<tr class="status-group"><td colspan="6" class="muted">${escapeHtml(st)} · ${list.filter((x) => (x.status || "").toLowerCase() === st).length}</td></tr>`
+          );
+        }
+      }
+      const sel = state.selected === vm.name ? "selected" : "";
+      const checked = state.selectedSet.has(vm.name) ? "checked" : "";
+      const check = multi
+        ? `<td><input type="checkbox" class="row-check" data-name="${escapeHtml(vm.name)}" ${checked} /></td>`
+        : "";
+      rows.push(`<tr data-name="${escapeHtml(vm.name)}" class="${sel}">
           ${check}
           <td><strong class="selectable">${escapeHtml(vm.name)}</strong></td>
           <td>${statusBadge(vm.status)}</td>
           <td>${agentCell(vm)}</td>
           <td class="muted selectable">${escapeHtml(vm.image || "—")}</td>
           <td class="muted">${vm.cpus != null && vm.cpus !== "" ? vm.cpus + " vCPUs" : "—"} / ${vm.memory_mb || "—"} MiB</td>
-        </tr>`;
-      })
-      .join("");
+        </tr>`);
+    }
+    tb.innerHTML = rows.join("");
 
     $$("#vm-tbody tr[data-name]").forEach((tr) => {
       tr.addEventListener("click", (e) => {
@@ -760,6 +808,90 @@
     out.innerHTML = rows.join("") || `<div class="mss-line mss-muted">(no results)</div>`;
   }
 
+  function loadMultiSSHHistory() {
+    try {
+      const raw = JSON.parse(localStorage.getItem("grain-desktop-multi-ssh-history") || "[]");
+      state.multiSSHHistory = Array.isArray(raw) ? raw.slice(0, 20) : [];
+    } catch (_) {
+      state.multiSSHHistory = [];
+    }
+  }
+  function pushMultiSSHHistory(cmd) {
+    cmd = (cmd || "").trim();
+    if (!cmd) return;
+    const next = [cmd, ...(state.multiSSHHistory || []).filter((c) => c !== cmd)].slice(0, 20);
+    state.multiSSHHistory = next;
+    try {
+      localStorage.setItem("grain-desktop-multi-ssh-history", JSON.stringify(next));
+    } catch (_) {}
+    renderMultiSSHHistory();
+  }
+  function renderMultiSSHHistory() {
+    const el = $("#multi-ssh-history");
+    const dl = $("#multi-ssh-cmd-list");
+    const h = state.multiSSHHistory || [];
+    if (dl) {
+      dl.innerHTML = h.map((c) => `<option value="${escapeHtml(c)}"></option>`).join("");
+    }
+    if (!el) return;
+    if (!h.length) {
+      el.innerHTML = "";
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    el.innerHTML =
+      `<span class="muted">Recent:</span> ` +
+      h
+        .slice(0, 8)
+        .map(
+          (c) =>
+            `<button type="button" class="btn btn-ghost btn-sm mss-hist-btn" data-cmd="${escapeHtml(c)}">${escapeHtml(c.length > 40 ? c.slice(0, 38) + "…" : c)}</button>`
+        )
+        .join(" ");
+    $$("#multi-ssh-history [data-cmd]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const cmd = $("#multi-ssh-cmd");
+        if (cmd) {
+          cmd.value = b.dataset.cmd || "";
+          cmd.focus();
+        }
+      });
+    });
+  }
+
+  function appendMultiSSHResult(r) {
+    const out = $("#multi-ssh-out");
+    if (!out) return;
+    // Remove "running" placeholder lines
+    out.querySelectorAll(".mss-running").forEach((n) => n.remove());
+    const name = r.name || "?";
+    const err = r.error;
+    let body = "";
+    if (err) body = "error: " + err;
+    else if (r.line && r.line.startsWith(name + ": ")) body = r.line.slice(name.length + 2);
+    else if (r.stdout) body = String(r.stdout).replace(/\r?\n$/, "");
+    else if (r.stderr) body = String(r.stderr).replace(/\r?\n$/, "");
+    else body = `(exit ${r.exit_code != null ? r.exit_code : "?"})`;
+    const lines = String(body).split(/\r?\n/);
+    const frag = document.createDocumentFragment();
+    lines.forEach((ln, i) => {
+      const div = document.createElement("div");
+      const bad = !!(err || (r.exit_code && r.exit_code !== 0));
+      div.className = "mss-line" + (bad ? " mss-err" : "");
+      if (i === 0) {
+        div.innerHTML =
+          `<span class="mss-host selectable">${escapeHtml(name)}</span><span class="mss-sep">: </span>` +
+          `<span class="mss-body selectable">${escapeHtml(ln)}</span>`;
+      } else {
+        div.innerHTML = `<span class="mss-host-pad"></span><span class="mss-body selectable">${escapeHtml(ln)}</span>`;
+      }
+      frag.appendChild(div);
+    });
+    out.appendChild(frag);
+    out.scrollTop = out.scrollHeight;
+  }
+
   async function runMultiSSH(e) {
     if (e) e.preventDefault();
     const names = [...state.selectedSet].sort();
@@ -769,23 +901,49 @@
       toast("Enter a command", true);
       return;
     }
+    pushMultiSSHHistory(command);
     const out = $("#multi-ssh-out");
     const btn = $("#multi-ssh-run");
     if (out) {
-      out.innerHTML = `<div class="mss-line mss-muted"><span class="mss-prompt">$</span> ${escapeHtml(command)}</div>` +
-        `<div class="mss-line mss-muted">// running on ${names.length} hosts…</div>`;
+      out.innerHTML =
+        `<div class="mss-line mss-muted"><span class="mss-prompt">$</span> ${escapeHtml(command)}</div>` +
+        `<div class="mss-line mss-muted mss-running">// running on ${names.length} hosts…</div>`;
     }
     if (btn) btn.disabled = true;
+    const results = [];
+    let failed = 0;
     try {
-      const results = await act(
-        "bulk exec",
-        () => call("BulkExec", names, command),
-        { target: `${names.length} sandboxes`, summary: `ran “${command}” on ${names.length} sandboxes` }
-      );
-      renderMultiSSHResults(results, command);
+      await mapPool(names, 8, async (name) => {
+        try {
+          const r = await call("ExecOne", name, command);
+          results.push(r);
+          if (r.error || (r.exit_code && r.exit_code !== 0)) failed++;
+          appendMultiSSHResult(r);
+          return r;
+        } catch (err) {
+          failed++;
+          const r = {
+            name,
+            error: String(err).replace(/^Error:\s*/i, ""),
+            line: name + ": error: " + String(err).replace(/^Error:\s*/i, ""),
+          };
+          results.push(r);
+          appendMultiSSHResult(r);
+          return r;
+        }
+      });
+      out?.querySelectorAll(".mss-running").forEach((n) => n.remove());
+      const okN = names.length - failed;
+      pushEvent({
+        action: "bulk exec",
+        target: `${names.length} sandboxes`,
+        status: failed ? "error" : "success",
+        summary: `ran “${command}” on ${okN}/${names.length} hosts`,
+      });
+      if (failed) toast(`Done — ${failed} host(s) failed`, true);
     } catch (err) {
       if (out) {
-        out.innerHTML = `<div class="mss-line mss-err">${escapeHtml(String(err))}</div>`;
+        out.innerHTML += `<div class="mss-line mss-err">${escapeHtml(String(err))}</div>`;
       }
       toast(String(err), true);
     } finally {
@@ -2844,6 +3002,66 @@
     };
   }
 
+  async function refreshCreateModeUI() {
+    const mode = document.querySelector('input[name="create_mode"]:checked')?.value || "cold";
+    const cold = $("#create-cold-fields");
+    const from = $("#create-from-fields");
+    const pool = $("#create-pool-fields");
+    if (cold) cold.hidden = mode !== "cold";
+    if (from) from.hidden = mode !== "from";
+    if (pool) pool.hidden = mode !== "pool";
+    const hint = $("#create-mode-hint");
+    if (hint) {
+      if (mode === "from")
+        hint.textContent = "Clones a suspended/stopped template and starts it (−loadvm when snapshotted).";
+      else if (mode === "pool")
+        hint.textContent = "Claims a pre-cloned pool member — fastest path when the pool has ready VMs.";
+      else hint.textContent = "Cold boot waits for guest agent (~seconds). Template/pool use suspend snapshots when available.";
+    }
+    if (mode === "from") await fillTemplateSelect();
+    if (mode === "pool") await refreshPoolStatusUI();
+  }
+
+  async function fillTemplateSelect() {
+    const sel = $("#create-from-template");
+    if (!sel) return;
+    sel.innerHTML = `<option value="">Loading…</option>`;
+    try {
+      const list = (await call("ListCreateTemplates")) || [];
+      if (!list.length) {
+        sel.innerHTML = `<option value="">No stopped/suspended persistent VMs</option>`;
+        return;
+      }
+      sel.innerHTML = list
+        .map(
+          (t) =>
+            `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)} · ${escapeHtml(t.status)} · ${escapeHtml(t.image || "")}</option>`
+        )
+        .join("");
+    } catch (e) {
+      sel.innerHTML = `<option value="">${escapeHtml(String(e))}</option>`;
+    }
+  }
+
+  async function refreshPoolStatusUI() {
+    const el = $("#create-pool-status");
+    if (!el) return;
+    el.textContent = "Checking warm pool…";
+    try {
+      const st = await call("PoolStatus");
+      if (!st?.enabled) {
+        el.innerHTML =
+          "Warm pool is <strong>not configured</strong>. Set <code>warm_pool.template</code> and <code>warm_pool.size</code> in config, then Fill.";
+        return;
+      }
+      el.innerHTML = `Pool <strong>${escapeHtml(st.template || "")}</strong> — ready <strong>${st.ready ?? 0}</strong> / desired <strong>${st.desired ?? 0}</strong>${
+        (st.members || []).length ? ` · ${escapeHtml((st.members || []).join(", "))}` : ""
+      }`;
+    } catch (e) {
+      el.textContent = String(e);
+    }
+  }
+
   async function openCreate() {
     await fillImageSelect();
     try {
@@ -2852,7 +3070,12 @@
       if (d.cpus) f.cpus.value = d.cpus;
       if (d.memory_mb) f.memory_mb.value = d.memory_mb;
       if (d.disk_gb) f.disk_gb.value = d.disk_gb;
+      // metrics default on unless user unchecked last time
+      if (f.metrics_enabled) f.metrics_enabled.checked = true;
     } catch (_) {}
+    const cold = document.querySelector('input[name="create_mode"][value="cold"]');
+    if (cold) cold.checked = true;
+    await refreshCreateModeUI();
     $("#create-status").textContent = "";
     $("#create-submit").disabled = false;
     openModal("modal-create");
@@ -2861,6 +3084,7 @@
   async function onCreate(ev) {
     ev.preventDefault();
     const fd = new FormData(ev.target);
+    const mode = (fd.get("create_mode") || "cold").toString();
     let image = fd.get("image") || "";
     if (image === "__custom__") image = (fd.get("image_custom") || "").toString().trim();
     const opts = {
@@ -2879,7 +3103,22 @@
       publish: fd.get("publish") || "",
       mounts: fd.get("mounts") || "",
       userdata: fd.get("userdata") || "",
+      from: "",
+      from_pool: false,
     };
+    if (mode === "from") {
+      opts.from = (fd.get("from_template") || "").toString().trim();
+      if (!opts.from) {
+        $("#create-status").textContent = "Pick a template (stopped/suspended persistent VM)";
+        return;
+      }
+      opts.image = "";
+      opts.wait = "";
+    } else if (mode === "pool") {
+      opts.from_pool = true;
+      opts.image = "";
+      opts.wait = "";
+    }
     try {
       if (opts.name) await call("ValidateName", opts.name);
     } catch (e) {
@@ -3048,19 +3287,35 @@
     };
     const v = verbs[kind];
     if (!v) return;
+    if (kind === "start") {
+      const toStart = names.filter((n) => {
+        const sb = (state.sandboxes || []).find((s) => s.name === n);
+        return sb && !isRunning(sb.status);
+      });
+      if (toStart.length === 0) {
+        toast("All selected sandboxes are already running");
+        return;
+      }
+    }
     const n = names.length;
     const preview = names.length <= 8 ? names.join(", ") : names.slice(0, 6).join(", ") + `… (+${n - 6} more)`;
-    const detail =
+    let detail =
       kind === "rm"
         ? `Remove ${n} sandboxes?\n\n${preview}\n\nThis deletes them permanently (ephemeral disks are discarded).`
         : `${v.title} ${n} sandboxes?\n\n${preview}`;
+    if (kind === "start" && n >= 10) {
+      detail += `\n\nLarge bulk start may hit host resource caps (max_vms / memory); failures are reported per host.`;
+    }
     const ok = await confirmDialog(detail, {
       yes: kind === "rm" ? "Remove" : v.title,
       no: "Cancel",
       danger: kind === "rm",
     });
     if (!ok) return;
+    return runBulk(kind, names, v, n);
+  }
 
+  async function runBulk(kind, names, v, n) {
     state.bulkBusy = true;
     $$("#bulk-bar button").forEach((b) => {
       b.disabled = true;
@@ -3505,11 +3760,43 @@
     $("#bulk-start")?.addEventListener("click", () => bulk("start"));
     $("#bulk-stop")?.addEventListener("click", () => bulk("stop"));
     $("#bulk-rm")?.addEventListener("click", () => bulk("rm"));
-    $("#bulk-ssh")?.addEventListener("click", () => openMultiSSH());
+    $("#bulk-ssh")?.addEventListener("click", () => {
+      loadMultiSSHHistory();
+      openMultiSSH();
+      renderMultiSSHHistory();
+    });
     $("#multi-ssh-form")?.addEventListener("submit", (e) => runMultiSSH(e));
     $("#sandbox-search")?.addEventListener("input", (e) => {
       state.sandboxFilter = e.target.value || "";
       renderTable();
+    });
+    $("#sandbox-sort")?.addEventListener("change", (e) => {
+      state.sandboxSort = e.target.value || "name";
+      renderTable();
+    });
+    $("#sandbox-compact")?.addEventListener("change", (e) => {
+      state.sandboxCompact = !!e.target.checked;
+      try {
+        localStorage.setItem("grain-desktop-compact", state.sandboxCompact ? "1" : "0");
+      } catch (_) {}
+      renderTable();
+    });
+    try {
+      state.sandboxCompact = localStorage.getItem("grain-desktop-compact") === "1";
+      const cb = $("#sandbox-compact");
+      if (cb) cb.checked = state.sandboxCompact;
+    } catch (_) {}
+    $$('input[name="create_mode"]').forEach((r) =>
+      r.addEventListener("change", () => refreshCreateModeUI())
+    );
+    $("#create-pool-fill")?.addEventListener("click", async () => {
+      try {
+        await act("pool fill", () => call("PoolFill"), { target: "warm pool" });
+        toast("Warm pool fill started / complete");
+        await refreshPoolStatusUI();
+      } catch (e) {
+        toast(String(e), true);
+      }
     });
     $("#check-all")?.addEventListener("change", (e) => {
       state.selectedSet = new Set();

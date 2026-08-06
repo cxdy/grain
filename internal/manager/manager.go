@@ -306,7 +306,8 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
 	// Mount runcmds are injected from prepared mounts (9p or virtiofs).
 	// Agent-ready goldens use a minimal seed so clone boots do less cloud-init work.
-	// Skip growpart/resizefs unless the clone disk was enlarged past the base image.
+	// Never run growpart/resizefs in first-boot cloud-init: it blocks agent readiness.
+	// When the clone disk is larger than the base, grow runs after agent is up.
 	growDisk := diskNeedsGrow(base, diskGB)
 	mountDriver := hypervisor.ResolveMountDriver(m.cfg.MountDriver, m.log)
 	if _, err := cloudinit.WriteNoCloudOpts(vmDir, cloudinit.SeedOpts{
@@ -315,7 +316,7 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		Extra:    opts.Userdata,
 		Mounts:   mountSpecs(mounts, mountDriver),
 		Minimal:  m.imageHasAgent(img),
-		GrowDisk: growDisk,
+		GrowDisk: false, // defer to after agent (see growRootAfterAgent)
 	}); err != nil {
 		// mock / missing iso tools: log and continue (SSH inject won't work)
 		m.log.Warn("cloud-init seed skipped", "err", err)
@@ -351,12 +352,21 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		}
 		return m.fail(inst, err, opts)
 	}
+	// Enlarge root FS after agent is up so cold create is not stuck in growpart.
+	// Skip on mock (no real guest FS) — keeps create event phase lists stable in tests.
+	if growDisk && m.cfg.Hypervisor != "mock" {
+		emitCreate(opts, vm.CreateEvent{Phase: "grow_disk", Name: name, Message: "growing root filesystem"})
+		if err := m.growRootAfterAgent(ctx, inst); err != nil {
+			m.log.Warn("post-agent disk grow failed", "name", inst.Name, "err", err)
+		}
+	}
 	tReady := time.Now()
 	m.log.Info("create timing",
 		"name", inst.Name,
 		"image_ms", tImage.Sub(tCreate).Milliseconds(),
 		"disk_ms", tDisk.Sub(tImage).Milliseconds(),
 		"seed_ms", tSeed.Sub(tDisk).Milliseconds(),
+		"grow_deferred", growDisk,
 		"start_ms", tStart.Sub(tSeed).Milliseconds(),
 		"wait_ms", tReady.Sub(tStart).Milliseconds(),
 		"total_ms", tReady.Sub(tCreate).Milliseconds(),
@@ -1544,6 +1554,41 @@ func diskLooksQcow2(path string) bool {
 		}
 	}
 	return false
+}
+
+// growRootAfterAgent best-effort expands the guest root partition and filesystem
+// after the agent is reachable. Kept out of first-boot cloud-init so agent-ready
+// is not blocked by multi-second growpart on large disks.
+func (m *Manager) growRootAfterAgent(ctx context.Context, inst *vm.Instance) error {
+	if inst == nil || !agentTarget(inst).HasEndpoint() {
+		return fmt.Errorf("no agent endpoint")
+	}
+	if m.cfg.Hypervisor == "mock" {
+		return nil
+	}
+	sctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	client, err := agent.Dial(sctx, agentTarget(inst))
+	if err != nil {
+		return err
+	}
+	// Ubuntu/Debian goldens: grow last partition on the root disk, then resize FS.
+	// shell -c so we can chain best-effort steps without failing the whole create.
+	script := `set -e
+ROOT_SRC=$(findmnt -n -o SOURCE / 2>/dev/null || true)
+DISK=$(lsblk -no PKNAME "$ROOT_SRC" 2>/dev/null | head -1 || true)
+PARTN=$(lsblk -no PARTNUM "$ROOT_SRC" 2>/dev/null | head -1 || true)
+if [ -n "$DISK" ] && [ -n "$PARTN" ] && command -v growpart >/dev/null 2>&1; then
+  growpart "/dev/$DISK" "$PARTN" || true
+fi
+if command -v resize2fs >/dev/null 2>&1 && [ -n "$ROOT_SRC" ]; then
+  resize2fs "$ROOT_SRC" || true
+elif command -v xfs_growfs >/dev/null 2>&1; then
+  xfs_growfs / || true
+fi
+`
+	_, err = client.ExecBuffered(sctx, "sh", "-c", script)
+	return err
 }
 
 // diskNeedsGrow reports whether sizeGB exceeds the base image virtual size.
