@@ -47,8 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **macOS screenshot TIFF → PNG** — full-resolution convert via `NSImage.cgImage` (the previous `NSBitmapImageRep(data:)` path could return a ~2KiB icon and break Cmd/Ctrl+V paste into `grain sh`).
-- **`grain agent deploy` binary search** — prefer `{data_dir}/agent/` from `grain update` over a stale `./bin/` in a git checkout.
 - **Firecracker doctor / guide pull-first** — missing `fc-kernel` / `grain-ubuntu-fc` recommend `grain image pull …` (BYO import remains fallback); soft notes no longer say “not imported” / “not published yet”. Guide operator checklist + known-limitations table align with vFC-1 agent production (net still QEMU-only); boot sample p50/p95 match AWS `m7i-flex.large` post-merge bench.
 - **Install / `grain update` quieter when already set up** — `scripts/install.sh` skips the MCP enable prompt when `~/.grain/config.yaml` already exists, and drops the long “Next steps” footer (install progress + short “grain X installed” / PATH line only).
 - **Paste screenshots into `grain sh`** — host clipboard paste prefers **images** (macOS: PNG/TIFF/JPEG via AppKit, converting screenshot TIFF→PNG; Linux: `wl-paste`/`xclip` image MIME types) before plain text. Guest `pbpaste`/xclip shims fetch via the shell control channel. Longer paste timeout for large images.
@@ -67,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **`grain tray`** — menu bar / system tray helper. It required a CGO-enabled build (not available in portable release archives) or a separate binary; status and lifecycle stay on the CLI and API.
+
+## [0.6.3] - 2026-08-06
+
+### Fixed
+
+- **macOS screenshot TIFF → PNG** — full-resolution convert via `NSImage.cgImage` (previous path could return a tiny icon-sized image).
+- **`grain agent deploy` binary search** — prefer `{data_dir}/agent/` from `grain update` over a stale `./bin/` in a git checkout.
 
 ## [0.6.2] - 2026-08-06
 

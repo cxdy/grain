@@ -45,12 +45,16 @@ paginate = 20
   description = "Linux microVM sandboxes on your own hardware — shells, GitHub Actions, and k3s labs."
   github = "https://github.com/cxdy/grain"
   # Current *released* docs version (patch path).
-  docsVersion = "0.6.2"
-  docsVersionLabel = "v0.6.2"
+  docsVersion = "0.6.3"
+  docsVersionLabel = "v0.6.3"
   # Shown in version dropdown; CI will extend with more releases later.
   [[params.docsVersions]]
+    version = "0.6.3"
+    label = "v0.6.3 (latest)"
+    path = "/docs/0.6.3/"
+  [[params.docsVersions]]
     version = "0.6.2"
-    label = "v0.6.2 (latest)"
+    label = "v0.6.2"
     path = "/docs/0.6.2/"
   [[params.docsVersions]]
     version = "0.6.1"
