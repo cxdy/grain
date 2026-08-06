@@ -578,6 +578,23 @@
       if (!h.enabled) {
         if (charts) charts.hidden = true;
         if (disabled) disabled.hidden = false;
+        const dis = $("#metrics-disabled");
+        if (dis) {
+          dis.innerHTML = `<p class="muted">Metrics are off for <strong>${escapeHtml(name)}</strong>.</p>
+            <p class="hint">Samples are stored on the Grain <strong>host</strong>
+            (<code>data_dir/vms/${escapeHtml(name)}/metrics.ring</code>) so remote Desktop still works.</p>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-enable-metrics">Enable metrics</button>`;
+          $("#btn-enable-metrics")?.addEventListener("click", async () => {
+            try {
+              await act("enable metrics", () => call("EnableSandboxMetrics", name, true), {
+                target: name,
+              });
+              toast(`Metrics enabled for ${name}`);
+              await loadMetrics(name);
+              await selectVM(name);
+            } catch (_) {}
+          });
+        }
         return;
       }
       if (disabled) disabled.hidden = true;
@@ -624,12 +641,21 @@
         meta.textContent = `${pts.length} samples · interval ${h.interval || "—"} · stored on Grain host (data_dir/vms/${name}/metrics.ring)`;
       }
     } catch (e) {
-      if (hint) {
-        hint.hidden = false;
-        hint.textContent = String(e).replace(/^Error:\s*/i, "");
-      }
+      const msg = String(e).replace(/^Error:\s*/i, "");
       if (charts) charts.hidden = true;
       if (disabled) disabled.hidden = true;
+      if (hint) {
+        hint.hidden = false;
+        // 404 = daemon too old (no metrics route) — most common after Desktop-only rebuild
+        if (/404|not found/i.test(msg)) {
+          hint.innerHTML = `<span class="hint bad">Metrics API not found (HTTP 404).</span>
+            <span class="hint"> The Grain <strong>daemon</strong> on this host is older than the Desktop client.
+            Rebuild and restart it: <code>just build && grain down && grain up</code>, then reopen Overview.
+            Metrics are stored on that host, not in the Desktop app.</span>`;
+        } else {
+          hint.textContent = msg;
+        }
+      }
     }
   }
 
@@ -689,6 +715,7 @@
       $("#detail-status-pill").innerHTML = statusBadge(vm.status);
       fillMeta(vm, $("#detail-meta"));
       fillInspectorSummary(vm);
+      fillMeta(vm, $("#inspector-meta"));
       if (switched && state.activeTab === "shell" && state.term) {
         try {
           state.term.reset();
@@ -754,6 +781,7 @@
           if (state.activeTab === "overview") {
             fillMeta(vm, $("#detail-meta"));
             fillInspectorSummary(vm);
+            fillMeta(vm, $("#inspector-meta"));
           }
         }
       } else if (state.selected && !names.has(state.selected)) {

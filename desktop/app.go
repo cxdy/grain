@@ -672,6 +672,38 @@ func (a *App) GetSandboxMetrics(name string) (desktop.MetricsHistoryDTO, error) 
 	return svc.SandboxMetrics(ctx, name)
 }
 
+// EnableSandboxMetrics sets metrics_enabled on the VM meta (host data_dir) and
+// samples once so Overview can start filling the ring.
+func (a *App) EnableSandboxMetrics(name string, enabled bool) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	meta, _, err := desktop.ReadSandboxMeta(svc.Config.DataDir, name)
+	if err != nil {
+		return err
+	}
+	_, err = desktop.WriteSandboxMeta(svc.Config.DataDir, name, desktop.SandboxMeta{
+		CPUs:              meta.CPUs,
+		MemoryMB:          meta.MemoryMB,
+		DiskGB:            meta.DiskGB,
+		Image:             meta.Image,
+		Persistent:        meta.Persistent,
+		MetricsEnabled:    enabled,
+		MetricsEnabledSet: true,
+	})
+	if err != nil {
+		return err
+	}
+	// Best-effort live sample via API if daemon is up
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	_, _ = svc.SandboxMetrics(ctx, name)
+	return nil
+}
+
 // DoctorRepair runs an allowlisted repair command (e.g. grain up).
 func (a *App) DoctorRepair(command string) (desktop.RepairResult, error) {
 	svc, err := a.service()

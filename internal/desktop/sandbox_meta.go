@@ -25,6 +25,10 @@ type SandboxMeta struct {
 	Arch       string `json:"arch,omitempty"`
 	GPU        string `json:"gpu,omitempty"`
 	DiskPath   string `json:"disk_path,omitempty"`
+	// MetricsEnabled opt-in; when set in patch (via pointer-like bool field in UI),
+	// written to meta. Use MetricsEnabledSet to distinguish false from omitted.
+	MetricsEnabled    bool `json:"metrics_enabled"`
+	MetricsEnabledSet bool `json:"metrics_enabled_set,omitempty"`
 }
 
 // ReadSandboxMeta loads dataDir/vms/<name>/meta.json.
@@ -90,6 +94,9 @@ func WriteSandboxMeta(dataDir, name string, patch SandboxMeta) (WriteSandboxMeta
 		raw["gpu"] = patch.GPU
 	}
 	raw["persistent"] = patch.Persistent
+	if patch.MetricsEnabledSet {
+		raw["metrics_enabled"] = patch.MetricsEnabled
+	}
 
 	// Grow backing disk when requested size exceeds actual image virtual size.
 	// Compare against the real qcow2, not only previous meta (meta may already
