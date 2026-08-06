@@ -14,10 +14,12 @@ func TestCmdShFlags(t *testing.T) {
 	ssh := cmd.Flags().Lookup("ssh")
 	if ssh == nil {
 		t.Fatal("missing --ssh flag")
+		return
 	}
 	agent := cmd.Flags().Lookup("agent")
 	if agent == nil {
 		t.Fatal("missing --agent flag")
+		return
 	}
 	// Defaults false.
 	if ssh.DefValue != "false" || agent.DefValue != "false" {

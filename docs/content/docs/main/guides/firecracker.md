@@ -1,6 +1,6 @@
 ---
 title: "Firecracker on Linux"
-description: "Firecracker backend on Linux+KVM: agent production (vFC-1) over vsock, catalog pull, doctor; partial TAP publish/fwd (vFC-2)."
+description: "Supported Firecracker backend on Linux+KVM: agent (vFC-1) over vsock, catalog pull (amd64/arm64), TAP publish/fwd (vFC-2 partial)."
 section: guides
 keywords:
   - Firecracker
@@ -25,11 +25,11 @@ grain can launch sandboxes with [Firecracker](https://firecracker-microvm.github
 | Tier | Status | What works |
 |------|--------|------------|
 | **FC agent production (vFC-1)** | **Supported** | Pull `fc-kernel` + `grain-ubuntu-fc`; doctor; `grain new --wait agent`; `grain x` / agent shell / cp / sync / MCP guest tools over vsock UDS + `CONNECT` |
-| **FC net (vFC-2 partial)** | **Supported** | TAP + guest IP; create-time `-P` / `--publish` and `grain fwd add/ls/rm` via host TCP proxy to guest IP (needs CAP_NET_ADMIN + `/dev/net/tun`; socat or python3 for proxies). |
-| **Still QEMU-only** | — | Overlay L2, 9p/virtiofs mounts, SLIRP `10.0.2.2` proxy, virtio GPU |
+| **FC net (vFC-2 partial)** | **Supported** | TAP + guest IP; create-time `-P` / `--publish`, SSH host port, and `grain fwd add/ls/rm` via host TCP proxy to guest IP (needs CAP_NET_ADMIN + `/dev/net/tun`; **socat** or **python3** for proxies). **TCP only** — UDP publish stays QEMU-only. |
+| **Still QEMU-only** | — | Overlay L2, 9p/virtiofs mounts, SLIRP `10.0.2.2` proxy, virtio GPU, UDP hostfwd, `--publish-socket` |
 | **Default product path** | **QEMU** | macOS + Linux; full SLIRP/publish/mounts/overlay/GPU where applicable |
 
-Default remains `hypervisor: qemu`. Jailer-less FC launch (single-tenant only). Nested KVM: works when the outer hypervisor exposes `vmx`/`svm` so `/dev/kvm` exists in this guest.
+Default remains `hypervisor: qemu`. Firecracker on grain is **supported** (not experimental) for the rows above. Jailer-less launch (single-tenant only). Nested KVM: works when the outer hypervisor exposes `vmx`/`svm` so `/dev/kvm` exists in this guest.
 
 macOS, missing Firecracker binary, or unusable **`/dev/kvm`** fail with clear errors (`grain doctor` and create). Networking failures without CAP_NET_ADMIN mention privilege in the error.
 
@@ -56,7 +56,7 @@ kernel_path: ""                   # optional; default ~/.grain/kernels/vmlinux
 | `firecracker_binary` | `firecracker` | Absolute path or name on `PATH` |
 | `kernel_path` | empty | Guest **vmlinux**; empty → `~/.grain/kernels/vmlinux` (under `data_dir`) |
 
-See [Configuration](../../reference/config/#firecracker-experimental).
+See [Configuration](../../reference/config/#firecracker).
 
 ## Requirements
 
@@ -113,8 +113,8 @@ grain’s QEMU catalog images (`ubuntu-cloud`, `grain-ubuntu`, `alpine-cloud`) a
 
 | Catalog ID | Role | Status today |
 |------------|------|----------------|
-| **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **Pullable** from `fc-latest` → `images/grain-ubuntu-fc/disk.raw` (or BYO `import`) |
-| **`fc-kernel`** | Guest **vmlinux** artifact | **Pullable** from `fc-latest` → `~/.grain/kernels/vmlinux` (or BYO `import` / `kernel_path`) |
+| **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **Pullable** from `fc-latest` for **amd64 and arm64** → `images/grain-ubuntu-fc/disk.raw` (or BYO `import`) |
+| **`fc-kernel`** | Guest **vmlinux** artifact | **Pullable** from `fc-latest` for **amd64 and arm64** → `~/.grain/kernels/vmlinux` (or BYO `import` / `kernel_path`) |
 
 These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. **Pull is the happy path**; BYO import remains first-class.
 
@@ -160,7 +160,7 @@ grain image import ./rootfs.ext4 --id grain-ubuntu-fc
 grain new -i grain-ubuntu-fc --wait agent
 ```
 
-See also [Images](../images/#firecracker-rootfs-experimental) for the QEMU/golden workflow. FC agent production (vFC-1) is a separate catalog/kernel path from QEMU cloud images.
+See also [Images](../images/#firecracker-rootfs) for the QEMU/golden workflow. FC agent production (vFC-1) is a separate catalog/kernel path from QEMU cloud images.
 
 ### Suggested layout
 
@@ -183,9 +183,9 @@ This backend is **CNI-less / jailer-less**. Agent uses vsock; optional TAP + hos
 
 | Channel | Status |
 |---------|--------|
-| SSH / port forwards (`-P`, `grain fwd`) | **Supported (vFC-2)** — TAP guest IP + host TCP proxy (needs CAP_NET_ADMIN; socat/python3) |
+| SSH / port forwards (`-P`, `grain fwd`) | **Supported (vFC-2)** — TAP guest IP + host TCP proxy (needs CAP_NET_ADMIN; socat/python3). TCP only. |
 | Overlay / shared L2 | **Not available** (use QEMU) |
-| grain-agent | **Supported** — Firecracker vsock UDS + `CONNECT` (vFC-1); optional TCP DNAT |
+| grain-agent | **Supported** — Firecracker vsock UDS + `CONNECT` (vFC-1); optional host TCP proxy to guest `:7475` |
 
 ### Publish example (Linux + CAP_NET_ADMIN)
 
@@ -206,7 +206,7 @@ Smoke: `./scripts/smoke-fc-net.sh` (guest HTTP listener + host `curl` for create
 On Start, grain:
 
 - Allocates a guest **CID** (`AgentCID`) and configures Firecracker `vsock` with `uds_path` = `…/fc-vsock.sock`
-- When net is enabled: creates TAP, allocates SSH/agent/publish host ports; after agent is up, configures guest eth0 via agent exec and starts host TCP proxies for create-time `-P` (same path as live `grain fwd add`)
+- When net is enabled: creates TAP, allocates SSH/agent/publish host ports; after agent is up, configures guest eth0 via agent exec and starts host TCP proxies for create-time `-P`, **SSH**, and **agent TCP** (same path as live `grain fwd add`)
 
 Firecracker’s host-side vsock is **not** AF_VSOCK/`/dev/vhost-vsock`. Host clients connect to the UDS and send `CONNECT <port>\n` (see [Firecracker vsock docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md)). Guest agent listens on AF_VSOCK port **7475**. Host `agent.Dial` prefers UDS + CONNECT (vFC-1).
 
@@ -257,13 +257,13 @@ grain new -i grain-ubuntu-fc --wait agent
 |------------|----------------|--------------------------------------|
 | Host OS | macOS + Linux | **Linux only** |
 | Acceleration | HVF / KVM (TCG fallback on Linux) | **KVM required** (no TCG) |
-| Catalog images | QEMU cloud qcow2 first-class | **`fc-kernel` + `grain-ubuntu-fc` pullable** (`fc-latest`); QEMU cloud images not drop-in |
+| Catalog images | QEMU cloud qcow2 first-class | **`fc-kernel` + `grain-ubuntu-fc` pullable** (`fc-latest`, **amd64 + arm64**); QEMU cloud images not drop-in |
 | Guest kernel | QEMU/UEFI path | Catalog **`fc-kernel`** → `vmlinux` (or `kernel_path` / BYO import) |
-| SSH + hostfwd / `-P` | Yes (SLIRP) | **Yes** — TAP DNAT / TCP proxy (CAP_NET_ADMIN) |
-| Guest agent reachability | TCP hostfwd and/or vhost-vsock | **Supported** — FC vsock UDS + `CONNECT` (primary); optional TCP DNAT |
-| 9p / virtiofs mounts | Yes | **No** (not wired; vFC-2) |
-| Overlay network | Yes | **No** (vFC-2) |
-| Egress proxy via SLIRP | Yes | **No** host path (vFC-2) |
+| SSH + hostfwd / `-P` | Yes (SLIRP; TCP+UDP) | **Yes (TCP)** — TAP + host TCP proxy (CAP_NET_ADMIN; socat/python3). UDP → use QEMU |
+| Guest agent reachability | TCP hostfwd and/or vhost-vsock | **Supported** — FC vsock UDS + `CONNECT` (primary); optional TCP proxy to `:7475` |
+| 9p / virtiofs mounts | Yes | **No** (QEMU-only) |
+| Overlay network | Yes | **No** (QEMU-only) |
+| Egress proxy via SLIRP | Yes | **No** host path (guest uses TAP default route + MASQUERADE) |
 | GPU (`virtio`) | Yes | **No** |
 | Suspend / savevm | Yes | **Unsupported** |
 | Pause / resume | QMP | FC API (when socket up) |
@@ -290,10 +290,10 @@ Nested virt is slower than bare-metal KVM; re-run `bench-fc.sh` on your class be
 ## Related
 
 - [Hypervisor matrix](../../explain/hypervisor-matrix/) — QEMU vs FC today + vFC-1 / vFC-2 targets
-- [Images](../images/#firecracker-rootfs-experimental) — base images, golden bake (QEMU-oriented); FC rootfs notes
-- [Networking](../networking/) — QEMU SLIRP / hostfwd (not used by FC)
+- [Images](../images/#firecracker-rootfs) — base images, golden bake (QEMU-oriented); FC rootfs notes
+- [Networking](../networking/) — QEMU SLIRP / hostfwd (FC uses TAP + TCP proxy)
 - [Guest agent](../agent/) — guest agent HTTP API
 - [Troubleshooting](../troubleshooting/) — doctor and logs (includes Firecracker doctor rows)
-- [Configuration](../../reference/config/#firecracker-experimental) — `hypervisor`, `firecracker_binary`, `kernel_path`
+- [Configuration](../../reference/config/#firecracker) — `hypervisor`, `firecracker_binary`, `kernel_path`
 - [Concepts](../../get-started/concepts/#hypervisors) — hypervisor glossary
 - [Product surface](../../explain/parity/) — FC agent production vs QEMU-only net

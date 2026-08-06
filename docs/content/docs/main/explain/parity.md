@@ -1,5 +1,5 @@
 ---
-title: "Product surface (what’s done / experimental)"
+title: "Product surface (what’s done / deferred)"
 description: "What grain implements for local Linux microVM sandboxes."
 section: explain
 keywords:
@@ -38,7 +38,7 @@ grain’s local microVM product surface as of the v0.2 line.
 | Guest arch selection (`--arch`, incl. x86_64 on Apple Silicon via QEMU) | Done |
 | Virtio GPU (`--gpu` / `gpu: virtio`) | Done |
 | Shared overlay network between VMs (`network: overlay`) | Done |
-| Firecracker backend | **Agent production (vFC-1)** + **partial net (vFC-2)**: TAP publish/fwd; overlay/mounts still QEMU-only |
+| Firecracker backend | **Supported:** agent production (vFC-1) + partial net (vFC-2) TAP/TCP publish/fwd on Linux+KVM (`fc-latest` amd64/arm64); overlay/mounts/UDP still QEMU-only |
 
 **Firecracker support policy**
 

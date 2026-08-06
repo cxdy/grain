@@ -382,22 +382,45 @@ func cmdFwdLs(cfgPath *string) *cobra.Command {
 			fmt.Printf("%-12s %-6s %-10s %-10s %s\n", "NAME", "PROTO", "HOST", "GUEST", "NOTE")
 			any := false
 			for _, inst := range list {
+				// Live proxy host ports (create-time -P, SSH, agent, grain fwd add).
+				liveByHost := map[int]vm.LiveForward{}
+				for _, lf := range inst.LiveForwards {
+					liveByHost[lf.HostPort] = lf
+				}
 				if inst.SSHPort > 0 {
+					note := "ssh"
+					if lf, ok := liveByHost[inst.SSHPort]; ok {
+						if lf.PID > 0 {
+							note = fmt.Sprintf("ssh pid=%d", lf.PID)
+						}
+						delete(liveByHost, inst.SSHPort) // avoid double-print
+					}
 					fmt.Printf("%-12s %-6s %-10s %-10s %s\n",
-						inst.Name, "tcp", fmt.Sprintf(":%d", inst.SSHPort), "22", "ssh")
+						inst.Name, "tcp", fmt.Sprintf(":%d", inst.SSHPort), "22", note)
 					any = true
+				}
+				if inst.AgentPort > 0 {
+					if lf, ok := liveByHost[inst.AgentPort]; ok {
+						note := "agent"
+						if lf.PID > 0 {
+							note = fmt.Sprintf("agent pid=%d", lf.PID)
+						}
+						fmt.Printf("%-12s %-6s %-10s %-10d %s\n",
+							inst.Name, "tcp", fmt.Sprintf(":%d", inst.AgentPort), lf.GuestPort, note)
+						delete(liveByHost, inst.AgentPort)
+						any = true
+					}
 				}
 				for _, f := range inst.Forwards {
 					// Skip create-time maps already served by a live proxy (FC path).
-					covered := false
-					for _, lf := range inst.LiveForwards {
-						if lf.HostPort == f.HostPort && f.HostPort > 0 {
-							covered = true
-							break
+					if f.HostPort > 0 {
+						if _, ok := liveByHost[f.HostPort]; ok {
+							continue
 						}
-					}
-					if covered {
-						continue
+						// Also skip if already shown as SSH/agent above.
+						if f.HostPort == inst.SSHPort || f.HostPort == inst.AgentPort {
+							continue
+						}
 					}
 					proto := f.Proto
 					if proto == "" {
@@ -412,11 +435,18 @@ func cmdFwdLs(cfgPath *string) *cobra.Command {
 						// Firecracker create-time -P becomes a TCP proxy after agent.
 						note = "publish"
 					}
+					if proto == "udp" {
+						note = "udp (QEMU hostfwd; not on Firecracker TCP proxy)"
+					}
 					fmt.Printf("%-12s %-6s %-10s %-10d %s\n",
 						inst.Name, proto, host, f.GuestPort, note)
 					any = true
 				}
+				// Remaining live forwards (user -P + grain fwd add).
 				for _, f := range inst.LiveForwards {
+					if _, ok := liveByHost[f.HostPort]; !ok {
+						continue // already printed as ssh/agent
+					}
 					host := fmt.Sprintf(":%d", f.HostPort)
 					note := "live"
 					if f.PID > 0 {

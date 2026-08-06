@@ -1,4 +1,4 @@
-# Firecracker kernel + raw rootfs bake (Phase 1).
+# Firecracker kernel + raw rootfs bake (amd64 + arm64).
 # Produces dist/fc/* via scripts/bake-fc.sh --all and publishes to the movable
 # fc-latest release tag (catalog pull). GitHub-hosted runners usually lack
 # /dev/kvm — this job only builds artifacts (no microVM smoke).
@@ -21,9 +21,18 @@ permissions:
 
 jobs:
   bake:
-    name: bake-fc (amd64)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    name: bake-fc (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            # Public arm64 Linux runners (GitHub-hosted).
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,27 +45,55 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq squashfs-tools qemu-utils e2fsprogs curl
+          sudo apt-get install -y -qq squashfs-tools qemu-utils e2fsprogs curl file
 
       - name: Bake kernel + rootfs
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
           chmod +x scripts/bake-fc.sh
           ./scripts/bake-fc.sh --all
           ls -lh dist/fc/
           cat dist/fc/*.sha256
+          uname -m
+          file dist/fc/grain-ubuntu-fc-${{ matrix.arch }}.raw || true
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: grain-fc-amd64
+          name: grain-fc-${{ matrix.arch }}
           path: dist/fc/*
           if-no-files-found: error
           retention-days: 30
 
+  # Single publish so fc-latest always has both arches (or fails if either bake failed).
+  publish:
+    name: publish fc-latest
+    needs: bake
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download amd64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: grain-fc-amd64
+          path: dist/fc
+
+      - name: Download arm64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: grain-fc-arm64
+          path: dist/fc
+
+      - name: List assets
+        run: |
+          ls -lh dist/fc/
+          cat dist/fc/*.sha256
+
       # Movable fc-latest release so grain image pull grain-ubuntu-fc / fc-kernel works.
       # make_latest: false keeps code tags (v*) as the repo "latest" release.
+      # Upload both arches together so softprops does not drop one arch on rewrite.
       - name: Publish fc-latest release
-        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: fc-latest
@@ -65,7 +102,7 @@ jobs:
             Pre-baked **Firecracker** kernel + raw rootfs (Ubuntu + grain-agent).
 
             ```bash
-            # Linux + KVM + firecracker binary
+            # Linux + KVM + firecracker binary (amd64 or arm64 host)
             grain image pull fc-kernel
             grain image pull grain-ubuntu-fc
             # config: hypervisor: firecracker
@@ -74,18 +111,22 @@ jobs:
 
             | Asset | Role |
             |-------|------|
-            | `vmlinux-amd64` | Guest kernel → `data_dir/kernels/vmlinux` |
-            | `grain-ubuntu-fc-amd64.raw` | Raw rootfs with static grain-agent (vsock :7475) |
+            | `vmlinux-amd64` / `vmlinux-arm64` | Guest kernel → `data_dir/kernels/vmlinux` |
+            | `grain-ubuntu-fc-amd64.raw` / `grain-ubuntu-fc-arm64.raw` | Raw rootfs with static grain-agent (vsock :7475) |
 
-            Companion `.sha256` sidecars are verified by `grain image pull`.
+            Companion `.sha256` sidecars are verified by `grain image pull` (arch-matched to the host).
 
-            Built by `scripts/bake-fc.sh` from Firecracker CI kernel/rootfs pins.
-            This tag is rewritten on every successful bake. **Not** a code release.
+            Built by `scripts/bake-fc.sh` from Firecracker CI kernel/rootfs pins on **amd64** and **arm64** runners.
+            This tag is rewritten on every successful bake. **Not** a code release — use `v*` tags for binaries.
           files: |
             dist/fc/vmlinux-amd64
             dist/fc/vmlinux-amd64.sha256
             dist/fc/grain-ubuntu-fc-amd64.raw
             dist/fc/grain-ubuntu-fc-amd64.raw.sha256
+            dist/fc/vmlinux-arm64
+            dist/fc/vmlinux-arm64.sha256
+            dist/fc/grain-ubuntu-fc-arm64.raw
+            dist/fc/grain-ubuntu-fc-arm64.raw.sha256
           fail_on_unmatched_files: true
           make_latest: false
           prerelease: false

@@ -7,8 +7,9 @@
 #   vmlinux-<arch>
 #   vmlinux-<arch>.sha256
 #
-# Published (later) to GitHub Release tag `fc-latest` (see internal/image fcReleaseBase).
+# Published to GitHub Release tag `fc-latest` (see internal/image fcReleaseBase).
 # Catalog IDs: grain-ubuntu-fc (rootfs), fc-kernel (vmlinux → data_dir/kernels/vmlinux).
+# Multi-arch: set ARCH=amd64|arm64 (CI matrix publishes both to fc-latest).
 #
 # Rootfs strategy (v1): start from Firecracker CI Ubuntu squashfs, convert to
 # writable ext4, inject a static grain-agent with systemd unit (vsock :7475).

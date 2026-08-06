@@ -27,7 +27,7 @@ grain daemon
     │
     └── hypervisor runtime
             ├── qemu (default)  — HVF on Apple Silicon, KVM on Linux
-            ├── firecracker     — experimental, Linux
+            ├── firecracker     — supported Linux+KVM backend
             └── mock            — tests
 
 Linux guest
@@ -46,9 +46,9 @@ The daemon is the source of truth for which VMs exist, their ports, and disks. T
 2. Ensure base disk (pull/import)  
 3. Clone overlay / CoW disk  
 4. Write cloud-init seed ISO  
-5. Start hypervisor with hostfwd for SSH and agent (**QEMU**); Firecracker starts without hostfwd and uses vsock only  
+5. Start hypervisor with hostfwd for SSH and agent (**QEMU**); Firecracker uses vsock for agent and optional TAP + TCP proxies for publish  
 6. Wait for readiness (`ssh` / `agent` / `userdata`)  
-7. Optionally deploy agent over SSH if not baked (QEMU path; FC experimental path differs)  
+7. Optionally deploy agent over SSH if not baked (QEMU path; Firecracker expects a baked/agent-ready rootfs)  
 
 ## Networking model (QEMU user mode)
 
@@ -58,7 +58,7 @@ Guests use SLIRP user networking:
 - Guest → host: often **`10.0.2.2`** (egress proxy listens so guests can use it)  
 - Guest ↔ guest: not supported without extra networking  
 
-Experimental **Firecracker** does not use this model — see [Firecracker on Linux](../../guides/firecracker/).
+**Firecracker** uses vsock UDS + optional TAP proxies instead of SLIRP hostfwd — see [Firecracker on Linux](../../guides/firecracker/).
 ## Why a guest agent?
 
 SSH is excellent for interactive login and bootstrap. The agent is better for:

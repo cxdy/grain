@@ -16,14 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **Firecracker official support** — guides/matrix/parity/config/concepts/architecture no longer label FC as experimental; support policy is **vFC-1 agent + vFC-2 partial net** on Linux+KVM. UDP mounts/overlay remain QEMU-only and are documented as such.
 - **Hypervisor feature matrix (QEMU vs Firecracker)** — new explain page comparing capabilities today with production-track target phases (**vFC-1** agent path over FC vsock UDS `CONNECT`, **vFC-2** net/mounts). Linked from Firecracker guide, product surface, and concepts; sidebar entry under Understand. Zero VMM code.
 - **Single-tenant / single-operator model** — document multi-user RBAC as an intentional non-goal: one `data_dir` owner (0700), unix socket 0600, shared `api_token` (not per-user roles); shared hosts use separate OS users/`data_dir` or separate hosts. `SECURITY.md`, explain/security, remote-host, remote-lab; config comments near `DataDir` / `APIToken`.
 
 
 ### Added
 
-- **Firecracker vFC-2 partial net** — single-tenant TAP + create-time `-P`/`--publish` (iptables DNAT + host→guest **SNAT** so loopback clients work), live `grain fwd add` via host TCP proxy (socat/python3), guest eth0 configured over agent after vsock. Overlay/mounts remain QEMU-only. Needs Linux CAP_NET_ADMIN + `/dev/net/tun`. Smoke: `scripts/smoke-fc-net.sh` (guest HTTP + host `curl` proof).
-- **Firecracker catalog pull (`fc-latest`)** — `grain image pull fc-kernel` / `grain-ubuntu-fc` downloads from the `fc-latest` release (sidecar digests, fail-closed). Workflow **Bake Firecracker artifacts** rebuilds and rewrites that tag. `scripts/smoke-fc.sh` one-shot create→agent→destroy on Linux+KVM.
+- **Firecracker vFC-2 partial net** — single-tenant TAP + create-time `-P`/`--publish` and live `grain fwd` via host **TCP proxy** (socat/python3), guest eth0 over agent after vsock; SSH and agent host ports also proxied when allocated. UDP publish / mounts / overlay remain QEMU-only (hard errors on FC). Needs Linux CAP_NET_ADMIN + `/dev/net/tun`. Smoke: `scripts/smoke-fc-net.sh` (guest HTTP + host `curl` proof).
+- **Firecracker catalog pull (`fc-latest`)** — `grain image pull fc-kernel` / `grain-ubuntu-fc` downloads from the `fc-latest` release (sidecar digests, fail-closed). Bake workflow publishes **amd64 and arm64** assets. `scripts/smoke-fc.sh` one-shot create→agent→destroy on Linux+KVM.
 - **Firecracker bake (`scripts/bake-fc.sh --all`)** — on Linux: fetch Firecracker CI `vmlinux` + Ubuntu squashfs, convert to raw ext4, inject **static** `grain-agent` (systemd, vsock :7475). Outputs `dist/fc/vmlinux-<arch>` + `grain-ubuntu-fc-<arch>.raw` (+ `.sha256`).
 - **Firecracker kernel/rootfs import + doctor** — `grain image import <vmlinux> --id fc-kernel` installs to `data_dir/kernels/vmlinux`; `import … --id grain-ubuntu-fc` stores **raw** `disk.raw` (not qcow2). Doctor **hard-fails** missing FC kernel and distinguishes default-path missing vs BYO `kernel_path` misconfig; soft notes when the default image is QEMU-oriented. Start errors use the same wording.
 - **Firecracker catalog ID scaffolding** — reserved `grain-ubuntu-fc` (raw rootfs + agent) and `fc-kernel` (vmlinux) catalog entries, **LocalOnly** until bake publishes digests/URLs. Explicit IDs avoid dual-use of QEMU `grain-ubuntu` qcow2. Docs: [Firecracker on Linux](https://grainvm.com/docs/main/guides/firecracker/).
@@ -40,15 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Firecracker experimental operator path** — guide covers Linux+KVM only, `kernel_path` / `firecracker_binary`, raw rootfs, vsock-only agent (no SLIRP/hostfwd), doctor checks, and limits vs QEMU; cross-linked from concepts, product surface, config, troubleshooting, networking, and architecture. Closes the “Firecracker production path” TODO as a documented **experimental** path (full production networking/jailer still deferred). Kernel missing error points at the site guide instead of a stale `docs/firecracker.md` path.
+- **Firecracker supported operator path** — Linux+KVM guide, doctor, catalog pull, vsock agent, TAP + TCP proxy publish/fwd; cross-linked from concepts, product surface, config, troubleshooting, networking, and architecture. Jailer/overlay/mounts/UDP remain deferred or QEMU-only.
 
 ### Docs
 
-- **Firecracker support policy** — **FC agent production (vFC-1)** plus **FC net partial (vFC-2)** for TAP publish/fwd; overlay/mounts stay QEMU-only. Matrix/parity/FC guide + CLI help updated. Bench: `scripts/bench-fc.sh`; smoke: `scripts/smoke-fc.sh` / `smoke-fc-net.sh`.
+- **Firecracker support policy** — **FC agent production (vFC-1)** plus **FC net partial (vFC-2)** for TAP publish/fwd; overlay/mounts/UDP stay QEMU-only. Matrix/parity/FC guide + CLI help updated. Bench: `scripts/bench-fc.sh`; smoke: `scripts/smoke-fc.sh` / `smoke-fc-net.sh`.
 
 ### Fixed
 
-- **Firecracker create-time `-P` host→guest** — OUTPUT DNAT of `127.0.0.1` never delivers packets onto the TAP (even with SNAT). Create-time publishes now use the **same host TCP proxy** as live `grain fwd add` after guest eth0 is configured. Smoke starts a guest HTTP listener and `curl`s both create-time `-P` and live `fwd`.
+- **Firecracker create-time `-P` host→guest** — OUTPUT DNAT of `127.0.0.1` never delivers packets onto the TAP. Create-time publishes, SSH, and agent host ports use the **same host TCP proxy** as live `grain fwd add` after guest eth0 is configured. Teardown removes MASQUERADE and TAP FORWARD rules. Smoke starts a guest HTTP listener and `curl`s both create-time `-P` and live `fwd`.
 - **Firecracker doctor / guide pull-first** — missing `fc-kernel` / `grain-ubuntu-fc` recommend `grain image pull …` (BYO import remains fallback); soft notes no longer say “not imported” / “not published yet”. Guide operator checklist + known-limitations table align with vFC-1 agent production (net still QEMU-only); boot sample p50/p95 match AWS `m7i-flex.large` post-merge bench.
 - **Install / `grain update` quieter when already set up** — `scripts/install.sh` skips the MCP enable prompt when `~/.grain/config.yaml` already exists, and drops the long “Next steps” footer (install progress + short “grain X installed” / PATH line only).
 - **Paste screenshots into `grain sh`** — host clipboard paste prefers **images** (macOS: PNG/TIFF/JPEG via AppKit, converting screenshot TIFF→PNG; Linux: `wl-paste`/`xclip` image MIME types) before plain text. Guest `pbpaste`/xclip shims fetch via the shell control channel. Longer paste timeout for large images.
