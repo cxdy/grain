@@ -306,6 +306,16 @@ a:hover { text-decoration: underline; }
   background: var(--code-bg); color: var(--code-fg); overflow: auto; max-height: 8rem;
 }
 
+/* Connections list (Settings) */
+.connections-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.conn-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  padding: 0.55rem 0.7rem; border: 1px solid var(--border); border-radius: 0.45rem;
+  background: var(--bg);
+}
+.conn-row .conn-meta { font-size: 0.8rem; color: var(--muted); font-family: var(--mono); }
+.conn-row .conn-name { font-weight: 600; }
+
 /* Doctor */
 .doctor-list { display: flex; flex-direction: column; gap: 0.45rem; }
 .doctor-row {

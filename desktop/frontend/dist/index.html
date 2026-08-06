@@ -177,10 +177,40 @@
               <div class="view-head"><h2>Settings</h2></div>
               <div class="panel">
                 <h3 class="panel-title">Preferences</h3>
-                <dl class="meta" id="settings-meta"></dl>
+                <form id="settings-form">
+                  <label class="field">
+                    <span>Default connection</span>
+                    <select class="input" id="set-default-conn" name="default_connection"></select>
+                  </label>
+                  <label class="check-label">
+                    <input type="checkbox" id="set-start-local" name="start_local_daemon" />
+                    Start local daemon on launch
+                  </label>
+                  <label class="field">
+                    <span>Data dir</span>
+                    <input class="input mono" id="set-data-dir" name="data_dir" spellcheck="false" />
+                  </label>
+                  <label class="field">
+                    <span>API listen (daemon)</span>
+                    <input class="input mono" id="set-api" name="api" placeholder="127.0.0.1:7474" spellcheck="false" />
+                  </label>
+                  <label class="field">
+                    <span>API URL (client dial override)</span>
+                    <input class="input mono" id="set-api-url" name="api_url" placeholder="optional" spellcheck="false" />
+                  </label>
+                  <p class="hint" id="settings-path-hint">Config file: —</p>
+                  <div class="btn-row">
+                    <button type="submit" class="btn btn-primary" id="btn-settings-save">Save preferences</button>
+                  </div>
+                </form>
+                <p id="settings-form-error" class="config-error" hidden></p>
+
                 <h3 class="panel-title mt">Connections</h3>
-                <p class="hint">Add hosts from the Host menu (Add new host…) or below.</p>
-                <button type="button" class="btn btn-ghost" id="btn-add-host">Add host</button>
+                <div id="connections-list" class="connections-list"></div>
+                <div class="btn-row mt-sm">
+                  <button type="button" class="btn btn-ghost" id="btn-add-host">Add host</button>
+                </div>
+
                 <h3 class="panel-title mt">Advanced</h3>
                 <p class="hint">Raw <code>config.yaml</code> — validated with strict unknown-key checks before save.</p>
                 <div class="config-box">

@@ -185,10 +185,30 @@
     }
   }
 
-  /* ── theme ── */
-  function applyTheme(theme) {
-    const t = theme === "light" ? "light" : "dark";
+  /* ── theme ──
+   * THEME_KEY values: "light" | "dark" | "system" (or absent = follow OS).
+   * applyTheme(theme, { persist }) — only persist when the user toggles.
+   */
+  function osTheme() {
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) return "light";
+    return "dark";
+  }
+
+  function readThemePref() {
+    try {
+      const v = localStorage.getItem(THEME_KEY);
+      if (v === "light" || v === "dark" || v === "system") return v;
+    } catch (_) {}
+    return "system";
+  }
+
+  function applyTheme(theme, opts) {
+    const persist = !!(opts && opts.persist);
+    let pref = theme;
+    if (pref !== "light" && pref !== "dark" && pref !== "system") pref = "system";
+    const t = pref === "system" ? osTheme() : pref;
     document.documentElement.setAttribute("data-theme", t);
+    document.documentElement.setAttribute("data-theme-pref", pref);
     const icon = $("#theme-icon");
     if (icon) icon.textContent = t === "light" ? "☾" : "☀";
     const link = $("#hljs-theme");
@@ -196,20 +216,19 @@
       link.href =
         t === "light" ? "./vendor/highlight-github.min.css" : "./vendor/highlight-github-dark.min.css";
     }
-    try {
-      localStorage.setItem(THEME_KEY, t);
-    } catch (_) {}
+    if (persist) {
+      try {
+        localStorage.setItem(THEME_KEY, pref);
+      } catch (_) {}
+    }
     const ta = $("#config-raw");
     if (ta) highlightConfig(ta.value);
   }
 
-  function preferOSTheme() {
-    try {
-      const saved = localStorage.getItem(THEME_KEY);
-      if (saved === "light" || saved === "dark") return saved;
-    } catch (_) {}
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) return "light";
-    return "dark";
+  function toggleTheme() {
+    // User override: flip current rendered theme and persist light/dark
+    const cur = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+    applyTheme(cur === "light" ? "dark" : "light", { persist: true });
   }
 
   function setHealth(hs) {
@@ -523,25 +542,40 @@
     const id = btn.dataset.pull;
     btn.disabled = true;
     btn.textContent = "Pulling…";
+    let lastToast = 0;
     const onProg = (p) => {
+      // Ignore progress for other concurrent pulls if any
+      if (p?.id && p.id !== id) return;
       const pct = p?.percent ?? 0;
       const w = p?.written || 0;
       const t = p?.total || 0;
-      btn.textContent = t ? `Pulling (${pct}%)` : "Pulling…";
-      toast(
-        `Pulling \`${id}\` — ${fmtBytes(w)}${t ? "/" + fmtBytes(t) : ""} (${pct}%)…`,
-        false,
-        "pull progress"
-      );
+      if (btn.isConnected) btn.textContent = t ? `Pulling (${pct}%)` : "Pulling…";
+      const now = Date.now();
+      // Throttle toasts so stacked events cannot spam (also only one handler)
+      if (now - lastToast > 800) {
+        lastToast = now;
+        toast(
+          `Pulling \`${id}\` — ${fmtBytes(w)}${t ? "/" + fmtBytes(t) : ""} (${pct}%)…`,
+          false,
+          "pull progress"
+        );
+      }
     };
+    // Single subscription for this pull; always tear down (Wails EventsOff).
     if (window.runtime?.EventsOn) window.runtime.EventsOn("pull:progress", onProg);
     try {
       await act("pull " + id, () => call("PullImage", id));
       toast(`Pulled ${id}`);
       await loadImagesPage();
     } catch (_) {
-      btn.disabled = false;
-      btn.textContent = "Pull";
+      if (btn.isConnected) {
+        btn.disabled = false;
+        btn.textContent = "Pull";
+      }
+    } finally {
+      try {
+        if (window.runtime?.EventsOff) window.runtime.EventsOff("pull:progress");
+      } catch (_) {}
     }
   }
 
@@ -760,13 +794,78 @@
   async function loadSettings() {
     try {
       const sum = await call("GetConfigSummary");
-      $("#settings-meta").innerHTML = `
-        <dt>Config file</dt><dd class="selectable">${escapeHtml(sum.path || "—")}</dd>
-        <dt>Dial target</dt><dd class="selectable">${escapeHtml(sum.dial_hint || "—")}</dd>
-        <dt>Data dir</dt><dd class="selectable">${escapeHtml(sum.data_dir || "—")}</dd>
-        <dt>API listen</dt><dd class="selectable">${escapeHtml(sum.api || "—")}</dd>
-        <dt>Token set</dt><dd>${sum.has_token ? "yes" : "no"}</dd>
-        <dt>Defaults</dt><dd>${escapeHtml(sum.image || "—")} · ${sum.cpus} CPU · ${sum.memory_mb} MiB · ${sum.disk_gb} GiB</dd>`;
+      const hint = $("#settings-path-hint");
+      if (hint) {
+        hint.innerHTML = `Config file: <span class="selectable mono">${escapeHtml(sum.path || "—")}</span>
+          · dial <span class="selectable mono">${escapeHtml(sum.dial_hint || "—")}</span>
+          · defaults ${escapeHtml(sum.image || "—")} · ${sum.cpus} CPU · ${sum.memory_mb} MiB · ${sum.disk_gb} GiB`;
+      }
+      // Preferences form
+      const conns = sum.connections || [];
+      const defSel = $("#set-default-conn");
+      if (defSel) {
+        const def = sum.desktop?.default_connection || "local";
+        defSel.innerHTML = conns
+          .map(
+            (c) =>
+              `<option value="${escapeHtml(c.name)}" ${c.name === def ? "selected" : ""}>${escapeHtml(c.name)}${c.local ? "" : " (remote)"}</option>`
+          )
+          .join("");
+        if (!conns.length) {
+          defSel.innerHTML = `<option value="local">local</option>`;
+        }
+      }
+      const startLocal = $("#set-start-local");
+      if (startLocal) {
+        // StartLocalDaemonEnabled: nil → true
+        const v = sum.desktop?.start_local_daemon;
+        startLocal.checked = v === undefined || v === null ? true : !!v;
+      }
+      const dataDir = $("#set-data-dir");
+      if (dataDir) dataDir.value = sum.data_dir || "";
+      const api = $("#set-api");
+      if (api) api.value = sum.api || "";
+      const apiUrl = $("#set-api-url");
+      if (apiUrl) apiUrl.value = sum.api_url || "";
+
+      // Connections list with delete (local is protected)
+      const cl = $("#connections-list");
+      if (cl) {
+        if (!conns.length) {
+          cl.innerHTML = '<p class="hint">No connections listed.</p>';
+        } else {
+          cl.innerHTML = conns
+            .map((c) => {
+              const detail = c.local
+                ? "local unix socket"
+                : escapeHtml(c.api || "remote");
+              const del = c.local
+                ? '<span class="muted small">built-in</span>'
+                : `<button type="button" class="btn btn-danger-ghost btn-sm" data-del-host="${escapeHtml(c.name)}">Remove</button>`;
+              return `<div class="conn-row">
+                <div>
+                  <div class="conn-name">${escapeHtml(c.name)}</div>
+                  <div class="conn-meta">${detail}${c.token_env ? " · token_env " + escapeHtml(c.token_env) : ""}</div>
+                </div>
+                ${del}
+              </div>`;
+            })
+            .join("");
+          $$("[data-del-host]").forEach((b) => {
+            b.addEventListener("click", async () => {
+              const name = b.dataset.delHost;
+              if (!confirm(`Remove host “${name}”?`)) return;
+              try {
+                await act("delete host " + name, () => call("DeleteHost", name));
+                toast(`Removed ${name}`);
+                await loadConnections();
+                await loadSettings();
+              } catch (_) {}
+            });
+          });
+        }
+      }
+
       if (!state.configEditing) {
         const raw = await call("GetConfigRaw");
         const ta = $("#config-raw");
@@ -776,6 +875,31 @@
       }
     } catch (e) {
       toast(String(e), true, "settings");
+    }
+  }
+
+  async function onSettingsFormSave(ev) {
+    ev.preventDefault();
+    const err = $("#settings-form-error");
+    if (err) err.hidden = true;
+    const form = {
+      default_connection: $("#set-default-conn")?.value || "local",
+      start_local_daemon: !!$("#set-start-local")?.checked,
+      data_dir: $("#set-data-dir")?.value || "",
+      api: $("#set-api")?.value || "",
+      api_url: $("#set-api-url")?.value || "",
+    };
+    try {
+      await act("settings save", () => call("SaveSettingsForm", form));
+      toast("Preferences saved");
+      await loadConnections();
+      await refreshList();
+      await loadSettings();
+    } catch (e) {
+      if (err) {
+        err.hidden = false;
+        err.textContent = String(e).replace(/^Error:\s*/i, "");
+      }
     }
   }
 
@@ -942,11 +1066,8 @@
 
   /* ── wire ── */
   function wire() {
-    $("#btn-theme")?.addEventListener("click", () => {
-      applyTheme(
-        document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light"
-      );
-    });
+    $("#btn-theme")?.addEventListener("click", () => toggleTheme());
+    $("#settings-form")?.addEventListener("submit", onSettingsFormSave);
     $("#btn-refresh")?.addEventListener("click", () => contextRefresh());
     $("#btn-activity")?.addEventListener("click", () => openActivity());
     $("#btn-activity-close")?.addEventListener("click", closeActivity);
@@ -1246,12 +1367,11 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    applyTheme(preferOSTheme());
+    // Follow OS by default; do not freeze theme into localStorage on first paint.
+    applyTheme(readThemePref(), { persist: false });
     if (window.matchMedia) {
-      window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", (e) => {
-        try {
-          if (!localStorage.getItem(THEME_KEY)) applyTheme(e.matches ? "light" : "dark");
-        } catch (_) {}
+      window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+        if (readThemePref() === "system") applyTheme("system", { persist: false });
       });
     }
     updateActivityBadge();

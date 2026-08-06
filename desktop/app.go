@@ -528,6 +528,28 @@ func (a *App) SetMCPEnabled(enabled bool, listen string) error {
 	return a.reloadService()
 }
 
+// DeleteHost removes a named remote connection profile.
+func (a *App) DeleteHost(name string) error {
+	a.mu.Lock()
+	path := a.configPath
+	a.mu.Unlock()
+	if err := desktop.DeleteConnection(path, name); err != nil {
+		return err
+	}
+	return a.reloadService()
+}
+
+// SaveSettingsForm writes common Settings form fields and reloads.
+func (a *App) SaveSettingsForm(form desktop.SettingsForm) error {
+	a.mu.Lock()
+	path := a.configPath
+	a.mu.Unlock()
+	if err := desktop.SaveSettingsForm(path, form); err != nil {
+		return err
+	}
+	return a.reloadService()
+}
+
 // EnsureMCPLocal tries to start local MCP via `grain up --mcp` when not listening.
 func (a *App) EnsureMCPLocal() (desktop.MCPStatus, error) {
 	svc, err := a.service()

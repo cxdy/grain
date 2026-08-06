@@ -122,3 +122,131 @@ func SaveHostConnection(configPath string, h ConnectionWithMCP) error {
 		Notes:    notes,
 	})
 }
+
+// DeleteConnection removes a named remote connection from config.yaml.
+// The built-in "local" profile cannot be deleted.
+func DeleteConnection(configPath, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("connection name is required")
+	}
+	if name == "local" {
+		return fmt.Errorf("cannot delete the built-in local connection")
+	}
+	if configPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		configPath = filepath.Join(home, ".grain", "config.yaml")
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	var doc map[string]interface{}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return fmt.Errorf("parse config: %w", err)
+	}
+	if doc == nil {
+		doc = map[string]interface{}{}
+	}
+	list, _ := doc["connections"].([]interface{})
+	var next []interface{}
+	found := false
+	for _, item := range list {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			next = append(next, item)
+			continue
+		}
+		if fmt.Sprint(m["name"]) == name {
+			found = true
+			continue
+		}
+		next = append(next, item)
+	}
+	if !found {
+		return fmt.Errorf("connection %q not found", name)
+	}
+	doc["connections"] = next
+	// If desktop.default_connection pointed at the deleted host, reset to local.
+	if desk, ok := doc["desktop"].(map[string]interface{}); ok {
+		if fmt.Sprint(desk["default_connection"]) == name {
+			desk["default_connection"] = "local"
+			doc["desktop"] = desk
+		}
+	}
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(configPath, out, 0o600)
+}
+
+// SettingsForm is the common Settings form payload (not raw YAML).
+type SettingsForm struct {
+	DefaultConnection string `json:"default_connection"`
+	StartLocalDaemon  bool   `json:"start_local_daemon"`
+	DataDir           string `json:"data_dir"`
+	API               string `json:"api"`
+	APIURL            string `json:"api_url"`
+}
+
+// SaveSettingsForm merges common preference fields into config.yaml.
+func SaveSettingsForm(configPath string, form SettingsForm) error {
+	if configPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		configPath = filepath.Join(home, ".grain", "config.yaml")
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var doc map[string]interface{}
+	if len(raw) > 0 {
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return fmt.Errorf("parse config: %w", err)
+		}
+	}
+	if doc == nil {
+		doc = map[string]interface{}{}
+	}
+	if strings.TrimSpace(form.DataDir) != "" {
+		doc["data_dir"] = strings.TrimSpace(form.DataDir)
+	}
+	if strings.TrimSpace(form.API) != "" {
+		doc["api"] = strings.TrimSpace(form.API)
+	}
+	// Allow clearing api_url with empty string when key was set intentionally —
+	// only write when non-empty to avoid wiping.
+	if strings.TrimSpace(form.APIURL) != "" {
+		doc["api_url"] = NormalizeAPIURL(form.APIURL)
+	}
+	desk, _ := doc["desktop"].(map[string]interface{})
+	if desk == nil {
+		desk = map[string]interface{}{}
+	}
+	def := strings.TrimSpace(form.DefaultConnection)
+	if def == "" {
+		def = "local"
+	}
+	desk["default_connection"] = def
+	desk["start_local_daemon"] = form.StartLocalDaemon
+	doc["desktop"] = desk
+
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		return err
+	}
+	if !strings.HasSuffix(string(out), "\n") {
+		out = append(out, '\n')
+	}
+	return os.WriteFile(configPath, out, 0o600)
+}
