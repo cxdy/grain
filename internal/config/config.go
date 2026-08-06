@@ -409,17 +409,17 @@ func Defaults() Config {
 	}
 	dir := filepath.Join(home, ".grain")
 	return Config{
-		DataDir:         dir,
-		Socket:          filepath.Join(dir, "grain.sock"),
-		API:             "127.0.0.1:7474",
-		MetricsAddr:                "127.0.0.1:9091",
-		SandboxMetricsEnabled:      false,
-		SandboxMetricsInterval:     15 * time.Second,
-		SandboxMetricsPoints:       5760, // ~24h at 15s
-		DefaultCPUs:                2,
-		DefaultMemoryMB: 2048,
-		DefaultDiskGB:   8,
-		Hypervisor:      "qemu",
+		DataDir:                dir,
+		Socket:                 filepath.Join(dir, "grain.sock"),
+		API:                    "127.0.0.1:7474",
+		MetricsAddr:            "127.0.0.1:9091",
+		SandboxMetricsEnabled:  false,
+		SandboxMetricsInterval: 15 * time.Second,
+		SandboxMetricsPoints:   5760, // ~24h at 15s
+		DefaultCPUs:            2,
+		DefaultMemoryMB:        2048,
+		DefaultDiskGB:          8,
+		Hypervisor:             "qemu",
 		// "auto" prefers a local golden grain-ubuntu when present, else ubuntu-cloud.
 		Image:            "auto",
 		SSHUser:          "ubuntu",

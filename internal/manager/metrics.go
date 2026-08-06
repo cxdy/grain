@@ -10,9 +10,9 @@ import (
 
 // MetricsHistory is the API response for GET /vms/{name}/metrics.
 type MetricsHistory struct {
-	Enabled  bool                    `json:"enabled"`
-	Interval string                  `json:"interval,omitempty"`
-	Points   []metricsring.Sample    `json:"points"`
+	Enabled  bool                 `json:"enabled"`
+	Interval string               `json:"interval,omitempty"`
+	Points   []metricsring.Sample `json:"points"`
 }
 
 // SampleMetrics appends a guest stats snapshot to the host ring when metrics

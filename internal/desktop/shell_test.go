@@ -90,7 +90,7 @@ func TestDefaultShellDialAndIO(t *testing.T) {
 	// Real websocket server implementing /shell
 	up := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer secret" {
-			http.Error(w, "auth", 401)
+			http.Error(w, "auth", http.StatusUnauthorized)
 			return
 		}
 		c, err := websocket.Accept(w, r, nil)
@@ -148,7 +148,7 @@ func TestDefaultShellDialUnix(t *testing.T) {
 	}
 	defer func() { _ = ln.Close() }()
 	go func() {
-		http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/vms/dev/shell" {
 				http.NotFound(w, r)
 				return

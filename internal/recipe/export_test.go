@@ -8,13 +8,13 @@ import (
 func TestFromSnapshotMinimal(t *testing.T) {
 	t.Parallel()
 	f, err := FromSnapshot(Snapshot{
-		Name:     "work",
-		Image:    "grain-ubuntu",
-		CPUs:     4,
-		MemoryMB: 8192,
-		DiskGB:   55,
+		Name:       "work",
+		Image:      "grain-ubuntu",
+		CPUs:       4,
+		MemoryMB:   8192,
+		DiskGB:     55,
 		Persistent: true,
-		Network:  "slirp", // should be omitted
+		Network:    "slirp", // should be omitted
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -93,11 +93,9 @@ func RunDoctorChecks(ctx context.Context, cfg Config, svc *Service) []DoctorChec
 				Fix: "Start or fix the daemon for the active host", Command: "grain up",
 			})
 		} else {
-			msg := hs.Connection
+			msg := "remote · " + hs.Connection
 			if hs.Local {
 				msg = "local · " + hs.Connection
-			} else {
-				msg = "remote · " + hs.Connection
 			}
 			out = append(out, DoctorCheck{Name: "daemon health", OK: true, Message: msg})
 		}

@@ -35,11 +35,7 @@ type Connection struct {
 // A loopback HTTP API is treated as remote for capability matrix purposes
 // (cannot start/stop that engine via `grain up` on this machine unless socket).
 func (c Connection) IsLocal() bool {
-	api := strings.TrimSpace(c.API)
-	if api == "" {
-		return true
-	}
-	return false
+	return strings.TrimSpace(c.API) == ""
 }
 
 // ResolvedToken returns the Bearer token from Token, or from TokenEnv / GRAIN_TOKEN.

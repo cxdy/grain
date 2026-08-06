@@ -817,8 +817,5 @@ func ImageSupportsAgent(imageID string) bool {
 	case "ubuntu-cloud", "alpine-cloud", "fc-kernel":
 		return false
 	}
-	if strings.HasPrefix(id, "grain-ubuntu") {
-		return true
-	}
-	return false
+	return strings.HasPrefix(id, "grain-ubuntu")
 }

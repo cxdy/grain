@@ -96,9 +96,8 @@ func TestGenerateAndRevokeAPIToken(t *testing.T) {
 	}
 	_ = res2
 	b, _ = os.ReadFile(path)
-	if strings.Contains(string(b), "api_token:") {
-		// revoke may leave empty or remove key
-	}
+	// Revoke may leave empty token or remove key; either is fine for this path.
+	_ = strings.Contains(string(b), "api_token:")
 }
 
 var _ CommandRunner = ExecRunner{}

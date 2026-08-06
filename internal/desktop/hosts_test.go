@@ -49,7 +49,6 @@ func TestProbeConnectionsLocalDial(t *testing.T) {
 	// Use a dial that always fails for non-empty API and succeeds for local.
 	cfg := Defaults()
 	cfg.Connections = []Connection{{Name: "lab", API: "http://127.0.0.1:1"}}
-	cfg = cfg // ensure local seeded
 	cfg.Connections = EnsureLocalConnection(cfg.Connections, cfg.Socket, cfg.DataDir)
 	dial := func(conn Connection, c Config) (*client.Client, error) {
 		if conn.IsLocal() {

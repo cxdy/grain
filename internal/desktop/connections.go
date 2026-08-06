@@ -55,11 +55,7 @@ func AddConnection(configPath string, conn Connection) error {
 	if conn.Notes != "" {
 		entry["notes"] = conn.Notes
 	}
-	// optional MCP endpoint stored under notes or dedicated field via notes prefix
-	// Prefer structured notes for mcp listen: desktop stores mcp_listen in entry
-	if mcp := strings.TrimSpace(conn.Notes); strings.HasPrefix(mcp, "mcp:") {
-		// already in notes
-	}
+	// MCP listen is stored separately (mcp_listen key); notes may still carry free text.
 
 	replaced := false
 	for i, item := range list {
