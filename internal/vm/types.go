@@ -97,6 +97,9 @@ type Instance struct {
 	// LoadVM is a transient QEMU -loadvm snapshot tag applied on the next Start
 	// (not persisted to meta.json).
 	LoadVM string `json:"-"`
+	// MetricsEnabled turns on host-side sampling of guest stats into metrics.ring.
+	// Default false; opt-in per sandbox or via config default for new creates.
+	MetricsEnabled bool `json:"metrics_enabled,omitempty"`
 }
 
 // Wait mode constants for CreateOpts.WaitMode.
@@ -135,6 +138,8 @@ type CreateOpts struct {
 	WaitMode string
 	// WaitTimeout overrides ReadyTimeout when > 0.
 	WaitTimeout time.Duration
+	// MetricsEnabled enables guest stats sampling to host metrics.ring (default false).
+	MetricsEnabled bool
 	// OnEvent receives progress phases during Create (optional; not serialized).
 	OnEvent func(CreateEvent)
 }

@@ -70,6 +70,8 @@ CLI flags still win over recipe fields (same idea as profiles).
 
 Examples in-repo: [`examples/recipes/`](https://github.com/cxdy/grain/tree/main/examples/recipes).
 
+From **Grain Desktop**, select a sandbox → inspector **More → Export as recipe…** to save create options (image, resources, mounts, forwards) as a recipe file. Bootstrap steps and first-boot userdata are not recovered from a live VM — add those by hand if needed.
+
 ---
 
 ## 3. Inspect without creating

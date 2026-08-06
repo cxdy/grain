@@ -28,6 +28,7 @@ init:
     fi
 
 # Unit tests (mock hypervisor — no QEMU required).
+# Note: desktop/ is a nested Go module (Wails); tested via `just desktop-test`.
 test:
     env -u GOROOT GOTOOLCHAIN=auto go test ./... -count=1
 
@@ -38,6 +39,115 @@ all: test build
 build:
     mkdir -p bin
     CGO_ENABLED=0 go build -ldflags "{{ ldflags }}" -o {{ bin }} ./cmd/grain
+
+# Desktop backend unit tests (internal/desktop pure logic, no webview).
+desktop-test:
+    env -u GOROOT GOTOOLCHAIN=auto go test ./internal/desktop/ -count=1 -cover
+
+# Run Grain Desktop in Wails dev mode (requires: go install github.com/wailsapp/wails/v2/cmd/wails@latest).
+desktop-dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v wails >/dev/null 2>&1 || { echo "install wails: go install github.com/wailsapp/wails/v2/cmd/wails@latest"; exit 1; }
+    cd desktop
+    # CGO required for OS webview (not Electron).
+    CGO_ENABLED=1 wails dev
+
+# Linux desktop build path (same as desktop-build; unsigned OK). Requires WebKitGTK.
+# Example deps (Debian/Ubuntu): libgtk-3-dev libwebkit2gtk-4.1-dev
+desktop-build-linux: desktop-build
+
+# Build grain-desktop binary + macOS Grain.app (nested module under desktop/).
+# Note: under iCloud/Documents, Wails' built-in codesign often fails on xattrs;
+# we always re-sign ourselves via ditto --norsrc after the build.
+desktop-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v wails >/dev/null 2>&1 || { echo "install wails: go install github.com/wailsapp/wails/v2/cmd/wails@latest"; exit 1; }
+    cd desktop
+    xattr -cr . 2>/dev/null || true
+    rm -rf build/bin/Grain.app build/bin/Grain
+
+    # Prefer a packaged .app. Wails may exit non-zero on codesign even when packaging succeeded.
+    set +e
+    CGO_ENABLED=1 wails build -skipbindings
+    wails_rc=$?
+    set -e
+
+    if [[ ! -d build/bin/Grain.app ]] && [[ ! -f build/bin/Grain ]]; then
+      echo "wails build failed (exit ${wails_rc}) and produced no binary" >&2
+      exit 1
+    fi
+
+    # If only a bare binary was produced (or packaging failed), try nopackage then wrap.
+    if [[ ! -d build/bin/Grain.app ]]; then
+      echo "no .app from package step — building bare binary…"
+      CGO_ENABLED=1 wails build -skipbindings -nopackage
+    fi
+
+    # Always strip resource forks / Finder xattrs and ad-hoc sign (Documents/iCloud detritus).
+    if [[ -d build/bin/Grain.app ]]; then
+      clean="$(mktemp -d)/Grain.app"
+      ditto --norsrc --noextattr build/bin/Grain.app "$clean"
+      rm -rf build/bin/Grain.app
+      mkdir -p build/bin
+      ditto "$clean" build/bin/Grain.app
+      rm -rf "$(dirname "$clean")"
+      # Pin Grain icon — Wails falls back to the default "W" when appicon.png is
+      # missing from the build tree (common with out-of-tree /tmp builds).
+      if [[ -f build/appicon.png ]]; then
+        if [[ ! -f build/iconfile.icns ]]; then
+          iconset="$(mktemp -d)/Grain.iconset"
+          mkdir -p "$iconset"
+          for pair in "16:16" "32:16@2x" "32:32" "64:32@2x" "128:128" "256:128@2x" "256:256" "512:256@2x" "512:512" "1024:512@2x"; do
+            px="${pair%%:*}"; name="${pair##*:}"
+            sips -z "$px" "$px" build/appicon.png --out "$iconset/icon_${name}.png" >/dev/null
+          done
+          # fix names: icon_16@2x etc.
+          mv -f "$iconset/icon_16@2x.png" "$iconset/icon_16x16@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_32@2x.png" "$iconset/icon_32x32@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_128@2x.png" "$iconset/icon_128x128@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_256@2x.png" "$iconset/icon_256x256@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_512@2x.png" "$iconset/icon_512x512@2x.png" 2>/dev/null || true
+          mv -f "$iconset/icon_16.png" "$iconset/icon_16x16.png" 2>/dev/null || true
+          mv -f "$iconset/icon_32.png" "$iconset/icon_32x32.png" 2>/dev/null || true
+          mv -f "$iconset/icon_128.png" "$iconset/icon_128x128.png" 2>/dev/null || true
+          mv -f "$iconset/icon_256.png" "$iconset/icon_256x256.png" 2>/dev/null || true
+          mv -f "$iconset/icon_512.png" "$iconset/icon_512x512.png" 2>/dev/null || true
+          iconutil -c icns "$iconset" -o build/iconfile.icns || true
+          rm -rf "$(dirname "$iconset")"
+        fi
+      fi
+      if [[ -f build/iconfile.icns ]]; then
+        mkdir -p build/bin/Grain.app/Contents/Resources
+        cp -f build/iconfile.icns build/bin/Grain.app/Contents/Resources/iconfile.icns
+      fi
+      xattr -cr build/bin/Grain.app 2>/dev/null || true
+      codesign --force --deep --sign - build/bin/Grain.app
+      codesign --verify --verbose=2 build/bin/Grain.app 2>&1 | head -5 || true
+    elif [[ -f build/bin/Grain ]]; then
+      xattr -c build/bin/Grain 2>/dev/null || true
+      codesign --force --sign - build/bin/Grain
+    fi
+
+    mkdir -p ../bin
+    # Desktop launcher is ONLY bin/grain-desktop.
+    # Never write bin/Grain — on macOS default (case-insensitive) APFS,
+    # bin/Grain and bin/grain are the same file and would clobber the CLI.
+    if [[ -d build/bin/Grain.app ]]; then
+      cp -f ../scripts/grain-desktop-launch.sh ../bin/grain-desktop
+      chmod +x ../bin/grain-desktop
+      echo "✓ built desktop/build/bin/Grain.app"
+      echo "  Desktop:  ./bin/grain-desktop  or  open desktop/build/bin/Grain.app"
+      echo "  CLI:      ./bin/grain   (just build) — still the primary interface"
+    elif [[ -f build/bin/Grain ]]; then
+      cp -f build/bin/Grain ../bin/grain-desktop-bin
+      chmod +x ../bin/grain-desktop-bin
+      cp -f ../scripts/grain-desktop-launch.sh ../bin/grain-desktop
+      chmod +x ../bin/grain-desktop
+      echo "✓ built bin/grain-desktop-bin (no .app package)"
+      echo "  CLI remains: ./bin/grain"
+    fi
 
 # Drive initialize + tools/list against `grain mcp` (stdio handshake).
 mcp-handshake: build

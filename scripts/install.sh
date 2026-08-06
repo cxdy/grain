@@ -560,7 +560,99 @@ print_install_summary() {
 }
 
 # --- main ---------------------------------------------------------------------
+# Install optional Grain Desktop (GUI). Requires Wails toolchain when building from source.
+# Usage: install.sh --desktop
+#   or:  GRAIN_INSTALL_DESKTOP=1 install.sh
+install_desktop() {
+  local os arch
+  os="$(detect_os)"
+  arch="$(detect_arch)"
+  info "installing Grain Desktop (optional GUI) for ${os}/${arch}"
+
+  # Prefer a release asset when present (future GoReleaser desktop artifacts).
+  local url=""
+  if url="$(latest_asset_url_named "Grain_${os}_${arch}.app.tar.gz" 2>/dev/null)" && [[ -n "$url" ]]; then
+    info "downloading Desktop app ${url}"
+    local tmp dest_dir
+    tmp="$(mktemp -t grain-desktop.XXXXXX 2>/dev/null || mktemp)"
+    dest_dir="${HOME}/Applications"
+    ensure_dir "$dest_dir"
+    if download "$url" "$tmp" && extract_binary_from_tarball "$tmp" "Grain.app" "${dest_dir}/Grain.app" 2>/dev/null; then
+      ok "installed Desktop to ${dest_dir}/Grain.app"
+      info "open with: open ${dest_dir}/Grain.app"
+      rm -f "$tmp"
+      return 0
+    fi
+    rm -f "$tmp" || true
+  fi
+
+  # Build from source when in a grain checkout or via go/wails.
+  if [[ -f justfile ]] && [[ -d desktop ]] && command -v just >/dev/null 2>&1; then
+    info "building Desktop from this repository (just desktop-build)"
+    if just desktop-build; then
+      if [[ -d desktop/build/bin/Grain.app ]]; then
+        ok "built desktop/build/bin/Grain.app"
+        info "run:  ./bin/Grain   or   open desktop/build/bin/Grain.app"
+        info "docs: https://grainvm.com/guides/desktop/"
+        return 0
+      fi
+      if [[ -x bin/grain-desktop ]] || [[ -x bin/Grain ]]; then
+        ok "built Desktop launcher under bin/"
+        return 0
+      fi
+    fi
+  fi
+
+  cat >&2 <<EOF
+${YELLOW}!${RESET} Desktop release binary not available yet for ${os}/${arch}.
+
+Build from source (developers):
+  git clone https://github.com/${REPO}.git && cd grain
+  go install github.com/wailsapp/wails/v2/cmd/wails@latest
+  just desktop-build
+  open desktop/build/bin/Grain.app   # macOS
+  # Linux: ./bin/grain-desktop after build (WebKitGTK required; see desktop/README.md)
+
+Docs: https://grainvm.com/guides/desktop/
+EOF
+  # Non-fatal for combined install; fatal only when --desktop is exclusive intent.
+  return 1
+}
+
 main() {
+  local want_desktop=0 want_cli=1
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --desktop)
+        want_desktop=1
+        ;;
+      --desktop-only)
+        want_desktop=1
+        want_cli=0
+        ;;
+      -h|--help)
+        cat <<EOF
+grain installer
+
+Usage:
+  curl -fsSL …/install.sh | bash
+  curl -fsSL …/install.sh | bash -s -- --desktop
+  ./scripts/install.sh [--desktop] [--desktop-only]
+
+Flags:
+  --desktop       Also install/build Grain Desktop (optional GUI)
+  --desktop-only  Only Desktop path (skip CLI if possible)
+  GRAIN_INSTALL_DESKTOP=1  same as --desktop
+EOF
+        return 0
+        ;;
+    esac
+  done
+  if [[ "${GRAIN_INSTALL_DESKTOP:-}" == "1" || "${GRAIN_INSTALL_DESKTOP:-}" == "true" ]]; then
+    want_desktop=1
+  fi
+
   printf '%s\n' "${BOLD}grain installer${RESET}"
   local os arch dest_dir
   os="$(detect_os)"
@@ -568,19 +660,16 @@ main() {
   dest_dir="$(pick_install_dir)"
   info "os=${os} arch=${arch} install_dir=${dest_dir}"
 
-  if install_from_release "$os" "$arch" "$dest_dir"; then
-    install_agent_from_release "$arch" || true
-    print_install_summary "$dest_dir"
-    return 0
-  fi
-
-  warn "release install unavailable — trying go install fallback"
-  if install_from_go "$dest_dir"; then
-    print_install_summary "$dest_dir"
-    return 0
-  fi
-
-  cat >&2 <<EOF
+  if [[ "$want_cli" -eq 1 ]]; then
+    if install_from_release "$os" "$arch" "$dest_dir"; then
+      install_agent_from_release "$arch" || true
+      print_install_summary "$dest_dir"
+    else
+      warn "release install unavailable — trying go install fallback"
+      if install_from_go "$dest_dir"; then
+        print_install_summary "$dest_dir"
+      else
+        cat >&2 <<EOF
 ${RED}error:${RESET} could not install grain.
 
 Options:
@@ -591,7 +680,21 @@ Options:
   3. Build from source:
        git clone https://github.com/${REPO}.git && cd grain && just build
 EOF
-  exit 1
+        if [[ "$want_desktop" -eq 0 ]]; then
+          exit 1
+        fi
+      fi
+    fi
+  fi
+
+  if [[ "$want_desktop" -eq 1 ]]; then
+    if ! install_desktop; then
+      if [[ "$want_cli" -eq 0 ]]; then
+        exit 1
+      fi
+      warn "Desktop install skipped or incomplete (CLI may still be installed)"
+    fi
+  fi
 }
 
 main "$@"

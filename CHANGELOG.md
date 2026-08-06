@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Grain Desktop (optional GUI)** — ship-ready operator console (Wails v2, not Electron): **Sandboxes · Images · MCP · Doctor · Settings**; host switcher; right inspector (Overview · Shell · Logs); activity drawer + toasts; multi-select bulk actions; pull progress; Doctor checks; MCP snippets; Advanced YAML with strict unknown-key validation; disk grow via `qemu-img`. Build: `just desktop-build` → `./bin/Grain` / `desktop/build/bin/Grain.app`. Install: `scripts/install.sh --desktop`. Docs: guides/desktop, `desktop/README.md`.
+- **`grain check-config [file]`** — parse and validate `config.yaml` (field enums, non-loopback `api_token`, unknown top-level keys). Used by Desktop before applying config edits.
+
 ### Security
 
 - **Guest put-tar symlink escape defense** — `grain-agent` put-tar rejects absolute symlink targets and any `..` path component in linknames; regular-file extract uses `O_NOFOLLOW` (Unix) and refuses to write through an existing final-component symlink so a crafted tar cannot escape the extract root or overwrite via alias.

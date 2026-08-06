@@ -69,6 +69,8 @@ type Instance struct {
 	Error          string            `json:"error,omitempty"`
 	DiskPath       string            `json:"disk_path,omitempty"`
 	PID            int               `json:"pid,omitempty"`
+	// MetricsEnabled when true: host samples guest /stats into metrics.ring.
+	MetricsEnabled bool `json:"metrics_enabled,omitempty"`
 }
 
 // Create wait mode values for CreateRequest.Wait (query param, not JSON body).
@@ -102,16 +104,40 @@ type CreateRequest struct {
 	Wait string `json:"-"`
 	// Timeout is an optional Go duration string for create readiness (e.g. "3m").
 	Timeout string `json:"-"`
+	// MetricsEnabled opt-in guest stats sampling on the host (default false).
+	MetricsEnabled bool `json:"metrics_enabled,omitempty"`
 }
 
 // Stats is guest resource basics from GET /vms/{name}/stats.
 type Stats struct {
-	UptimeSec float64 `json:"uptime_sec"`
-	MemTotal  uint64  `json:"mem_total_bytes"`
-	MemAvail  uint64  `json:"mem_available_bytes"`
-	Load1     float64 `json:"load1"`
-	DiskTotal uint64  `json:"disk_total_bytes,omitempty"`
-	DiskFree  uint64  `json:"disk_free_bytes,omitempty"`
+	UptimeSec  float64 `json:"uptime_sec"`
+	MemTotal   uint64  `json:"mem_total_bytes"`
+	MemAvail   uint64  `json:"mem_available_bytes"`
+	Load1      float64 `json:"load1"`
+	DiskTotal  uint64  `json:"disk_total_bytes,omitempty"`
+	DiskFree   uint64  `json:"disk_free_bytes,omitempty"`
+	NetRxBytes uint64  `json:"net_rx_bytes,omitempty"`
+	NetTxBytes uint64  `json:"net_tx_bytes,omitempty"`
+	CPUs       int     `json:"cpus,omitempty"`
+}
+
+// MetricsHistory is GET /vms/{name}/metrics — host-side ring of samples.
+type MetricsHistory struct {
+	Enabled  bool            `json:"enabled"`
+	Interval string          `json:"interval,omitempty"`
+	Points   []MetricsSample `json:"points"`
+}
+
+// MetricsSample is one stored guest stats point.
+type MetricsSample struct {
+	TimeMS     int64   `json:"t_ms"`
+	Load1      float64 `json:"load1"`
+	MemTotal   uint64  `json:"mem_total_bytes"`
+	MemAvail   uint64  `json:"mem_available_bytes"`
+	DiskTotal  uint64  `json:"disk_total_bytes"`
+	DiskFree   uint64  `json:"disk_free_bytes"`
+	NetRxBytes uint64  `json:"net_rx_bytes"`
+	NetTxBytes uint64  `json:"net_tx_bytes"`
 }
 
 // SecretMeta is host secret metadata (no payload).

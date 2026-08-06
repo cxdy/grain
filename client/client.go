@@ -711,6 +711,27 @@ func (c *Client) Stats(ctx context.Context, name string) (*Stats, error) {
 	return &st, nil
 }
 
+// Metrics returns host-side metrics ring history for the named VM.
+func (c *Client) Metrics(ctx context.Context, name string) (*MetricsHistory, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/vms/"+url.PathEscape(name)+"/metrics", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		return nil, decodeAPIError(res)
+	}
+	var h MetricsHistory
+	if err := json.NewDecoder(res.Body).Decode(&h); err != nil {
+		return nil, err
+	}
+	return &h, nil
+}
+
 // ListSecrets returns host secret metadata.
 func (c *Client) ListSecrets(ctx context.Context) ([]SecretMeta, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/secrets", nil)

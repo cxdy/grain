@@ -235,6 +235,10 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		})
 	}
 
+	metricsOn := opts.MetricsEnabled
+	if !metricsOn && m.cfg.SandboxMetricsEnabled {
+		metricsOn = true
+	}
 	inst := &vm.Instance{
 		Name:           name,
 		Status:         vm.StatusCreating,
@@ -251,6 +255,7 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		Mounts:         mounts,
 		SocketForwards: sockFwds,
 		CreatedAt:      time.Now().UTC(),
+		MetricsEnabled: metricsOn,
 	}
 	if err := m.st.Put(inst); err != nil {
 		return nil, err
