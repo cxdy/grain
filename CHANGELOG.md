@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Daemon activity feed** — `GET /activity` returns a ring of recent control-plane mutations (create/start/stop/rm/exec/…). Clients send `User-Agent` / `X-Grain-Client` (`cli`, `desktop`, `mcp`, `sdk`). Desktop Activity drawer polls and merges daemon events with local UI notes so CLI/MCP/API actions appear, not only Desktop clicks.
+- **Persistent activity log** — activity ring stored at `data_dir/activity.json` (survives `grain down` / restart).
+- **Background metrics sampler** — daemon periodically samples guest `/stats` into each VM’s on-disk `metrics.ring` when metrics are enabled (not only when Desktop polls).
+
+### Changed
+
+- **Sandbox metrics default on** — `sandbox_metrics_enabled` defaults to **true**; new sandboxes write host-side history under `vms/<name>/metrics.ring`. Opt out with `sandbox_metrics_enabled: false` or per-create `metrics_enabled: false`. History is still readable after disable.
 
 ### Changed
 

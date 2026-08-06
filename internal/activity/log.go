@@ -1,8 +1,13 @@
-// Package activity is an in-memory ring of recent control-plane actions
+// Package activity is a ring of recent control-plane actions
 // (create/start/stop/rm/exec/…) for Desktop and operators.
+// Optionally persisted under data_dir/activity.json across daemon restarts.
 package activity
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -10,6 +15,9 @@ import (
 
 // DefaultCapacity is how many events to retain.
 const DefaultCapacity = 200
+
+// FileName is the default log file under the grain data dir.
+const FileName = "activity.json"
 
 // Event is one recorded API action.
 type Event struct {
@@ -32,9 +40,10 @@ type Log struct {
 	cap  int
 	seq  atomic.Uint64
 	ring []Event
+	path string // empty = memory only
 }
 
-// New returns a log with the given capacity (minimum 16).
+// New returns an in-memory log with the given capacity (minimum 16).
 func New(capacity int) *Log {
 	if capacity < 16 {
 		capacity = DefaultCapacity
@@ -42,7 +51,31 @@ func New(capacity int) *Log {
 	return &Log{cap: capacity, ring: make([]Event, 0, capacity)}
 }
 
-// Record appends an event (assigns id and time if empty).
+// Open loads or creates a persistent log at path (JSON array, newest first).
+// path empty falls back to New(capacity).
+func Open(path string, capacity int) (*Log, error) {
+	l := New(capacity)
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" || path == "." {
+		return l, nil
+	}
+	l.path = path
+	if err := l.load(); err != nil && !os.IsNotExist(err) {
+		// Corrupt file: start fresh but keep path for future writes.
+		l.ring = l.ring[:0]
+	}
+	return l, nil
+}
+
+// PathForDataDir returns dataDir/activity.json.
+func PathForDataDir(dataDir string) string {
+	if dataDir == "" {
+		return ""
+	}
+	return filepath.Join(dataDir, FileName)
+}
+
+// Record appends an event (assigns id and time if empty) and persists when path is set.
 func (l *Log) Record(ev Event) Event {
 	if l == nil {
 		return ev
@@ -65,7 +98,81 @@ func (l *Log) Record(ev Event) Event {
 	}
 	// newest first
 	l.ring = append([]Event{ev}, l.ring...)
+	_ = l.persistLocked()
 	return ev
+}
+
+type diskSnapshot struct {
+	Seq    uint64  `json:"seq"`
+	Events []Event `json:"events"`
+}
+
+func (l *Log) load() error {
+	b, err := os.ReadFile(l.path)
+	if err != nil {
+		return err
+	}
+	var snap diskSnapshot
+	if err := json.Unmarshal(b, &snap); err != nil {
+		// try bare array for forward-compat
+		var arr []Event
+		if err2 := json.Unmarshal(b, &arr); err2 != nil {
+			return err
+		}
+		snap.Events = arr
+	}
+	if len(snap.Events) > l.cap {
+		snap.Events = snap.Events[:l.cap]
+	}
+	l.ring = snap.Events
+	if snap.Seq > 0 {
+		l.seq.Store(snap.Seq)
+	} else {
+		// infer seq from highest act-N id
+		var max uint64
+		for _, e := range l.ring {
+			if n, ok := parseActID(e.ID); ok && n > max {
+				max = n
+			}
+		}
+		l.seq.Store(max)
+	}
+	return nil
+}
+
+func (l *Log) persistLocked() error {
+	if l.path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(l.path), 0o700); err != nil {
+		return err
+	}
+	snap := diskSnapshot{Seq: l.seq.Load(), Events: l.ring}
+	b, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := l.path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, l.path)
+}
+
+func parseActID(id string) (uint64, bool) {
+	const p = "act-"
+	if len(id) <= len(p) || id[:len(p)] != p {
+		return 0, false
+	}
+	var n uint64
+	for i := len(p); i < len(id); i++ {
+		c := id[i]
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + uint64(c-'0')
+	}
+	return n, true
 }
 
 // List returns up to limit newest events (0 = all retained).

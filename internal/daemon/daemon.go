@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cxdy/grain/client"
+	"github.com/cxdy/grain/internal/activity"
 	"github.com/cxdy/grain/internal/api"
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/hypervisor"
@@ -52,6 +53,9 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// ephemeral sandboxes do not survive daemon restart
 	_ = mgr.CleanupEphemeral(ctx)
 
+	// Background guest stats → host metrics.ring (survives daemon restart per VM).
+	mgr.StartMetricsSampler(ctx)
+
 	// Warm pool: best-effort background fill when configured (does not block listen).
 	if cfg.WarmPool.Enabled() {
 		go func() {
@@ -76,6 +80,12 @@ func Run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 
 	srv := api.New(mgr, met, log)
+	// Persist activity ring under data_dir (CLI/Desktop/MCP feed survives restarts).
+	if act, err := activity.Open(activity.PathForDataDir(cfg.DataDir), activity.DefaultCapacity); err != nil {
+		log.Warn("activity log open", "err", err)
+	} else {
+		srv.Act = act
+	}
 	srv.APIToken = cfg.ResolvedAPIToken()
 	handler := srv.Handler()
 
