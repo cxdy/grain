@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Firecracker vFC-2 partial net** — single-tenant TAP + create-time `-P`/`--publish` (iptables DNAT to guest IP), live `grain fwd add` via host TCP proxy (socat/python3), guest eth0 configured over agent after vsock. Overlay/mounts remain QEMU-only. Needs Linux CAP_NET_ADMIN + `/dev/net/tun`. Smoke: `scripts/smoke-fc-net.sh`.
+- **Firecracker vFC-2 partial net** — single-tenant TAP + create-time `-P`/`--publish` (iptables DNAT + host→guest **SNAT** so loopback clients work), live `grain fwd add` via host TCP proxy (socat/python3), guest eth0 configured over agent after vsock. Overlay/mounts remain QEMU-only. Needs Linux CAP_NET_ADMIN + `/dev/net/tun`. Smoke: `scripts/smoke-fc-net.sh` (guest HTTP + host `curl` proof).
 - **Firecracker catalog pull (`fc-latest`)** — `grain image pull fc-kernel` / `grain-ubuntu-fc` downloads from the `fc-latest` release (sidecar digests, fail-closed). Workflow **Bake Firecracker artifacts** rebuilds and rewrites that tag. `scripts/smoke-fc.sh` one-shot create→agent→destroy on Linux+KVM.
 - **Firecracker bake (`scripts/bake-fc.sh --all`)** — on Linux: fetch Firecracker CI `vmlinux` + Ubuntu squashfs, convert to raw ext4, inject **static** `grain-agent` (systemd, vsock :7475). Outputs `dist/fc/vmlinux-<arch>` + `grain-ubuntu-fc-<arch>.raw` (+ `.sha256`).
 - **Firecracker kernel/rootfs import + doctor** — `grain image import <vmlinux> --id fc-kernel` installs to `data_dir/kernels/vmlinux`; `import … --id grain-ubuntu-fc` stores **raw** `disk.raw` (not qcow2). Doctor **hard-fails** missing FC kernel and distinguishes default-path missing vs BYO `kernel_path` misconfig; soft notes when the default image is QEMU-oriented. Start errors use the same wording.
@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Firecracker create-time `-P` reply path** — OUTPUT DNAT alone left saddr=`127.0.0.1`, so guests could not reply to host loopback publishes. Add POSTROUTING **SNAT to TAP HostIP** for traffic leaving the TAP with source `127.0.0.1`. Smoke now starts a guest HTTP listener and `curl`s both create-time `-P` and live `fwd`.
 - **Firecracker doctor / guide pull-first** — missing `fc-kernel` / `grain-ubuntu-fc` recommend `grain image pull …` (BYO import remains fallback); soft notes no longer say “not imported” / “not published yet”. Guide operator checklist + known-limitations table align with vFC-1 agent production (net still QEMU-only); boot sample p50/p95 match AWS `m7i-flex.large` post-merge bench.
 - **Install / `grain update` quieter when already set up** — `scripts/install.sh` skips the MCP enable prompt when `~/.grain/config.yaml` already exists, and drops the long “Next steps” footer (install progress + short “grain X installed” / PATH line only).
 - **Paste screenshots into `grain sh`** — host clipboard paste prefers **images** (macOS: PNG/TIFF/JPEG via AppKit, converting screenshot TIFF→PNG; Linux: `wl-paste`/`xclip` image MIME types) before plain text. Guest `pbpaste`/xclip shims fetch via the shell control channel. Longer paste timeout for large images.

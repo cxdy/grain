@@ -20,7 +20,9 @@ import (
 //   - One TAP per VM (host_dev_name), attached as Firecracker network-interfaces.
 //   - Host TAP address 10.77.<slot>.1/24, guest 10.77.<slot>.2/24 (static).
 //   - Guest IP configured after agent is up (vsock exec) so bake need not change.
-//   - Create-time publish: iptables DNAT 127.0.0.1:host → guestIP:guest (+ MASQUERADE egress).
+//   - Create-time publish: iptables DNAT 127.0.0.1:host → guestIP:guest, plus
+//     POSTROUTING SNAT saddr 127.0.0.1 → HostIP on the TAP (guest cannot reply to
+//     127.0.0.1). Guest egress uses MASQUERADE off the TAP.
 //   - Live grain fwd add: host TCP proxy 127.0.0.1:host → guestIP:guest (no SSH).
 //   - Overlay L2 and 9p/virtiofs mounts remain QEMU-only.
 //
@@ -185,6 +187,36 @@ func ParseHostPortPair(hostPort int) (string, error) {
 		return "", fmt.Errorf("invalid host port %d", hostPort)
 	}
 	return net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort)), nil
+}
+
+// HostToGuestSNATRule returns the match/target args for POSTROUTING SNAT used after
+// OUTPUT DNAT of local clients. Without this, DNATed packets keep saddr=127.0.0.1
+// and the guest cannot reply (replies target its own loopback). Pure helper.
+//
+// Full iptables form:
+//
+//	iptables -t nat -A POSTROUTING <HostToGuestSNATRule...>
+func HostToGuestSNATRule(plan FCNetPlan) []string {
+	return []string{
+		"-o", plan.TapName,
+		"-s", "127.0.0.1",
+		"-j", "SNAT",
+		"--to-source", plan.HostIP,
+	}
+}
+
+// DNATRuleArgs returns match/target args for one create-time publish DNAT rule
+// (chain OUTPUT or PREROUTING supplied by the caller). Pure helper.
+//
+//	iptables -t nat -A OUTPUT <DNATRuleArgs...>
+func DNATRuleArgs(r FCDNATRule) []string {
+	return []string{
+		"-p", r.Proto,
+		"-d", "127.0.0.1",
+		"--dport", strconv.Itoa(r.HostPort),
+		"-j", "DNAT",
+		"--to-destination", net.JoinHostPort(r.GuestIP, strconv.Itoa(r.GuestPort)),
+	}
 }
 
 // PrivilegeErrorHint is returned when TAP/NAT requires elevated privileges.

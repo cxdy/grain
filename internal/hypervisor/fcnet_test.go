@@ -131,3 +131,47 @@ func TestFCTapNameLength(t *testing.T) {
 		}
 	}
 }
+
+// TestHostToGuestSNATRule documents the create-time publish reply-path fix:
+// DNATed loopback clients keep saddr=127.0.0.1 unless SNAT rewrites to HostIP.
+func TestHostToGuestSNATRule(t *testing.T) {
+	t.Parallel()
+	p := PlanFCNet("snat-web")
+	rule := HostToGuestSNATRule(p)
+	joined := strings.Join(rule, " ")
+	if !strings.Contains(joined, p.TapName) {
+		t.Fatalf("missing tap %q in %v", p.TapName, rule)
+	}
+	if !strings.Contains(joined, "127.0.0.1") {
+		t.Fatalf("missing loopback match in %v", rule)
+	}
+	if !strings.Contains(joined, "SNAT") {
+		t.Fatalf("missing SNAT target in %v", rule)
+	}
+	if !strings.Contains(joined, p.HostIP) {
+		t.Fatalf("missing HostIP %q as --to-source in %v", p.HostIP, rule)
+	}
+	// Full iptables shape used by ensureHostToGuestSNAT.
+	full := append([]string{"-t", "nat", "-A", "POSTROUTING"}, rule...)
+	if full[0] != "-t" || full[2] != "-A" || full[3] != "POSTROUTING" {
+		t.Fatalf("unexpected full args %v", full)
+	}
+}
+
+func TestDNATRuleArgs(t *testing.T) {
+	t.Parallel()
+	r := FCDNATRule{Proto: "tcp", HostPort: 18080, GuestPort: 8080, GuestIP: "10.77.3.2"}
+	args := DNATRuleArgs(r)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "127.0.0.1") || !strings.Contains(joined, "18080") {
+		t.Fatalf("host match missing: %v", args)
+	}
+	if !strings.Contains(joined, "DNAT") || !strings.Contains(joined, "10.77.3.2:8080") {
+		t.Fatalf("destination missing: %v", args)
+	}
+	// OUTPUT install shape.
+	out := append([]string{"-t", "nat", "-A", "OUTPUT"}, args...)
+	if !strings.Contains(strings.Join(out, " "), "--to-destination 10.77.3.2:8080") {
+		t.Fatalf("OUTPUT DNAT shape: %v", out)
+	}
+}
