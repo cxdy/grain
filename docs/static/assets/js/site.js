@@ -27,12 +27,27 @@
     });
   }
 
-  // Version switcher — keep path suffix when possible
+  // Version switcher — live tree stays on-site; historical SVU tags open GitHub at commit (#88)
   var verSelect = document.querySelector("[data-version-select]");
   if (verSelect) {
     verSelect.addEventListener("change", function () {
-      var targetRoot = verSelect.value; // e.g. /docs/0.2.2/
+      var targetRoot = verSelect.value; // /docs/main/ or https://github.com/.../tree/<sha>
       if (!targetRoot) return;
+      var opt = verSelect.options[verSelect.selectedIndex];
+      var external =
+        (opt && opt.getAttribute("data-external") === "1") ||
+        /^https?:\/\//i.test(targetRoot);
+      if (external) {
+        window.open(targetRoot, "_blank", "noopener,noreferrer");
+        // Reset select to current live option so the control stays truthful.
+        for (var i = 0; i < verSelect.options.length; i++) {
+          if (verSelect.options[i].getAttribute("data-live") === "1") {
+            verSelect.selectedIndex = i;
+            break;
+          }
+        }
+        return;
+      }
       var path = window.location.pathname;
       var m = path.match(/^\/docs\/[^/]+\/(.*)$/);
       if (m) {

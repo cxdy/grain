@@ -42,6 +42,9 @@
     sandboxSort: "name",
     sandboxCompact: false,
     multiSSHHistory: [],
+    /** @type {any[]} last multi-Run results for re-run failed / copy-all */
+    multiSSHLastResults: [],
+    multiSSHLastCommand: "",
     bulkBusy: false,
     /** @type {any[]} daemon activity from GET /activity */
     daemonActivity: [],
@@ -870,6 +873,75 @@
     });
   }
 
+  function multiRunFailed(r) {
+    if (!r) return false;
+    if (r.error) return true;
+    if (r.exit_code != null && r.exit_code !== 0) return true;
+    return false;
+  }
+
+  function partitionMultiRunFailed(results) {
+    const failed = [];
+    const ok = [];
+    const seenF = new Set();
+    const seenOK = new Set();
+    for (const r of results || []) {
+      const name = (r.name || "").trim();
+      if (!name) continue;
+      if (multiRunFailed(r)) {
+        if (!seenF.has(name)) {
+          seenF.add(name);
+          failed.push(name);
+        }
+      } else if (!seenOK.has(name)) {
+        seenOK.add(name);
+        ok.push(name);
+      }
+    }
+    failed.sort();
+    ok.sort();
+    return { failed, ok };
+  }
+
+  function formatMultiRunExport(command, results) {
+    const lines = [];
+    if (command) {
+      lines.push("$ " + command, "");
+    }
+    const sorted = [...(results || [])].sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""))
+    );
+    for (const r of sorted) {
+      const name = r.name || "?";
+      const st = multiRunFailed(r) ? "FAILED" : "ok";
+      lines.push(`=== ${name} (${st}) ===`);
+      if (r.error) lines.push("error: " + r.error);
+      if (r.exit_code != null && r.exit_code !== 0) lines.push("exit_code: " + r.exit_code);
+      const out = (r.stdout || "").replace(/\r?\n$/, "");
+      const err = (r.stderr || "").replace(/\r?\n$/, "");
+      if (out) {
+        lines.push("--- stdout ---", out);
+      }
+      if (err) {
+        lines.push("--- stderr ---", err);
+      }
+      if (!out && !err && !r.error) {
+        if (r.line) lines.push(r.line);
+        else lines.push(`(exit ${r.exit_code != null ? r.exit_code : "?"})`);
+      }
+      lines.push("");
+    }
+    return lines.join("\n");
+  }
+
+  function updateMultiSSHActions() {
+    const btn = $("#multi-ssh-rerun-failed");
+    if (!btn) return;
+    const { failed } = partitionMultiRunFailed(state.multiSSHLastResults || []);
+    btn.hidden = failed.length === 0;
+    btn.textContent = failed.length ? `Re-run failed (${failed.length})` : "Re-run failed";
+  }
+
   function appendMultiSSHResult(r) {
     const out = $("#multi-ssh-out");
     if (!out) return;
@@ -877,9 +949,14 @@
     out.querySelectorAll(".mss-running").forEach((n) => n.remove());
     const name = r.name || "?";
     const err = r.error;
+    const bad = multiRunFailed(r);
     let body = "";
     if (err) body = "error: " + err;
-    else if (r.line && r.line.startsWith(name + ": ")) body = r.line.slice(name.length + 2);
+    else if (r.stderr && bad) {
+      // Prefer stderr for failed hosts so operators see the real failure.
+      body = String(r.stderr).replace(/\r?\n$/, "");
+      if (r.stdout) body = String(r.stdout).replace(/\r?\n$/, "") + "\n" + body;
+    } else if (r.line && r.line.startsWith(name + ": ")) body = r.line.slice(name.length + 2);
     else if (r.stdout) body = String(r.stdout).replace(/\r?\n$/, "");
     else if (r.stderr) body = String(r.stderr).replace(/\r?\n$/, "");
     else body = `(exit ${r.exit_code != null ? r.exit_code : "?"})`;
@@ -887,11 +964,11 @@
     const frag = document.createDocumentFragment();
     lines.forEach((ln, i) => {
       const div = document.createElement("div");
-      const bad = !!(err || (r.exit_code && r.exit_code !== 0));
       div.className = "mss-line" + (bad ? " mss-err" : "");
       if (i === 0) {
+        const tag = bad ? ` <span class="mss-fail-tag">FAILED</span>` : "";
         div.innerHTML =
-          `<span class="mss-host selectable">${escapeHtml(name)}</span><span class="mss-sep">: </span>` +
+          `<span class="mss-host selectable">${escapeHtml(name)}</span>${tag}<span class="mss-sep">: </span>` +
           `<span class="mss-body selectable">${escapeHtml(ln)}</span>`;
       } else {
         div.innerHTML = `<span class="mss-host-pad"></span><span class="mss-body selectable">${escapeHtml(ln)}</span>`;
@@ -902,16 +979,7 @@
     out.scrollTop = out.scrollHeight;
   }
 
-  async function runMultiSSH(e) {
-    if (e) e.preventDefault();
-    const names = [...state.selectedSet].sort();
-    if (names.length < 2) return;
-    const command = ($("#multi-ssh-cmd")?.value || "").trim();
-    if (!command) {
-      toast("Enter a command", true);
-      return;
-    }
-    pushMultiSSHHistory(command);
+  async function runMultiSSHOnHosts(names, command) {
     const out = $("#multi-ssh-out");
     const btn = $("#multi-ssh-run");
     if (out) {
@@ -927,7 +995,7 @@
         try {
           const r = await call("ExecOne", name, command);
           results.push(r);
-          if (r.error || (r.exit_code && r.exit_code !== 0)) failed++;
+          if (multiRunFailed(r)) failed++;
           appendMultiSSHResult(r);
           return r;
         } catch (err) {
@@ -943,6 +1011,9 @@
         }
       });
       out?.querySelectorAll(".mss-running").forEach((n) => n.remove());
+      state.multiSSHLastResults = results;
+      state.multiSSHLastCommand = command;
+      updateMultiSSHActions();
       const okN = names.length - failed;
       pushEvent({
         action: "bulk exec",
@@ -958,6 +1029,56 @@
       toast(String(err), true);
     } finally {
       if (btn) btn.disabled = false;
+    }
+  }
+
+  async function runMultiSSH(e) {
+    if (e) e.preventDefault();
+    const names = [...state.selectedSet].sort();
+    if (names.length < 2) return;
+    const command = ($("#multi-ssh-cmd")?.value || "").trim();
+    if (!command) {
+      toast("Enter a command", true);
+      return;
+    }
+    pushMultiSSHHistory(command);
+    return runMultiSSHOnHosts(names, command);
+  }
+
+  async function reRunMultiSSHFailed() {
+    const { failed } = partitionMultiRunFailed(state.multiSSHLastResults || []);
+    const command = state.multiSSHLastCommand || ($("#multi-ssh-cmd")?.value || "").trim();
+    if (!failed.length) {
+      toast("No failed hosts to re-run");
+      return;
+    }
+    if (!command) {
+      toast("No previous command", true);
+      return;
+    }
+    return runMultiSSHOnHosts(failed, command);
+  }
+
+  async function copyMultiSSHAll() {
+    const text = formatMultiRunExport(state.multiSSHLastCommand || "", state.multiSSHLastResults || []);
+    if (!text.trim()) {
+      toast("Nothing to copy yet", true);
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      toast("Copied multi-Run results");
+    } catch (e) {
+      toast(String(e), true);
     }
   }
 
@@ -1972,10 +2093,24 @@
       if ($("#set-pool-running")) $("#set-pool-running").checked = !!wp.running;
       const ps = $("#settings-pool-status");
       if (ps) {
-        if (wp.template && wp.size > 0) {
-          ps.textContent = `Configured: template ${wp.template}, size ${wp.size}${wp.running ? " (running mode)" : ""}`;
-        } else {
-          ps.textContent = "Warm pool disabled (set template + size > 0).";
+        try {
+          const st = await call("PoolStatus");
+          const ready = st?.ready ?? 0;
+          const desired = st?.desired ?? wp.size ?? 0;
+          const tpl = st?.template || wp.template || "";
+          const mode = st?.running || wp.running ? "running (agent-ready)" : "suspended (disk-only)";
+          if (st?.enabled || (tpl && desired > 0)) {
+            ps.textContent = `Template ${tpl || "—"} · ready ${ready}/${desired} · ${mode}. Promote golden from More menu, Fill, then New prefers claim when ready > 0.`;
+          } else {
+            ps.textContent =
+              "Warm pool off. Set template + size, Apply, Fill — or More → Promote to golden + fill on a ready sandbox.";
+          }
+        } catch (_) {
+          if (wp.template && wp.size > 0) {
+            ps.textContent = `Configured: template ${wp.template}, size ${wp.size}${wp.running ? " (running mode)" : ""}`;
+          } else {
+            ps.textContent = "Warm pool disabled (set template + size > 0).";
+          }
         }
       }
       const ts = $("#token-status");
@@ -3897,6 +4032,8 @@
       renderMultiSSHHistory();
     });
     $("#multi-ssh-form")?.addEventListener("submit", (e) => runMultiSSH(e));
+    $("#multi-ssh-rerun-failed")?.addEventListener("click", () => reRunMultiSSHFailed());
+    $("#multi-ssh-copy-all")?.addEventListener("click", () => copyMultiSSHAll());
     $("#sandbox-search")?.addEventListener("input", (e) => {
       state.sandboxFilter = e.target.value || "";
       renderTable();

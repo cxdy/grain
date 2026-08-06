@@ -117,6 +117,41 @@ func TestDecideDefaultCreateMode(t *testing.T) {
 	if !strings.Contains(strings.ToLower(d.Status), "empty") {
 		t.Fatalf("status: %s", d.Status)
 	}
+
+	d = DecideDefaultCreateModeRunning(true, 1, 2, "g", true)
+	if !d.PreferPool || !strings.Contains(d.Status, "running") {
+		t.Fatalf("%+v", d)
+	}
+	if !strings.Contains(d.Hint, "rename") {
+		t.Fatalf("hint: %s", d.Hint)
+	}
+	cl := FormatWarmPathChecklist(true, 0, 2, "g", false)
+	if !strings.Contains(cl, "Fill") {
+		t.Fatal(cl)
+	}
+}
+
+func TestResourceCapsFromInfoMap(t *testing.T) {
+	t.Parallel()
+	_, ok := ResourceCapsFromInfoMap(nil)
+	if ok {
+		t.Fatal("nil")
+	}
+	_, ok = ResourceCapsFromInfoMap(map[string]string{"version": "1"})
+	if ok {
+		t.Fatal("no cap keys")
+	}
+	c, ok := ResourceCapsFromInfoMap(map[string]string{
+		"max_vms": "4", "max_cpus_total": "16", "max_memory_mb_total": "8192",
+	})
+	if !ok || c.MaxVMs != 4 || c.MaxCPUsTotal != 16 || c.MaxMemoryMBTotal != 8192 {
+		t.Fatalf("%v %+v", ok, c)
+	}
+	// Explicit 0 is still known (unlimited).
+	c, ok = ResourceCapsFromInfoMap(map[string]string{"max_vms": "0"})
+	if !ok || c.MaxVMs != 0 {
+		t.Fatalf("%v %+v", ok, c)
+	}
 }
 
 func TestFilterActivityBySources(t *testing.T) {

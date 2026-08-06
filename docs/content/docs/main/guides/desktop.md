@@ -26,9 +26,11 @@ CLI-first path: install → `grain up` → `grain new` → `grain sh`.
 | **Recipes** | Local library (`~/.grain/recipes`), **New from form…**, import file/URL (URL is preview→add), browse official catalog, YAML edit (valid-only save), **Deploy…** with preflight (image ready / mounts / remote host) + name override + wait. **More → Save as library recipe** from a sandbox. Import never auto-creates a VM. |
 | **MCP** | Status, enable in config, copy IDE snippets, ensure-running (local) |
 | **Doctor** | Host tool + daemon checks with fix hints |
-| **Settings** | Preferences summary, hosts, Advanced config.yaml (strict validate) |
-| **Activity** | Toasts + activity drawer (timings, errors) |
+| **Settings** | Preferences, **Warm pool** (template / size / running mode + Fill), hosts, Advanced config.yaml (strict validate) |
+| **Activity** | Toasts + activity drawer (CLI/MCP/API/Desktop); optional **source filter** |
 | **Hosts** | Top-bar switcher; remote profiles never start a remote daemon |
+| **Fast create** | New sandbox: cold / from template / **from warm pool** (prefers pool when ready &gt; 0); bulk Start **preflight** against daemon caps |
+| **Multi-Run** | Multi-select **Run…** — progressive results, **re-run failed**, **copy all** (stdout/stderr) |
 
 ## Install / launch
 
@@ -103,6 +105,22 @@ desktop:
 ```
 
 Settings → Advanced edits YAML with **strict unknown-key validation** and a trailing newline. Saving may restart the local daemon.
+
+### Warm pool (Settings + New)
+
+| Control | Action |
+|---------|--------|
+| **Settings → Warm pool** | Set `template`, desired `size` (0 disables), optional **running** mode → **Apply warm pool** (writes config + restarts local daemon) → **Fill pool** |
+| **More → Promote to golden + fill pool** | Suspend if running, set template to that sandbox, fill |
+| **New sandbox** | Prefers **From warm pool** when ready &gt; 0; empty/unconfigured copy stays honest (no silent cold while implying pool is ready) |
+| **Bulk Start** | Preflight against active host caps from `GET /info` (blocks over `max_vms` / CPU / memory when known) |
+| **Activity** | Filter by `desktop` / `cli` / `mcp` / `api` |
+
+See [lifecycle — fast create](../lifecycle/#fast-create-spawn-and-warm-pool).
+
+### Multi-host Run
+
+Select two or more sandboxes → **Run…**. Results stream per host. After a run: **Re-run failed** (only non-zero / error hosts) and **Copy all** (stdout + stderr export text).
 
 Sandbox **disk** increases run `qemu-img resize` when the sandbox is **stopped** (refuses while running). Grow the guest filesystem separately after resize.
 

@@ -122,6 +122,27 @@ The seed ISO is still attached for per-clone **hostname**, **SSH keys**, and **9
 
 Bake prepares the disk for this path (`cloud-init clean`, `userdata-ran` stamp, enabled `grain-agent`, cleared `machine-id`). Clones are expected to finish cloud-init and report agent-ready sooner than a cold `ubuntu-cloud` first boot; measure locally if you need hard p50 numbers.
 
+### Lean golden for warm pool / fast claim
+
+Host-side create is already ~200 ms; remaining latency is guest boot until agent. For the product “assign ready sandbox” path:
+
+1. Use a **HasAgent** image (`grain-ubuntu`) so create uses the **minimal** seed and agent wait (not full cloud-init + SSH deploy).
+2. Prefer **same-size disk** as the base (skip growpart during boot; deferred grow after agent when disk is larger — see create timing logs).
+3. After agent is up: `grain suspend <golden>` (qcow2 savevm when possible).
+4. Point `warm_pool.template` at that golden and `grain pool fill` (or Desktop **Promote to golden + fill**). Optional `warm_pool.running: true` keeps members agent-ready for rename-only claim.
+
+Operator checklist (CLI):
+
+```bash
+grain image pull grain-ubuntu
+grain new -i grain-ubuntu -n golden -p --wait agent
+# optional: slim guest (disable unused units) before suspend
+grain suspend golden
+# config: warm_pool.template=golden size=2
+grain pool fill
+grain new --from-pool -n work-1
+```
+
 ### Bake from ubuntu-cloud (automated)
 
 On a Mac with QEMU:

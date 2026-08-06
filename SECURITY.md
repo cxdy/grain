@@ -18,7 +18,7 @@ We will acknowledge reports as soon as practical and coordinate disclosure after
 ## Out of scope
 
 - **Guest workload compromise without host escape.** The expected isolation boundary is the microVM (QEMU/HVF or Firecracker/KVM). Code running as root *inside* a guest that cannot reach the host is not a grain host vulnerability by itself.
-- Multi-tenant hard isolation for untrusted co-tenants on one host without additional hardening (see [Security model](https://grainvm.com/docs/0.6.3/explain/security/)).
+- Multi-tenant hard isolation for untrusted co-tenants on one host without additional hardening (see [Security model](https://grainvm.com/docs/main/explain/security/)).
 - **Multi-user RBAC / per-user API tokens.** Grain is intentionally **single-tenant / single-operator per `data_dir`** (one trust domain). There is no built-in role model, quota-per-user, or multi-token auth — that is a documented non-goal, not an open product gap. See [Single-tenant model](#single-tenant--single-operator-model) below.
 - Issues solely in third-party guests, base cloud images, or tools you run inside sandboxes (for example act, Docker, k3s), unless grain misconfigures them in a way that breaks the host boundary.
 
@@ -32,9 +32,9 @@ One grain daemon owns **one** `data_dir` and one trust domain. Anyone who can ca
 | **Unix socket** | `grain.sock` is **0600** (owner-only). Local clients on that socket inherit the same power as a Bearer token. |
 | **`api_token`** | A **shared secret** for the whole daemon (plus optional reverse-proxy SSO). Not per-user RBAC, not OAuth, not multi-token roles. |
 | **Shared physical host** | Use **separate OS users** (each with its own `data_dir` / daemon) **or separate hosts** for hostile tenants — not multi-tenant grain on one control plane. |
-| **Team lab (trusted peers)** | One daemon + one token for a cooperating team is a supported ops pattern ([Remote sandbox host](https://grainvm.com/docs/0.6.3/guides/remote-host/)). Everyone with the token is equivalent. |
+| **Team lab (trusted peers)** | One daemon + one token for a cooperating team is a supported ops pattern ([Remote sandbox host](https://grainvm.com/docs/main/guides/remote-host/)). Everyone with the token is equivalent. |
 
-Related risks already documented elsewhere: **overlay** shared L2 (guest agents reachable by peers), **MCP** (control-plane power over Streamable HTTP — keep on loopback + token), **egress proxy** (default bind for SLIRP; firewall on multi-user hosts). Details: [Security model](https://grainvm.com/docs/0.6.3/explain/security/).
+Related risks already documented elsewhere: **overlay** shared L2 (guest agents reachable by peers), **MCP** (control-plane power over Streamable HTTP — keep on loopback + token), **egress proxy** (default bind for SLIRP; firewall on multi-user hosts). Details: [Security model](https://grainvm.com/docs/main/explain/security/).
 
 ## Safe defaults (operators)
 
@@ -47,12 +47,12 @@ Related risks already documented elsewhere: **overlay** shared L2 (guest agents 
 - **Data directory** (`data_dir`, default `~/.grain`) and VM subdirs are created with mode **0700**; unix socket **0600**; VM `meta.json` **0600** so disks, keys, and metadata stay owner-only. Existing dirs are not chmod'd on upgrade — `chmod -R go-rwx ~/.grain` if needed.
 - Guest agent (`grain-agent` on guest `:7475`) is **unauthenticated**; hostfwd is loopback-only. Remote access should use the **authenticated daemon proxy**, not raw agent ports.
 - `network: overlay` puts VMs on a **shared L2** — peers can reach each other’s agents. Use only among mutually trusted guests; default `slirp` keeps guests isolated from each other.
-- Full team-box setup: **[Remote sandbox host](https://grainvm.com/docs/0.6.3/guides/remote-host/)** (`docs/content/docs/main/guides/remote-host.md`).
-- Happy path: **[Remote lab](https://grainvm.com/docs/0.6.3/guides/remote-lab/)**.
+- Full team-box setup: **[Remote sandbox host](https://grainvm.com/docs/main/guides/remote-host/)** (`docs/content/docs/main/guides/remote-host.md`).
+- Happy path: **[Remote lab](https://grainvm.com/docs/main/guides/remote-lab/)**.
 
 ## Further reading
 
-- [Security model](https://grainvm.com/docs/0.6.3/explain/security/)
-- [Overlay network](https://grainvm.com/docs/0.6.3/guides/networking-overlay/)
-- [Remote sandbox host](https://grainvm.com/docs/0.6.3/guides/remote-host/)
+- [Security model](https://grainvm.com/docs/main/explain/security/)
+- [Overlay network](https://grainvm.com/docs/main/guides/networking-overlay/)
+- [Remote sandbox host](https://grainvm.com/docs/main/guides/remote-host/)
 - [Contributing](CONTRIBUTING.md)

@@ -77,6 +77,11 @@ func New(cfg config.Config, st *store.Store, rt hypervisor.Runtime, disk hypervi
 	}
 }
 
+// Config returns a copy of the manager configuration (resource caps, warm pool, …).
+func (m *Manager) Config() config.Config {
+	return m.cfg
+}
+
 // CreateTimeout is the outer deadline for API create (ReadyTimeout + buffer for image/disk).
 func (m *Manager) CreateTimeout() time.Duration {
 	t := m.cfg.ReadyTimeout + 2*time.Minute

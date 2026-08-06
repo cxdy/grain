@@ -8,7 +8,7 @@
   <strong>Linux microVM sandboxes on your own hardware.</strong><br>
   <a href="https://grainvm.com">Documentation</a>
   ·
-  <a href="https://grainvm.com/docs/0.6.3/get-started/quickstart/">Quick start</a>
+  <a href="https://grainvm.com/docs/main/get-started/quickstart/">Quick start</a>
   ·
   <a href="https://github.com/cxdy/grain/releases">Releases</a>
 </p>
@@ -18,7 +18,7 @@
   · macOS &amp; Linux
 </p>
 
-grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Actions](https://grainvm.com/docs/0.6.3/guides/recipes/act/) (`grain act`), or for a [throwaway k3s](https://grainvm.com/docs/0.6.3/guides/recipes/k3s/) lab. Ephemeral by default; persistent when you want it.
+grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Actions](https://grainvm.com/docs/main/guides/recipes/act/) (`grain act`), or for a [throwaway k3s](https://grainvm.com/docs/main/guides/recipes/k3s/) lab. Ephemeral by default; persistent when you want it.
 
 ---
 
@@ -58,7 +58,7 @@ grain rm
 grain down
 ```
 
-Optional starter config and more flags: **[quick start](https://grainvm.com/docs/0.6.3/get-started/quickstart/)**.
+Optional starter config and more flags: **[quick start](https://grainvm.com/docs/main/get-started/quickstart/)**.
 
 ### MCP (coding agents)
 
@@ -70,7 +70,7 @@ grain up --mcp                 # daemon + MCP at http://127.0.0.1:7476/mcp
 #   command: grain, args: ["mcp"]
 ```
 
-→ [MCP server guide](https://grainvm.com/docs/0.6.3/guides/mcp/)
+→ [MCP server guide](https://grainvm.com/docs/main/guides/mcp/)
 
 ---
 
@@ -86,7 +86,7 @@ grain act -- -l          # list workflows
 grain act -- -j test     # run a job
 ```
 
-→ [act guide](https://grainvm.com/docs/0.6.3/guides/recipes/act/)
+→ [act guide](https://grainvm.com/docs/main/guides/recipes/act/)
 
 ### k3s lab
 
@@ -97,7 +97,7 @@ grain new --preset k3s -n lab -p --wait userdata
 grain fwd ls lab         # host port → guest 6443
 ```
 
-→ [k3s guide](https://grainvm.com/docs/0.6.3/guides/recipes/k3s/)
+→ [k3s guide](https://grainvm.com/docs/main/guides/recipes/k3s/)
 
 ---
 
@@ -118,14 +118,14 @@ grain fwd ls lab         # host port → guest 6443
 
 | Page | |
 |------|--|
-| [Install](https://grainvm.com/docs/0.6.3/get-started/install/) | Platforms and install options |
-| [Quick start](https://grainvm.com/docs/0.6.3/get-started/quickstart/) | Config + first VM |
-| [First sandbox](https://grainvm.com/docs/0.6.3/get-started/first-sandbox/) | Tutorial + interactive demo |
-| [act](https://grainvm.com/docs/0.6.3/guides/recipes/act/) | GitHub Actions in a microVM |
-| [k3s](https://grainvm.com/docs/0.6.3/guides/recipes/k3s/) | Single-node cluster preset |
-| [Remote lab](https://grainvm.com/docs/0.6.3/guides/remote-lab/) | Host + laptop CLI happy path |
-| [Guides](https://grainvm.com/docs/0.6.3/guides/) | Images, agent, networking, mounts, proxy |
-| [Reference](https://grainvm.com/docs/0.6.3/reference/cli/) | CLI, config, API, SDKs |
+| [Install](https://grainvm.com/docs/main/get-started/install/) | Platforms and install options |
+| [Quick start](https://grainvm.com/docs/main/get-started/quickstart/) | Config + first VM |
+| [First sandbox](https://grainvm.com/docs/main/get-started/first-sandbox/) | Tutorial + interactive demo |
+| [act](https://grainvm.com/docs/main/guides/recipes/act/) | GitHub Actions in a microVM |
+| [k3s](https://grainvm.com/docs/main/guides/recipes/k3s/) | Single-node cluster preset |
+| [Remote lab](https://grainvm.com/docs/main/guides/remote-lab/) | Host + laptop CLI happy path |
+| [Guides](https://grainvm.com/docs/main/guides/) | Images, agent, networking, mounts, proxy |
+| [Reference](https://grainvm.com/docs/main/reference/cli/) | CLI, config, API, SDKs |
 
 The site is built from this repo’s `docs/` directory.
 

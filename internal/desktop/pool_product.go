@@ -180,7 +180,13 @@ type CreateModeDecision struct {
 }
 
 // DecideDefaultCreateMode picks pool when ready>0, else cold with honest empty/unconfigured copy.
+// running distinguishes suspended (disk-only) vs running (agent-ready, RAM) pool members.
 func DecideDefaultCreateMode(enabled bool, ready, desired int, template string) CreateModeDecision {
+	return DecideDefaultCreateModeRunning(enabled, ready, desired, template, false)
+}
+
+// DecideDefaultCreateModeRunning is DecideDefaultCreateMode with suspended vs running honesty.
+func DecideDefaultCreateModeRunning(enabled bool, ready, desired int, template string, running bool) CreateModeDecision {
 	tpl := strings.TrimSpace(template)
 	d := CreateModeDecision{
 		Mode:     "cold",
@@ -189,22 +195,100 @@ func DecideDefaultCreateMode(enabled bool, ready, desired int, template string) 
 		Enabled:  enabled,
 		Template: tpl,
 	}
+	modeWord := "suspended (disk-only)"
+	if running {
+		modeWord = "running (agent-ready, uses host RAM)"
+	}
 	if !enabled {
-		d.Status = "Warm pool is not configured. Cold boot waits for guest agent (~seconds). Set template and size in Settings to enable pool claims."
+		d.Status = "Warm pool is not configured. Cold boot waits for guest agent (~seconds). Settings → Warm pool: set template + size, or More → Promote to golden + fill."
 		d.Hint = "Cold boot waits for guest agent (~seconds). Template/pool use suspend snapshots when available."
 		return d
 	}
 	if ready > 0 {
 		d.Mode = "pool"
 		d.PreferPool = true
-		d.Status = fmt.Sprintf("Pool %q — ready %d / desired %d. New prefers claim (fast).", tpl, ready, desired)
-		d.Hint = "Claims a pre-cloned pool member — fastest path when the pool has ready VMs."
+		d.Status = fmt.Sprintf("Pool %q — ready %d / desired %d · %s. New prefers claim (fast).", tpl, ready, desired, modeWord)
+		if running {
+			d.Hint = "Claims a running pool member (rename-only) — fastest assign path."
+		} else {
+			d.Hint = "Claims a pre-cloned suspended member and starts it (−loadvm when snapshotted)."
+		}
 		return d
 	}
 	// Enabled but empty.
-	d.Status = fmt.Sprintf("Pool %q is empty (ready 0 / desired %d). Cold boot will be used unless you Fill the pool first.", tpl, desired)
-	d.Hint = "Pool empty — Fill first for fast claim, or cold-boot now (~seconds for agent)."
+	d.Status = fmt.Sprintf("Pool %q is empty (ready 0 / desired %d · %s). Fill the pool first for fast claim, or cold-boot now.", tpl, desired, modeWord)
+	d.Hint = "Pool empty — Settings → Fill pool, then New prefers claim."
 	return d
+}
+
+// FormatWarmPathChecklist is a short operator loop summary for Settings / create UI.
+func FormatWarmPathChecklist(enabled bool, ready, desired int, template string, running bool) string {
+	tpl := strings.TrimSpace(template)
+	var steps []string
+	if !enabled || tpl == "" {
+		steps = append(steps, "1. Promote a ready sandbox (More → Promote to golden + fill) or set template in Settings")
+		steps = append(steps, "2. Set desired size ≥ 1 and Apply (restarts local daemon)")
+		steps = append(steps, "3. Fill pool, then New sandbox (prefers claim when ready > 0)")
+		return strings.Join(steps, "\n")
+	}
+	kind := "suspended members"
+	if running {
+		kind = "running members (RAM)"
+	}
+	steps = append(steps, fmt.Sprintf("Template %q · size %d · %s", tpl, desired, kind))
+	if ready > 0 {
+		steps = append(steps, fmt.Sprintf("Ready %d — New sandbox will prefer From warm pool", ready))
+	} else {
+		steps = append(steps, "Ready 0 — click Fill pool, then New")
+	}
+	return strings.Join(steps, "\n")
+}
+
+// ResourceCapsFromInfoMap parses GET /info string map for resource caps.
+// Returns CapsKnown true when at least one cap key is present (including explicit 0).
+func ResourceCapsFromInfoMap(info map[string]string) (ResourceCaps, bool) {
+	if info == nil {
+		return ResourceCaps{}, false
+	}
+	keys := []string{"max_vms", "max_cpus_total", "max_memory_mb_total"}
+	known := false
+	var c ResourceCaps
+	for _, k := range keys {
+		if _, ok := info[k]; ok {
+			known = true
+			break
+		}
+	}
+	if !known {
+		return ResourceCaps{}, false
+	}
+	c.MaxVMs = atoiDefault(info["max_vms"], 0)
+	c.MaxCPUsTotal = atoiDefault(info["max_cpus_total"], 0)
+	c.MaxMemoryMBTotal = atoiDefault(info["max_memory_mb_total"], 0)
+	return c, true
+}
+
+func atoiDefault(s string, def int) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return def
+	}
+	n := 0
+	neg := false
+	for i, r := range s {
+		if i == 0 && r == '-' {
+			neg = true
+			continue
+		}
+		if r < '0' || r > '9' {
+			return def
+		}
+		n = n*10 + int(r-'0')
+	}
+	if neg {
+		return -n
+	}
+	return n
 }
 
 // FilterActivityBySources returns events whose Source is in sources (case-insensitive).
