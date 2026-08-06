@@ -423,6 +423,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 	var waitMode string
 	var useProxy bool
 	var cloneFrom string
+	var fromTemplate string
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Launch a sandbox (ephemeral by default)",
@@ -430,6 +431,7 @@ func cmdNew(cfgPath *string) *cobra.Command {
 
   grain new -p -n lab          persistent lab
   grain new --clone lab -n lab2  offline disk clone of stopped persistent VM
+  grain new --from golden -n w1  fast spawn from suspended template (loadvm)
 
 Clone limitations (same as grain clone): source must be stopped and persistent;
 qcow2 overlays keep their backing chain; guest hostname may still match the
@@ -449,6 +451,12 @@ source; SSH/agent ports are allocated on the next start (clone is left stopped).
 
 			if strings.TrimSpace(cloneFrom) != "" {
 				return runClone(c, strings.TrimSpace(cloneFrom), name, createTimeout)
+			}
+			if strings.TrimSpace(fromTemplate) != "" {
+				if recipePath != "" || userdataFile != "" {
+					return fmt.Errorf("use --from alone (not with --recipe or --userdata-file)")
+				}
+				return runSpawn(c, strings.TrimSpace(fromTemplate), name, createTimeout)
 			}
 
 			var compiled *recipe.Compiled
@@ -686,7 +694,39 @@ source; SSH/agent ports are allocated on the next start (clone is left stopped).
 	cmd.Flags().StringArrayVar(&publishSockets, "publish-socket", nil, "SSH streamlocal socket forward HOSTPATH:GUESTPATH (repeatable; docker-style)")
 	cmd.Flags().BoolVar(&useProxy, "proxy", false, "inject HTTP(S)_PROXY via cloud-init (guest → 10.0.2.2; requires grain proxy up)")
 	cmd.Flags().StringVar(&cloneFrom, "clone", "", "offline clone of stopped persistent SRC (left stopped; use -n for destination name)")
+	cmd.Flags().StringVar(&fromTemplate, "from", "", "fast create: clone stopped/suspended template and start (uses -loadvm when snapshotted; see grain suspend)")
 	return cmd
+}
+
+// runSpawn clones a template and starts it (API Create with from=).
+func runSpawn(c *api.Client, template, dst string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := c.Health(ctx); err != nil {
+		return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+	}
+	// Prefer public client package CreateRequest path via api client - check api.Client Create
+	start := time.Now()
+	stop := createProgress("spawning from " + template)
+	// Use internal API client Create if it supports From - map to raw POST
+	inst, err := c.Create(ctx, api.CreateRequest{
+		Name:       dst,
+		From:       template,
+		Persistent: true,
+	})
+	stop()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("spawned %s from %s  status=%s", inst.Name, template, inst.Status)
+	if inst.SSHPort > 0 {
+		fmt.Printf("  ssh=:%d", inst.SSHPort)
+	}
+	if inst.AgentPort > 0 {
+		fmt.Printf("  agent=:%d", inst.AgentPort)
+	}
+	fmt.Printf("  (%s)\n", time.Since(start).Round(time.Millisecond))
+	return nil
 }
 
 // cmdClone copies a stopped persistent VM disk under a new name.

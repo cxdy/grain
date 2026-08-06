@@ -1155,6 +1155,12 @@ func (m *Manager) Clone(ctx context.Context, srcName, dstName string) (*vm.Insta
 			m.log.Warn("clone: flash-vars copy skipped", "err", err)
 		}
 	}
+	// Preserve suspend snapshot marker so Spawn/Restore can -loadvm after copy.
+	if tag, ok := readSuspendMarker(m.st.Dir(srcName)); ok {
+		if err := writeSuspendMarker(dstDir, tag); err != nil {
+			m.log.Warn("clone: suspend marker copy skipped", "err", err)
+		}
+	}
 
 	fwds := clonePortForwards(src.Forwards)
 	socks := cloneSocketForwards(src.SocketForwards)
@@ -1208,6 +1214,61 @@ func (m *Manager) Clone(ctx context.Context, srcName, dstName string) (*vm.Insta
 	success = true
 	m.log.Info("vm cloned", "src", srcName, "dst", name, "disk", dstDisk)
 	return inst, nil
+}
+
+// snapshotAgentWait is the short budget after -loadvm (guest was already agent-ready).
+const snapshotAgentWait = 15 * time.Second
+
+// Spawn clones a stopped/suspended template and starts it. When the template
+// has a grain-suspend qcow2 snapshot, QEMU -loadvm restores memory so the
+// guest agent is typically reachable in well under a cold boot.
+//
+// Template must be persistent and not running (same rules as Clone). Destination
+// is always persistent. Guest hostname/identity match the template until changed.
+func (m *Manager) Spawn(ctx context.Context, template, dstName string) (*vm.Instance, error) {
+	t0 := time.Now()
+	template = strings.TrimSpace(template)
+	if template == "" {
+		return nil, fmt.Errorf("template name is required")
+	}
+	src, err := m.st.Get(template)
+	if err != nil {
+		return nil, err
+	}
+	// Prefer suspended templates with snapshots for fast path.
+	if src.Status != vm.StatusSuspended && src.Status != vm.StatusStopped && src.Status != vm.StatusError {
+		if m.rt.Running(src) || src.Status == vm.StatusRunning || src.Status == vm.StatusPaused {
+			return nil, fmt.Errorf("template %q must be stopped or suspended (status=%s); grain suspend %s", template, src.Status, template)
+		}
+	}
+
+	inst, err := m.Clone(ctx, template, dstName)
+	if err != nil {
+		return nil, err
+	}
+	tClone := time.Now()
+
+	hasSnap := false
+	if tag, ok := readSuspendMarker(m.st.Dir(inst.Name)); ok {
+		inst.LoadVM = tag
+		hasSnap = true
+	}
+
+	started, err := m.startFromDisk(ctx, inst)
+	if err != nil {
+		// Leave cloned disk for debugging; user can rm.
+		return nil, err
+	}
+	tDone := time.Now()
+	m.log.Info("spawn timing",
+		"template", template,
+		"name", started.Name,
+		"loadvm", hasSnap,
+		"clone_ms", tClone.Sub(t0).Milliseconds(),
+		"start_wait_ms", tDone.Sub(tClone).Milliseconds(),
+		"total_ms", tDone.Sub(t0).Milliseconds(),
+	)
+	return started, nil
 }
 
 func clonePortForwards(in []vm.PortForward) []vm.PortForward {
@@ -1871,6 +1932,38 @@ func (m *Manager) startFromDisk(ctx context.Context, inst *vm.Instance) (*vm.Ins
 	}
 	if err := m.st.Put(inst); err != nil {
 		return nil, err
+	}
+
+	// Snapshot restore: guest memory already had agent up — poll agent only (short).
+	// Cold start: existing SSH + agent deploy path.
+	if loadTag != "" {
+		if m.cfg.Hypervisor == "mock" || !agentTarget(inst).HasEndpoint() {
+			if err := m.startSocketForwards(inst); err != nil {
+				m.log.Warn("socket forwards failed on start", "name", inst.Name, "err", err)
+			}
+			_ = m.st.Put(inst)
+			m.log.Info("vm started", "name", inst.Name, "persistent", inst.Persistent, "loadvm", true)
+			return inst, nil
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, snapshotAgentWait)
+		err := waitAgentReachable(probeCtx, agentTarget(inst))
+		cancel()
+		if err == nil {
+			m.log.Info("snapshot agent ready", "name", inst.Name, "agent_port", inst.AgentPort)
+			if err := m.startSocketForwards(inst); err != nil {
+				m.log.Warn("socket forwards failed on start", "name", inst.Name, "err", err)
+			}
+			if err := m.st.Put(inst); err != nil {
+				return nil, err
+			}
+			m.log.Info("vm started",
+				"name", inst.Name,
+				"persistent", inst.Persistent,
+				"loadvm", true)
+			return inst, nil
+		}
+		m.log.Warn("snapshot agent wait failed; falling back to SSH/agent path",
+			"name", inst.Name, "err", err)
 	}
 
 	readyDeadline := time.Now().Add(m.cfg.ReadyTimeout)

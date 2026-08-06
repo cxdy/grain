@@ -109,6 +109,23 @@ In-repo under [`recipes/`](https://github.com/cxdy/grain/tree/main/recipes) (ind
 
 **Download counts (no extra infra):** when recipe bundles ship as GitHub Release assets, use the Releases API `download_count` per asset (`gh api repos/cxdy/grain/releases` / browser on the release page). The catalog itself is git-sourced until a release pin is published.
 
+### Fast sandboxes (snapshot spawn)
+
+Cold `grain new --wait agent` is ~seconds (guest boot). For sub-second labs:
+
+```bash
+# One-time template
+grain new -i grain-ubuntu -n golden -p --wait agent
+# ... optional setup ...
+grain suspend golden          # qcow2 savevm grain-suspend when possible
+
+# Fast copies (clone disk + -loadvm when snapshotted)
+grain new --from golden -n work1
+grain new --from golden -n work2
+```
+
+API: `POST /vms` with `{"from":"golden","name":"work1","persistent":true}`.
+
 **Desktop:** **Recipes** tab → Import file / URL / Browse official → Edit YAML (valid-only save) → **Deploy…** (name override + wait until ready).
 
 **Trust:** URL import is **preview then add** (Desktop fetches and validates, shows name/image/resources/mounts/bootstrap, then you confirm install). Official **Add** and CLI `recipe add <url>` install into the library only. Deploy/create is always a separate step. Prefer HTTPS; HTTP is allowed with a warning. Catalog entries may pin `sha256` (fail closed on mismatch). Offline: library always works; `recipe search` uses a cached index when present.

@@ -20,7 +20,9 @@ import (
 // CreateRequest is the JSON body for POST /vms.
 // Wait and Timeout are sent as query parameters (not JSON body).
 type CreateRequest struct {
-	Name           string             `json:"name,omitempty"`
+	Name string `json:"name,omitempty"`
+	// From spawns from a stopped/suspended template (clone + start; -loadvm when snapshotted).
+	From           string             `json:"from,omitempty"`
 	Persistent     bool               `json:"persistent"`
 	CPUs           int                `json:"cpus,omitempty"`
 	MemoryMB       int                `json:"memory_mb,omitempty"`
