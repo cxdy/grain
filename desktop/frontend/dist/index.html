@@ -634,18 +634,24 @@
     </div>
 
     <div class="modal-backdrop" id="modal-recipe-catalog-preview" hidden>
-      <div class="modal modal-wide" role="dialog" aria-labelledby="catalog-preview-title">
+      <div class="modal modal-catalog-preview" role="dialog" aria-labelledby="catalog-preview-title">
         <div class="modal-head no-select">
           <strong id="catalog-preview-title">Recipe</strong>
           <button type="button" class="btn-icon" data-close="modal-recipe-catalog-preview" aria-label="Close">×</button>
         </div>
-        <div class="modal-body">
-          <p class="hint" id="catalog-preview-desc"></p>
-          <dl class="insp-kv" id="catalog-preview-kv"></dl>
-          <ul class="recipe-warn-list" id="catalog-preview-warn"></ul>
-          <p class="error-text" id="catalog-preview-err" hidden></p>
-          <label class="field-label" for="catalog-preview-yaml">YAML</label>
-          <pre id="catalog-preview-yaml" class="recipe-yaml-pre muted" aria-live="polite">Loading…</pre>
+        <div class="modal-body catalog-preview-body">
+          <div class="catalog-preview-grid">
+            <div class="catalog-preview-meta">
+              <p class="hint catalog-preview-desc" id="catalog-preview-desc"></p>
+              <dl class="insp-kv" id="catalog-preview-kv"></dl>
+              <ul class="recipe-warn-list" id="catalog-preview-warn"></ul>
+              <p class="error-text" id="catalog-preview-err" hidden></p>
+            </div>
+            <div class="catalog-preview-yaml-pane">
+              <label class="field-label" for="catalog-preview-yaml">YAML</label>
+              <pre id="catalog-preview-yaml" class="recipe-yaml-pre muted" aria-live="polite">Loading…</pre>
+            </div>
+          </div>
           <div class="modal-foot no-select">
             <button type="button" class="btn btn-ghost" data-close="modal-recipe-catalog-preview">Close</button>
             <button type="button" class="btn btn-ghost" id="catalog-preview-open-lib" hidden>Open in library</button>

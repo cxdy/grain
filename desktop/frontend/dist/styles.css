@@ -821,7 +821,13 @@ a:hover { text-decoration: underline; }
   border-top: 1px solid var(--border);
   padding-top: 0.75rem;
 }
-.recipes-catalog .view-head { margin-bottom: 0.15rem; }
+.recipes-catalog .view-head { margin-bottom: 0.2rem; }
+/* Clear air between intro hint and the catalog table (was nearly overlapping). */
+.recipes-catalog > .hint {
+  margin: 0.2rem 0 1.15rem;
+  line-height: 1.45;
+  max-width: 48rem;
+}
 .recipes-table th:nth-child(2),
 .recipes-table td:nth-child(2) { width: 50%; }
 .catalog-table th:nth-child(2),
@@ -838,6 +844,84 @@ a:hover { text-decoration: underline; }
 .catalog-table tbody tr td.no-select { cursor: default; }
 .recipes-list .data-table { width: 100%; }
 .modal-wide { max-width: min(42rem, 94vw); }
+
+/* Official recipe preview: meta left, YAML right — no whole-modal scroll */
+.modal.modal-catalog-preview {
+  width: min(58rem, 96vw);
+  max-height: min(88vh, 42rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal.modal-catalog-preview .modal-head { flex-shrink: 0; }
+.catalog-preview-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.catalog-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(15rem, 0.9fr) minmax(0, 1.4fr);
+  gap: 1.25rem 1.5rem;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+.catalog-preview-meta {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+.catalog-preview-desc {
+  margin: 0 0 0.75rem !important;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+.catalog-preview-meta .insp-kv {
+  margin: 0;
+}
+.catalog-preview-meta .recipe-warn-list {
+  margin-top: 0.75rem;
+}
+.catalog-preview-yaml-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.catalog-preview-yaml-pane .field-label {
+  flex-shrink: 0;
+  margin-top: 0;
+}
+.catalog-preview-yaml-pane .recipe-yaml-pre {
+  flex: 1;
+  min-height: 14rem;
+  max-height: none;
+  /* Only the YAML pane scrolls if the file is long — modal shell stays fixed */
+  overflow: auto;
+}
+.modal.modal-catalog-preview .modal-foot {
+  flex-shrink: 0;
+  margin: 0;
+  margin-top: 0.85rem;
+  padding: 0.85rem 0 1rem;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 720px) {
+  .catalog-preview-grid {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+  .catalog-preview-yaml-pane .recipe-yaml-pre {
+    min-height: 12rem;
+    max-height: 40vh;
+  }
+}
 #recipe-import-dropdown .dropdown-menu {
   left: 0;
   right: auto;
