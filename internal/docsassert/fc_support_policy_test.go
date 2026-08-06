@@ -88,6 +88,7 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 		"catalog pull not published yet",
 		"Firecracker (experimental)",
 		"Not configured (experimental)",
+		"FC is a separate experimental path",
 		"p95 ~1999",
 	} {
 		if strings.Contains(matrix, bad) || strings.Contains(fcGuide, bad) {
