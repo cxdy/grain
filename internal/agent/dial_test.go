@@ -53,6 +53,11 @@ func TestTargetForInstance(t *testing.T) {
 	if fc.Port != 0 {
 		t.Fatalf("fc port = %d", fc.Port)
 	}
+	// Firecracker vFC-2: AgentPort set for TCP DNAT; disk.raw still implies FC UDS.
+	fc2 := TargetForInstance(12, 19000, "/home/u/.grain/vms/sbox/disk.raw")
+	if fc2.FirecrackerUDS != wantUDS || fc2.Port != 19000 || fc2.CID != 0 {
+		t.Fatalf("fc with agent port: %+v", fc2)
+	}
 	// No disk path: cannot derive UDS.
 	empty := TargetForInstance(3, 0, "")
 	if empty.FirecrackerUDS != "" || empty.CID != 3 {

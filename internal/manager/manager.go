@@ -521,8 +521,9 @@ func (m *Manager) waitAgentMode(
 
 	// Baked agent still down after full budget: soft-fail to SSH deploy only if
 	// SSH comes up; keep polling the agent in parallel (it often wins).
-	// Firecracker has no hostfwd SSH (SSHPort=0) — skip deploy and surface UDS hint.
-	if inst.SSHPort > 0 {
+	// Firecracker uses vsock UDS even when SSHPort is allocated for optional TCP
+	// DNAT — do not wait on guest sshd (image may not run sshd).
+	if inst.SSHPort > 0 && agentTarget(inst).FirecrackerUDS == "" {
 		if emit != nil {
 			emit(vm.CreateEvent{
 				Phase:   vm.PhaseWaitSSH,
