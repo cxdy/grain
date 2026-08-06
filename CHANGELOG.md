@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Desktop agent badge honesty** — while a golden image is still booting, failed agent `/health` no longer reports **not installed**. UI shows **checking…** until health succeeds, or until 2 minutes after create (then **not responding** / **not installed** as appropriate).
 - **Create latency instrumentation + leaner golden boots** — daemon logs `create timing` (image/disk/seed/start/wait ms). Agent wait poll 50ms (was 200ms). Agent-ready minimal cloud-init **omits growpart/resizefs** unless the clone disk is larger than the base image (avoids multi-second grow on same-size overlays). Host-side create is typically ~200ms; remaining latency is guest boot/agent (~10s today on grain-ubuntu). Path to sub-second is snapshot/warm-pool (documented in design notes).
 
 ### Added
