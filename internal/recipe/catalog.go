@@ -258,23 +258,60 @@ func AddFromURL(client HTTPDoer, libDir, url, expectedSHA256 string, opts SaveOp
 	return SaveLibrary(libDir, []byte(prev.YAML), opts)
 }
 
+// LookupCatalogEntry returns the catalog row for id, or an error if missing.
+func (c *Catalog) LookupCatalogEntry(id string) (CatalogEntry, error) {
+	if c == nil {
+		return CatalogEntry{}, fmt.Errorf("catalog is nil")
+	}
+	id = strings.TrimSpace(id)
+	for i := range c.Recipes {
+		if c.Recipes[i].ID == id {
+			return c.Recipes[i], nil
+		}
+	}
+	return CatalogEntry{}, fmt.Errorf("catalog has no recipe %q", id)
+}
+
+// PreviewFromCatalog fetches and validates one official recipe body without
+// writing the library. Uses entry.SHA256 when set. Does not create a VM.
+func PreviewFromCatalog(client HTTPDoer, cat *Catalog, id string) (RecipePreview, error) {
+	var zero RecipePreview
+	entry, err := cat.LookupCatalogEntry(id)
+	if err != nil {
+		return zero, err
+	}
+	u, err := cat.ResolveEntryURL(entry)
+	if err != nil {
+		return zero, err
+	}
+	prev, err := PreviewFromURL(client, u, entry.SHA256)
+	if err != nil {
+		return zero, err
+	}
+	// Prefer catalog id (stable library name) over YAML metadata.name.
+	if entry.ID != "" {
+		prev.SuggestedID = entry.ID
+	}
+	if strings.TrimSpace(prev.Description) == "" && strings.TrimSpace(entry.Description) != "" {
+		prev.Description = entry.Description
+	}
+	if strings.TrimSpace(prev.Name) == "" && strings.TrimSpace(entry.Title) != "" {
+		prev.Name = entry.Title
+	}
+	return prev, nil
+}
+
 // AddFromCatalog installs one official recipe by id into the library.
 func AddFromCatalog(client HTTPDoer, cat *Catalog, libDir, id string, opts SaveOptions) (LibraryEntry, error) {
 	if cat == nil {
 		return LibraryEntry{}, fmt.Errorf("catalog is nil")
 	}
 	id = strings.TrimSpace(id)
-	var entry *CatalogEntry
-	for i := range cat.Recipes {
-		if cat.Recipes[i].ID == id {
-			entry = &cat.Recipes[i]
-			break
-		}
+	entry, err := cat.LookupCatalogEntry(id)
+	if err != nil {
+		return LibraryEntry{}, err
 	}
-	if entry == nil {
-		return LibraryEntry{}, fmt.Errorf("catalog has no recipe %q", id)
-	}
-	u, err := cat.ResolveEntryURL(*entry)
+	u, err := cat.ResolveEntryURL(entry)
 	if err != nil {
 		return LibraryEntry{}, err
 	}

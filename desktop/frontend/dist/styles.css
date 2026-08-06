@@ -692,15 +692,24 @@ a:hover { text-decoration: underline; }
 }
 
 /* Recipes tab */
+.recipes-section-title {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.recipes-section-title:first-of-type { margin-top: 0.35rem; }
 .recipes-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  gap: 1rem;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
   align-items: start;
-  min-height: 12rem;
+}
+.recipes-layout.has-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  min-height: 10rem;
 }
 @media (max-width: 900px) {
-  .recipes-layout { grid-template-columns: 1fr; }
+  .recipes-layout.has-detail { grid-template-columns: 1fr; }
 }
 .recipes-detail {
   border: 1px solid var(--border);
@@ -717,13 +726,50 @@ a:hover { text-decoration: underline; }
   resize: vertical;
   tab-size: 2;
 }
+.recipe-yaml-pre {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  max-height: 22rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: var(--bg-soft, var(--bg));
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre;
+  tab-size: 2;
+  color: var(--text);
+}
 .recipes-catalog {
-  margin-top: 1.25rem;
+  margin-top: 1.5rem;
   border-top: 1px solid var(--border);
-  padding-top: 1rem;
+  padding-top: 0.75rem;
+}
+.recipes-catalog .view-head { margin-bottom: 0.15rem; }
+.recipes-table th:nth-child(2),
+.recipes-table td:nth-child(2) { width: 50%; }
+.catalog-table th:nth-child(2),
+.catalog-table td.catalog-summary {
+  width: auto;
+  max-width: 28rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.catalog-table tbody tr {
+  cursor: pointer;
+}
+.catalog-table tbody tr:hover { background: var(--brand-soft, rgba(0,0,0,0.04)); }
+.catalog-table tbody tr td.no-select { cursor: default; }
+.recipes-list .data-table { width: 100%; }
+.modal-wide { max-width: min(42rem, 94vw); }
+#recipe-import-dropdown .dropdown-menu {
+  left: 0;
+  right: auto;
+  min-width: 9rem;
 }
 .error-text { color: var(--danger, #e35); font-size: 0.85rem; margin-top: 0.35rem; }
-.empty-hint { padding: 1rem 0.25rem; }
+.empty-hint { padding: 0.65rem 0.15rem 0.35rem; font-size: 0.9rem; }
 .field-label { display: block; font-size: 0.8rem; font-weight: 500; margin: 0.5rem 0 0.25rem; }
 .recipe-url-preview {
   margin-top: 0.75rem;

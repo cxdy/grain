@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Fast create from suspended template** — `grain new --from TEMPLATE -n NAME` (API `POST /vms` body `{"from":"TEMPLATE","name":"NAME"}`). Clones a stopped/suspended persistent VM and starts it; when the template was `grain suspend`'d with a qcow2 snapshot, QEMU `-loadvm` restores memory and agent wait is short (seconds, not full cold boot). Clone copies suspend markers. Host logs `spawn timing`.
+- **Desktop official recipe preview** — `PreviewOfficialRecipe` fetches catalog YAML without installing (sha256 when pinned). Offline: local library copy if installed, else index description only with a clear warning.
 
 ### Changed
 
+- **Desktop Recipes tab layout** — Import is a File/URL dropdown; official catalog always visible (ID · Summary · Local · Add); row click opens description + YAML preview; denser empty state and detail pane only when a library recipe is open.
 - **Create latency instrumentation + leaner golden boots** — daemon logs `create timing` (image/disk/seed/start/wait ms). Agent wait poll 50ms (was 200ms). Agent-ready minimal cloud-init **omits growpart/resizefs** unless the clone disk is larger than the base image (avoids multi-second grow on same-size overlays). Host-side create is typically ~200ms; remaining latency is guest boot/agent (~10s today on grain-ubuntu). Path to sub-second is snapshot/warm-pool (documented in design notes).
 
 ### Added

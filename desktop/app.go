@@ -845,6 +845,16 @@ func (a *App) SearchOfficialRecipes() ([]desktop.RecipeInfo, error) {
 	return svc.SearchOfficialRecipes()
 }
 
+// PreviewOfficialRecipe fetches catalog recipe YAML without installing (online).
+// Offline: library YAML if installed, else index description only.
+func (a *App) PreviewOfficialRecipe(id string) (desktop.RecipeURLPreview, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeURLPreview{}, err
+	}
+	return svc.PreviewOfficialRecipe(id)
+}
+
 // AddOfficialRecipe installs one catalog recipe into the library.
 func (a *App) AddOfficialRecipe(id string, overwrite bool) (desktop.RecipeInfo, error) {
 	svc, err := a.service()
