@@ -85,7 +85,9 @@ const (
 // CreateRequest is the JSON body for POST /vms.
 // Wait and Timeout are sent as query parameters (not JSON body).
 type CreateRequest struct {
-	Name           string            `json:"name,omitempty"`
+	Name string `json:"name,omitempty"`
+	// From clones a stopped/suspended template and starts it (fast -loadvm when snapshotted).
+	From           string            `json:"from,omitempty"`
 	Persistent     bool              `json:"persistent"`
 	CPUs           int               `json:"cpus,omitempty"`
 	MemoryMB       int               `json:"memory_mb,omitempty"`
@@ -100,7 +102,7 @@ type CreateRequest struct {
 	Mounts         []Mount           `json:"mounts,omitempty"`
 	SocketForwards []SocketForward   `json:"socket_forwards,omitempty"`
 	// Wait is auto|ssh|agent|userdata|bootstrap (empty = daemon default/auto).
-	// Legacy true/1 maps to ssh on the server.
+	// Legacy true/1 maps to ssh on the server. Ignored when From is set (snapshot agent wait).
 	Wait string `json:"-"`
 	// Timeout is an optional Go duration string for create readiness (e.g. "3m").
 	Timeout string `json:"-"`

@@ -124,7 +124,9 @@ func (s *Server) listVMs(w http.ResponseWriter, r *http.Request) {
 }
 
 type createBody struct {
-	Name           string             `json:"name"`
+	Name string `json:"name"`
+	// From is a stopped/suspended template VM to clone+start (fast path with -loadvm when snapshotted).
+	From           string             `json:"from,omitempty"`
 	Persistent     bool               `json:"persistent"`
 	CPUs           int                `json:"cpus"`
 	MemoryMB       int                `json:"memory_mb"`
@@ -195,6 +197,21 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
+
+	// Fast path: spawn from suspended/stopped template (clone disk + optional -loadvm).
+	// Stream=1 clients still get a single JSON instance (spawn is short; no phase stream).
+	if from := strings.TrimSpace(body.From); from != "" {
+		inst, err := s.mgr.Spawn(ctx, from, body.Name)
+		if err != nil {
+			s.met.CreateErrors.Add(1)
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		s.met.VMsCreated.Add(1)
+		s.met.VMsRunning.Add(1)
+		writeJSON(w, http.StatusCreated, inst)
+		return
+	}
 
 	opts := vm.CreateOpts{
 		Name:           body.Name,
