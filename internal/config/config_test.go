@@ -125,7 +125,7 @@ func TestLoadWarmPool(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	body := []byte("warm_pool:\n  template: golden\n  size: 3\n")
+	body := []byte("warm_pool:\n  template: golden\n  size: 3\n  running: true\n")
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestLoadWarmPool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.WarmPool.Template != "golden" || c.WarmPool.Size != 3 {
+	if c.WarmPool.Template != "golden" || c.WarmPool.Size != 3 || !c.WarmPool.Running {
 		t.Fatalf("%+v", c.WarmPool)
 	}
 	if !c.WarmPool.Enabled() {

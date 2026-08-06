@@ -25,10 +25,12 @@ type PoolStatus struct {
 	Template string `json:"template,omitempty"`
 	// Desired is warm_pool.size from config.
 	Desired int `json:"desired"`
-	// Ready is the count of claimable pool members (stopped/suspended, tagged).
+	// Ready is the count of claimable pool members (stopped/suspended, or running when Running mode).
 	Ready int `json:"ready"`
 	// Members are names of claimable pool VMs (sorted by CreatedAt oldest first in fill/claim).
 	Members []string `json:"members,omitempty"`
+	// Running is true when warm_pool.running keeps members agent-ready (RAM cost).
+	Running bool `json:"running,omitempty"`
 }
 
 // PoolStatus returns current warm-pool inventory from config + store.
@@ -38,6 +40,7 @@ func (m *Manager) PoolStatus() (PoolStatus, error) {
 		Enabled:  wp.Enabled(),
 		Template: strings.TrimSpace(wp.Template),
 		Desired:  wp.Size,
+		Running:  wp.Running,
 	}
 	list, err := m.listPoolMembers(st.Template)
 	if err != nil {
@@ -110,7 +113,26 @@ func (m *Manager) poolFillLocked(ctx context.Context) (PoolStatus, error) {
 			_ = m.Delete(ctx, inst.Name)
 			return PoolStatus{}, err
 		}
-		m.log.Info("warm pool filled", "member", inst.Name, "template", template)
+		// Optional running pool: start member now so claim is rename-only.
+		if wp.Running {
+			started, startErr := m.startFromDisk(ctx, inst)
+			if startErr != nil {
+				_ = m.Delete(ctx, inst.Name)
+				return PoolStatus{}, fmt.Errorf("pool fill start (running mode): %w", startErr)
+			}
+			// Re-tag after start (start may refresh meta).
+			if started.Tags == nil {
+				started.Tags = map[string]string{}
+			}
+			started.Tags[tagPool] = poolTagValue
+			started.Tags[tagPoolTemplate] = template
+			if err := m.st.Put(started); err != nil {
+				return PoolStatus{}, err
+			}
+			m.log.Info("warm pool filled (running)", "member", started.Name, "template", template)
+		} else {
+			m.log.Info("warm pool filled", "member", inst.Name, "template", template)
+		}
 	}
 	return m.poolStatusUnlocked()
 }
@@ -166,6 +188,35 @@ func (m *Manager) PoolClaim(ctx context.Context, destName string) (*vm.Instance,
 	m.poolMu.Unlock()
 
 	tClaimed := time.Now()
+
+	// Running warm pool: member is already agent-ready — skip startFromDisk.
+	if m.cfg.WarmPool.Running && (inst.Status == vm.StatusRunning || m.rt.Running(inst)) {
+		tDone := time.Now()
+		m.log.Info("pool claim timing",
+			"name", inst.Name,
+			"from", member.Name,
+			"loadvm", false,
+			"running_mode", true,
+			"claim_ms", tClaimed.Sub(t0).Milliseconds(),
+			"start_wait_ms", int64(0),
+			"total_ms", tDone.Sub(t0).Milliseconds(),
+		)
+		// Best-effort async refill (same as start path).
+		if m.cfg.WarmPool.Enabled() {
+			m.poolBG.Add(1)
+			go func() {
+				defer m.poolBG.Done()
+				bg, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				defer cancel()
+				m.poolMu.Lock()
+				defer m.poolMu.Unlock()
+				if _, err := m.poolFillLocked(bg); err != nil {
+					m.log.Warn("warm pool refill", "err", err)
+				}
+			}()
+		}
+		return inst, nil
+	}
 
 	hasSnap := false
 	if tag, ok := readSuspendMarker(m.st.Dir(inst.Name)); ok {
@@ -247,6 +298,7 @@ func (m *Manager) poolStatusUnlocked() (PoolStatus, error) {
 		Enabled:  wp.Enabled(),
 		Template: strings.TrimSpace(wp.Template),
 		Desired:  wp.Size,
+		Running:  wp.Running,
 	}
 	list, err := m.listPoolMembers(st.Template)
 	if err != nil {
@@ -291,22 +343,35 @@ func (m *Manager) pickPoolMemberLocked() (*vm.Instance, error) {
 // listPoolMembers returns claimable pool VMs, oldest first.
 // When template is non-empty, only members tagged for that template are returned.
 // When template is empty, all grain.pool-tagged members are returned.
+// Default (disk pool): only stopped/suspended members. Running pool mode: only running members.
 func (m *Manager) listPoolMembers(template string) ([]*vm.Instance, error) {
 	all, err := m.st.List()
 	if err != nil {
 		return nil, err
 	}
+	runningMode := m.cfg.WarmPool.Running
 	var out []*vm.Instance
 	for _, inst := range all {
 		if !isPoolMember(inst, template) {
 			continue
 		}
-		// Only claimable when not running.
-		if inst.Status == vm.StatusRunning || inst.Status == vm.StatusPaused || inst.Status == vm.StatusCreating {
+		if inst.Status == vm.StatusCreating {
 			continue
 		}
-		if m.rt.Running(inst) {
-			continue
+		live := m.rt.Running(inst) || inst.Status == vm.StatusRunning
+		if runningMode {
+			// Running warm pool: claimable members stay agent-ready.
+			if !live && inst.Status != vm.StatusPaused {
+				continue
+			}
+		} else {
+			// Disk-only suspended pool: not claimable while running.
+			if inst.Status == vm.StatusRunning || inst.Status == vm.StatusPaused {
+				continue
+			}
+			if m.rt.Running(inst) {
+				continue
+			}
 		}
 		out = append(out, inst)
 	}

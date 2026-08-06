@@ -119,6 +119,8 @@ type PoolStatus struct {
 	Desired  int      `json:"desired"`
 	Ready    int      `json:"ready"`
 	Members  []string `json:"members,omitempty"`
+	// Running is true when warm_pool.running keeps members agent-ready.
+	Running bool `json:"running,omitempty"`
 }
 
 // PoolClaimRequest is POST /pool/claim body.

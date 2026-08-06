@@ -162,3 +162,60 @@ func TestWarmPoolConfigEnabled(t *testing.T) {
 		t.Fatal("should enable")
 	}
 }
+
+func TestRunningWarmPoolFillClaim(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = 2 * time.Second
+	cfg.WarmPool = config.WarmPoolConfig{Template: "golden", Size: 1, Running: true}
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(cfg, st, hypervisor.NewMockRuntime(), hypervisor.NewMockDisk(), nil)
+	t.Cleanup(func() { m.WaitPoolBackground() })
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, vm.CreateOpts{
+		Name: "golden", Persistent: true, Image: "ubuntu-cloud", CPUs: 1, MemoryMB: 512, WaitMode: vm.WaitSSH,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Suspend(ctx, "golden"); err != nil {
+		t.Fatal(err)
+	}
+
+	pst, err := m.PoolFill(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pst.Running || pst.Ready != 1 {
+		t.Fatalf("status: %+v", pst)
+	}
+	// Member should be running in running mode.
+	if len(pst.Members) != 1 {
+		t.Fatalf("members: %v", pst.Members)
+	}
+	mem, err := m.Get(pst.Members[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mem.Status != vm.StatusRunning {
+		t.Fatalf("want running pool member, got %s", mem.Status)
+	}
+
+	child, err := m.PoolClaim(ctx, "work-run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Name != "work-run" || child.Status != vm.StatusRunning {
+		t.Fatalf("%+v", child)
+	}
+	if child.Tags != nil {
+		if _, ok := child.Tags[tagPool]; ok {
+			t.Fatalf("pool tag should be cleared: %v", child.Tags)
+		}
+	}
+}

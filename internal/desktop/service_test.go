@@ -629,3 +629,112 @@ func TestBulkExecParallel(t *testing.T) {
 		t.Fatalf("%+v", out[1])
 	}
 }
+
+func TestDecideCreateModePreferPool(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /pool", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.PoolStatus{
+			Enabled: true, Template: "golden", Desired: 2, Ready: 2, Members: []string{"pool-golden-1", "pool-golden-2"},
+		})
+	})
+	sock := startFakeDaemon(t, mux)
+	cfg := Defaults()
+	cfg.Socket = sock
+	svc := NewService(cfg)
+	if err := svc.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	d, err := svc.DecideCreateMode(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Mode != "pool" || !d.PreferPool || d.Ready != 2 {
+		t.Fatalf("%+v", d)
+	}
+}
+
+func TestBulkStartPreflightForNamesBlocks(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]*client.Instance{
+			{Name: "r1", Status: client.StatusRunning, CPUs: 2, MemoryMB: 2048},
+			{Name: "s1", Status: client.StatusStopped, CPUs: 2, MemoryMB: 2048},
+			{Name: "s2", Status: client.StatusStopped, CPUs: 2, MemoryMB: 2048},
+		})
+	})
+	sock := startFakeDaemon(t, mux)
+	cfg := Defaults()
+	cfg.Socket = sock
+	svc := NewService(cfg)
+	if err := svc.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	// Local connection: caps from config file.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("max_vms: 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// projected running = 1 + 2 = 3 > max_vms 2
+	r, err := svc.BulkStartPreflightForNames(context.Background(), []string{"s1", "s2"}, cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Block || !strings.Contains(r.Message, "max_vms") {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestListActivityFilteredRemoteClient(t *testing.T) {
+	// Active remote host: activity + pool hit that server's client, not hardcoded local.
+	var poolHits atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /activity", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]client.ActivityEvent{
+			{ID: "1", Source: "cli", Action: "create", Status: "success"},
+			{ID: "2", Source: "mcp", Action: "list", Status: "success"},
+			{ID: "3", Source: "desktop", Action: "start", Status: "success"},
+		})
+	})
+	mux.HandleFunc("GET /pool", func(w http.ResponseWriter, r *http.Request) {
+		poolHits.Add(1)
+		_ = json.NewEncoder(w).Encode(client.PoolStatus{Enabled: false})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cfg := Defaults()
+	cfg.Connections = []Connection{{Name: "lab", API: srv.URL}}
+	svc := NewService(cfg)
+	svc.Active = "lab"
+	if err := svc.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	list, err := svc.ListActivityFiltered(context.Background(), "", 50, []string{"cli"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Source != "cli" {
+		t.Fatalf("%+v", list)
+	}
+	if _, err := svc.PoolStatus(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if poolHits.Load() != 1 {
+		t.Fatalf("pool hits %d", poolHits.Load())
+	}
+	// Create mode decision also uses active connection pool.
+	d, err := svc.DecideCreateMode(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Enabled {
+		t.Fatalf("want disabled pool: %+v", d)
+	}
+	if poolHits.Load() != 2 {
+		t.Fatalf("pool hits after decide %d", poolHits.Load())
+	}
+}

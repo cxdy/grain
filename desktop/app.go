@@ -243,6 +243,143 @@ func (a *App) PoolFill() (*desktop.PoolStatus, error) {
 	return svc.PoolFill(ctx)
 }
 
+// DecideCreateMode returns prefer-pool vs cold for New sandbox (active host pool status).
+func (a *App) DecideCreateMode() (desktop.CreateModeDecision, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.CreateModeDecision{}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.DecideCreateMode(ctx)
+}
+
+// SuspendSandbox suspends a persistent VM on the active connection.
+func (a *App) SuspendSandbox(name string) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.SuspendSandbox(ctx, name)
+}
+
+// SaveWarmPoolSettings writes warm_pool.template/size/running, restarts local daemon, reloads.
+func (a *App) SaveWarmPoolSettings(form desktop.WarmPoolForm) (desktop.SaveConfigResult, error) {
+	a.mu.Lock()
+	path := a.configPath
+	svc := a.svc
+	a.mu.Unlock()
+	if err := desktop.SaveWarmPoolForm(path, form); err != nil {
+		return desktop.SaveConfigResult{}, err
+	}
+	// Restart daemon so manager picks up warm_pool (config is loaded at start).
+	raw, err := desktop.ReadConfigFile(path)
+	if err != nil {
+		return desktop.SaveConfigResult{}, err
+	}
+	var runner desktop.CommandRunner = desktop.ExecRunner{}
+	if svc != nil && svc.Runner != nil {
+		runner = svc.Runner
+	}
+	res, err := desktop.SaveConfigFile(path, raw, true, runner)
+	if err != nil {
+		return res, err
+	}
+	if err := a.reloadService(); err != nil {
+		res.Message += " (reload in-app config failed: " + err.Error() + ")"
+	}
+	return res, nil
+}
+
+// PromoteGoldenAndFill suspends if needed, sets warm_pool.template, restarts daemon, fills pool.
+func (a *App) PromoteGoldenAndFill(name string, size int, running bool) (desktop.PromoteGoldenResult, error) {
+	var out desktop.PromoteGoldenResult
+	svc, err := a.service()
+	if err != nil {
+		return out, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	sb, err := svc.GetSandbox(ctx, name)
+	if err != nil {
+		return out, err
+	}
+	status := ""
+	if sb != nil {
+		status = sb.Status
+	}
+	plan, err := desktop.PlanPromoteGolden(name, status, size, running)
+	if err != nil {
+		return out, err
+	}
+	out.Plan = plan
+	if plan.NeedSuspend {
+		if err := svc.SuspendSandbox(ctx, plan.Template); err != nil {
+			return out, fmt.Errorf("suspend before promote: %w", err)
+		}
+	}
+	// Keep existing size if size<=0 was already normalized in plan.
+	form := desktop.WarmPoolForm{Template: plan.Template, Size: plan.Size, Running: plan.Running}
+	res, err := a.SaveWarmPoolSettings(form)
+	if err != nil {
+		return out, err
+	}
+	// Re-fetch service after reload.
+	svc, err = a.service()
+	if err != nil {
+		return out, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	st, err := svc.PoolFill(ctx)
+	if err != nil {
+		out.Message = res.Message + "; pool fill failed: " + err.Error()
+		return out, err
+	}
+	out.Filled = true
+	out.Status = st
+	out.Message = fmt.Sprintf("Promoted %q as golden (size %d); pool ready %d/%d. %s",
+		plan.Template, plan.Size, st.Ready, st.Desired, res.Message)
+	return out, nil
+}
+
+// BulkStartPreflight estimates capacity before multi-start on the active host.
+func (a *App) BulkStartPreflight(names []string) (desktop.BulkStartPreflightResult, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.BulkStartPreflightResult{}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.mu.Lock()
+	path := a.configPath
+	a.mu.Unlock()
+	return svc.BulkStartPreflightForNames(ctx, names, path)
+}
+
+// ListActivityFiltered returns activity events optionally filtered by source (cli/desktop/mcp/api).
+func (a *App) ListActivityFiltered(since string, limit int, sources []string) ([]desktop.ActivityEvent, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.ListActivityFiltered(ctx, since, limit, sources)
+}
+
 // ListCreateTemplates returns stopped/suspended persistent VMs for spawn-from.
 func (a *App) ListCreateTemplates() ([]desktop.Sandbox, error) {
 	svc, err := a.service()

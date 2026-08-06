@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Desktop warm-pool product path** — Settings → Warm pool (template / size / optional running mode) applies config and restarts the local daemon; More → **Promote to golden + fill pool**; New sandbox **prefers pool claim** when ready > 0 with honest empty/unconfigured status. Optional `warm_pool.running: true` keeps members agent-ready (RAM cost); claim is rename-only in that mode.
+- **Desktop bulk start preflight** — before multi-start fan-out, estimates capacity against `max_vms` / `max_cpus_total` / `max_memory_mb_total` (local connection) and **blocks** over-cap batches or **warns** when caps are unknown (remote).
+- **Activity source filter** — Activity drawer filter by `desktop` / `cli` / `mcp` / `api` (existing `X-Grain-Client` labels). Pool/create APIs always use the active host connection (remote parity).
 - **Warm pool** — config `warm_pool.template` + `warm_pool.size` pre-clones suspended template VMs (disk only). `grain pool status|fill|claim|drain`, `grain new --from-pool -n NAME`, API `GET /pool` / `POST /pool/{fill,claim,drain}` and create `from_pool: true`. Claim renames a ready member and starts with `-loadvm` when snapshotted; async refill + fill on daemon start. Host logs `pool claim timing`.
 - **Fast create from suspended template** — `grain new --from TEMPLATE -n NAME` (API `POST /vms` body `{"from":"TEMPLATE","name":"NAME"}`). Clones a stopped/suspended persistent VM and starts it; when the template was `grain suspend`'d with a qcow2 snapshot, QEMU `-loadvm` restores memory and agent wait is short (seconds, not full cold boot). Clone copies suspend markers. Host logs `spawn timing`.
 - **Desktop official recipe preview** — `PreviewOfficialRecipe` fetches catalog YAML without installing (sha256 when pinned). Offline: local library copy if installed, else index description only with a clear warning.

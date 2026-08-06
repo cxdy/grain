@@ -336,6 +336,23 @@
                   <label class="field"><span>API URL (client dial override)</span>
                     <input class="input mono selectable" id="set-api-url" placeholder="optional" spellcheck="false" />
                   </label>
+                  <h3 class="panel-title mt">Warm pool</h3>
+                  <p class="hint">Pre-cloned templates for fast New sandbox. Fill after changing size; daemon restarts on apply.</p>
+                  <label class="field"><span>Template (golden sandbox name)</span>
+                    <input class="input mono selectable" id="set-pool-template" placeholder="e.g. golden" spellcheck="false" autocomplete="off" />
+                  </label>
+                  <label class="field"><span>Desired size (0 disables)</span>
+                    <input class="input" id="set-pool-size" type="number" min="0" max="32" step="1" value="0" />
+                  </label>
+                  <label class="check-label" title="Members stay agent-ready (uses host RAM). Default is disk-only suspended members.">
+                    <input type="checkbox" id="set-pool-running" /> Running pool (keep members agent-ready)
+                  </label>
+                  <div class="btn-row">
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-pool-apply">Apply warm pool</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-pool-fill-settings">Fill pool</button>
+                  </div>
+                  <p class="hint" id="settings-pool-status"></p>
+
                   <h3 class="panel-title mt">API token</h3>
                   <p class="hint" id="token-status">Token: —</p>
                   <div class="btn-row">
@@ -438,6 +455,7 @@
                       <li><button type="button" class="dropdown-item" data-act="edit">Config</button></li>
                       <li><button type="button" class="dropdown-item" data-act="export-recipe">Export as recipe…</button></li>
                       <li><button type="button" class="dropdown-item" data-act="export-recipe-lib">Save as library recipe</button></li>
+                      <li><button type="button" class="dropdown-item" data-act="promote-golden" title="Set as warm_pool.template, suspend if running, fill pool">Promote to golden + fill pool</button></li>
                       <li><button type="button" class="dropdown-item" data-act="term">Open in Terminal</button></li>
                       <li id="more-agent-item" hidden>
                         <button type="button" class="dropdown-item" data-act="deploy-agent">Install / update agent</button>
@@ -479,6 +497,16 @@
         <div class="drawer-head no-select">
           <strong>Activity</strong>
           <div class="btn-row">
+            <label class="activity-filter-label" title="Filter by client source">
+              <span class="sr-only">Source</span>
+              <select class="input sm" id="activity-source-filter" aria-label="Filter activity by source">
+                <option value="all">All sources</option>
+                <option value="desktop">Desktop</option>
+                <option value="cli">CLI</option>
+                <option value="mcp">MCP</option>
+                <option value="api">API / SDK</option>
+              </select>
+            </label>
             <button type="button" class="btn btn-ghost btn-sm" id="btn-activity-clear">Clear</button>
             <button type="button" class="btn-icon" id="btn-activity-close" aria-label="Close">×</button>
           </div>
