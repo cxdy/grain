@@ -83,6 +83,26 @@ curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh 
 
 → [Desktop guide](https://grainvm.com/docs/main/guides/desktop/)
 
+### Firecracker (Linux + KVM)
+
+Default hypervisor is still **QEMU** (macOS and Linux). On Linux with `/dev/kvm`, Firecracker is a **supported** second backend:
+
+| Tier | What works |
+|------|------------|
+| **vFC-1 agent** | Pull `fc-kernel` + `grain-ubuntu-fc`; `grain new --wait agent`; exec/shell/cp/sync over vsock UDS + `CONNECT` |
+| **vFC-2 partial net** | TAP + create-time `-P` / `grain fwd` (host TCP proxy; needs CAP_NET_ADMIN). Overlay, mounts, UDP stay **QEMU-only** |
+
+```bash
+# ~/.grain/config.yaml → hypervisor: firecracker
+grain image pull fc-kernel
+grain image pull grain-ubuntu-fc
+grain doctor
+grain new -i grain-ubuntu-fc --wait agent
+# optional: ./scripts/smoke-fc.sh · ./scripts/smoke-fc-net.sh
+```
+
+→ [Firecracker on Linux](https://grainvm.com/docs/main/guides/firecracker/) · [Hypervisor matrix](https://grainvm.com/docs/main/explain/hypervisor-matrix/)
+
 ### MCP (coding agents)
 
 MCP is built into `grain` (not a separate binary):
@@ -128,9 +148,10 @@ grain fwd ls lab         # host port → guest 6443
 
 | Area | What you get |
 |------|----------------|
-| **CLI** | `up` · `new` · `sh` · `x` · `rm` · mounts · port forwards · profiles |
+| **CLI** | `up` · `new` · `sh` · `x` · `rm` · mounts · port forwards · profiles · warm pool |
 | **Presets** | `act` · `k3s` · `docker` |
 | **Guest agent** | Exec, shell, file copy, and fs ops without living in SSH |
+| **Hypervisors** | **QEMU** default (macOS/Linux); **Firecracker** supported on Linux+KVM ([vFC-1](https://grainvm.com/docs/main/guides/firecracker/) agent + [vFC-2](https://grainvm.com/docs/main/guides/firecracker/) partial net) |
 | **API** | Unix socket + optional TCP · [OpenAPI](api/openapi.yaml) |
 | **SDKs** | [Go](https://pkg.go.dev/github.com/cxdy/grain/client) · [TypeScript](https://www.npmjs.com/package/@cxdy/grain) · [Python](https://pypi.org/project/grainvm/) |
 | **Desktop** | Optional Wails GUI (not Electron) · [desktop/README.md](desktop/README.md) |
@@ -147,6 +168,8 @@ grain fwd ls lab         # host port → guest 6443
 | [act](https://grainvm.com/docs/main/guides/recipes/act/) | GitHub Actions in a microVM |
 | [k3s](https://grainvm.com/docs/main/guides/recipes/k3s/) | Single-node cluster preset |
 | [Remote lab](https://grainvm.com/docs/main/guides/remote-lab/) | Host + laptop CLI happy path |
+| [Firecracker](https://grainvm.com/docs/main/guides/firecracker/) | Linux+KVM backend (agent + TAP publish/fwd) |
+| [Hypervisor matrix](https://grainvm.com/docs/main/explain/hypervisor-matrix/) | QEMU vs Firecracker capabilities |
 | [Guides](https://grainvm.com/docs/main/guides/) | Images, agent, networking, mounts, proxy |
 | [Reference](https://grainvm.com/docs/main/reference/cli/) | CLI, config, API, SDKs |
 
