@@ -161,7 +161,7 @@ grain image import ./rootfs.ext4 --id grain-ubuntu-fc
 grain new -i grain-ubuntu-fc --wait agent
 ```
 
-See also [Images](../images/#firecracker-rootfs-experimental) for the QEMU/golden workflow; FC is a separate experimental path.
+See also [Images](../images/#firecracker-rootfs-experimental) for the QEMU/golden workflow. FC agent production (vFC-1) is a separate catalog/kernel path from QEMU cloud images.
 
 ### Suggested layout
 
