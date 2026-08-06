@@ -20,6 +20,8 @@ type SeedOpts struct {
 	Mounts   []MountSpec
 	// Minimal selects lean user-data for agent-ready golden images (HasAgent).
 	Minimal bool
+	// GrowDisk enables growpart/resizefs in Minimal userdata (disk was enlarged).
+	GrowDisk bool
 }
 
 // WriteNoCloud builds a cloud-init NoCloud seed ISO (volume label cidata).
@@ -48,7 +50,7 @@ func WriteNoCloudOpts(dir string, opts SeedOpts) (seedPath string, err error) {
 
 	var user string
 	if opts.Minimal {
-		user, err = RenderUserDataMinimal(hostname, opts.SSHPub, opts.Extra, opts.Mounts...)
+		user, err = RenderUserDataMinimalOpts(hostname, opts.SSHPub, opts.Extra, opts.GrowDisk, opts.Mounts...)
 	} else {
 		user, err = RenderUserData(hostname, opts.SSHPub, opts.Extra, opts.Mounts...)
 	}

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Create latency instrumentation + leaner golden boots** — daemon logs `create timing` (image/disk/seed/start/wait ms). Agent wait poll 50ms (was 200ms). Agent-ready minimal cloud-init **omits growpart/resizefs** unless the clone disk is larger than the base image (avoids multi-second grow on same-size overlays). Host-side create is typically ~200ms; remaining latency is guest boot/agent (~10s today on grain-ubuntu). Path to sub-second is snapshot/warm-pool (documented in design notes).
+
 ### Added
 
 - **Recipes next** — official pack expands (`docker-lab`, `k3s-lab`, `act-lab`, `remote-coding`, `python-dev` + existing); `grain recipe preview`; Desktop **New from form…**, **Save as library recipe**, deploy preflight (image pull CTA, missing mounts, remote-host banner); preset expansion on Desktop deploy. Docs: catalog table, MCP agent sketch, download counts via GitHub Releases only.

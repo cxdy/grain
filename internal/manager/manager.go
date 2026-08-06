@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"github.com/cxdy/grain/internal/cloudinit"
 	"github.com/cxdy/grain/internal/config"
 	"github.com/cxdy/grain/internal/guest"
+	"github.com/cxdy/grain/internal/hostbin"
 	"github.com/cxdy/grain/internal/hypervisor"
 	"github.com/cxdy/grain/internal/image"
 	"github.com/cxdy/grain/internal/names"
@@ -261,11 +263,13 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		return nil, err
 	}
 
+	tCreate := time.Now()
 	emitCreate(opts, vm.CreateEvent{Phase: vm.PhaseImage, Name: name, Message: "ensuring base image"})
 	base, err := m.disk.EnsureBase(ctx, img)
 	if err != nil {
 		return m.fail(inst, fmt.Errorf("image: %w", err), opts)
 	}
+	tImage := time.Now()
 
 	vmDir := m.st.Dir(name)
 	diskPath := filepath.Join(vmDir, "disk.img")
@@ -274,6 +278,7 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	if err := m.disk.Clone(ctx, base, diskPath, diskGB); err != nil {
 		return m.fail(inst, fmt.Errorf("disk: %w", err), opts)
 	}
+	tDisk := time.Now()
 	// detect qcow2 overlay path
 	if _, err := os.Stat(diskPath + ".qcow2"); err == nil {
 		diskPath = diskPath + ".qcow2"
@@ -295,6 +300,8 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 	// Userdata is structure-merged inside WriteNoCloud (shell → runcmd, #cloud-config → key merge).
 	// Mount runcmds are injected from prepared mounts (9p or virtiofs).
 	// Agent-ready goldens use a minimal seed so clone boots do less cloud-init work.
+	// Skip growpart/resizefs unless the clone disk was enlarged past the base image.
+	growDisk := diskNeedsGrow(base, diskGB)
 	mountDriver := hypervisor.ResolveMountDriver(m.cfg.MountDriver, m.log)
 	if _, err := cloudinit.WriteNoCloudOpts(vmDir, cloudinit.SeedOpts{
 		Hostname: name,
@@ -302,15 +309,18 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		Extra:    opts.Userdata,
 		Mounts:   mountSpecs(mounts, mountDriver),
 		Minimal:  m.imageHasAgent(img),
+		GrowDisk: growDisk,
 	}); err != nil {
 		// mock / missing iso tools: log and continue (SSH inject won't work)
 		m.log.Warn("cloud-init seed skipped", "err", err)
 	}
+	tSeed := time.Now()
 
 	emitCreate(opts, vm.CreateEvent{Phase: vm.PhaseQEMU, Name: name, Message: "starting hypervisor"})
 	if err := m.rt.Start(ctx, inst, diskPath); err != nil {
 		return m.fail(inst, fmt.Errorf("start: %w", err), opts)
 	}
+	tStart := time.Now()
 	inst.Status = vm.StatusRunning
 	if err := m.st.Put(inst); err != nil {
 		return nil, err
@@ -335,6 +345,18 @@ func (m *Manager) Create(ctx context.Context, opts vm.CreateOpts) (*vm.Instance,
 		}
 		return m.fail(inst, err, opts)
 	}
+	tReady := time.Now()
+	m.log.Info("create timing",
+		"name", inst.Name,
+		"image_ms", tImage.Sub(tCreate).Milliseconds(),
+		"disk_ms", tDisk.Sub(tImage).Milliseconds(),
+		"seed_ms", tSeed.Sub(tDisk).Milliseconds(),
+		"start_ms", tStart.Sub(tSeed).Milliseconds(),
+		"wait_ms", tReady.Sub(tStart).Milliseconds(),
+		"total_ms", tReady.Sub(tCreate).Milliseconds(),
+		"wait_mode", waitMode,
+		"grow_disk", growDisk,
+	)
 
 	// Start create-time socket forwards (SSH streamlocal) once SSH is up.
 	if err := m.startSocketForwards(inst); err != nil {
@@ -1455,6 +1477,36 @@ func diskLooksQcow2(path string) bool {
 		}
 	}
 	return false
+}
+
+// diskNeedsGrow reports whether sizeGB exceeds the base image virtual size.
+// Used to omit growpart/resizefs on golden clone boots when the disk was not enlarged.
+// On error (no qemu-img, unreadable base), returns true to preserve prior grow behavior.
+func diskNeedsGrow(basePath string, sizeGB int) bool {
+	if sizeGB <= 0 || basePath == "" {
+		return false
+	}
+	qemuImg, err := hostbin.LookPath("qemu-img")
+	if err != nil {
+		return true
+	}
+	cmd := exec.Command(qemuImg, "info", "--output=json", "--force-share", basePath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		cmd = exec.Command(qemuImg, "info", "--output=json", basePath)
+		out, err = cmd.CombinedOutput()
+		if err != nil {
+			return true
+		}
+	}
+	var info struct {
+		VirtualSize int64 `json:"virtual-size"`
+	}
+	if err := json.Unmarshal(out, &info); err != nil || info.VirtualSize <= 0 {
+		return true
+	}
+	target := int64(sizeGB) * 1024 * 1024 * 1024
+	return info.VirtualSize < target
 }
 
 // AddForward starts an SSH local port forward (ssh -N -L) for a running VM
