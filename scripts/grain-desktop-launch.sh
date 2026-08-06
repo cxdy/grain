@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for Grain Desktop — opens the .app (bare GUI binaries are often
+# Launcher for Grain Desktop — opens the .app on macOS (bare GUI binaries are often
 # SIGKILL'd under iCloud Documents / Gatekeeper when not packaged).
 #
 # Install as bin/grain-desktop only. Never bin/Grain: on case-insensitive
@@ -7,13 +7,18 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/desktop/build/bin/Grain.app"
-if [[ -d "$APP" ]]; then
+if [[ -d "$APP" ]] && command -v open >/dev/null 2>&1; then
   open "$APP" "$@"
   exit 0
 fi
-# Fallback bare binary (no Dock icon / may SIGKILL under Documents)
-if [[ -x "$ROOT/bin/grain-desktop-bin" ]]; then
-  exec "$ROOT/bin/grain-desktop-bin" "$@"
-fi
-echo "Grain.app not found at $APP — run: just desktop-build" >&2
+# Linux (and macOS bare-binary fallback)
+for cand in \
+  "$ROOT/bin/grain-desktop-bin" \
+  "$ROOT/desktop/build/bin/Grain" \
+  "$ROOT/desktop/build/bin/grain-desktop"; do
+  if [[ -x "$cand" ]]; then
+    exec "$cand" "$@"
+  fi
+done
+echo "Grain Desktop not found — run: just desktop-build" >&2
 exit 1

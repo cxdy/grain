@@ -729,6 +729,131 @@ func (a *App) ExportSandboxRecipe(name string) (desktop.ExportRecipeResult, erro
 	return out, nil
 }
 
+// ListLibraryRecipes returns installed recipes under ~/.grain/recipes.
+func (a *App) ListLibraryRecipes() ([]desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	return svc.ListLibraryRecipes()
+}
+
+// GetLibraryRecipeYAML returns recipe YAML for the editor.
+func (a *App) GetLibraryRecipeYAML(id string) (string, error) {
+	svc, err := a.service()
+	if err != nil {
+		return "", err
+	}
+	return svc.GetLibraryRecipeYAML(id)
+}
+
+// SaveLibraryRecipeYAML validates and overwrites a library recipe.
+func (a *App) SaveLibraryRecipeYAML(id, yamlText string) (desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeInfo{}, err
+	}
+	return svc.SaveLibraryRecipeYAML(id, yamlText)
+}
+
+// DeleteLibraryRecipe removes a library file (not sandboxes).
+func (a *App) DeleteLibraryRecipe(id string) error {
+	svc, err := a.service()
+	if err != nil {
+		return err
+	}
+	return svc.DeleteLibraryRecipe(id)
+}
+
+// ImportRecipeFilePath imports a recipe from an absolute path.
+func (a *App) ImportRecipeFilePath(path string, overwrite bool) (desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeInfo{}, err
+	}
+	return svc.ImportRecipeFile(path, overwrite)
+}
+
+// PickAndImportRecipe opens a file dialog and imports a recipe.
+func (a *App) PickAndImportRecipe() (desktop.RecipeInfo, error) {
+	var zero desktop.RecipeInfo
+	if a.ctx == nil {
+		return zero, fmt.Errorf("no UI context")
+	}
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Import recipe YAML",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "YAML", Pattern: "*.yaml;*.yml"},
+		},
+	})
+	if err != nil {
+		return zero, err
+	}
+	if strings.TrimSpace(path) == "" {
+		return zero, fmt.Errorf("cancelled")
+	}
+	return a.ImportRecipeFilePath(path, false)
+}
+
+// PreviewRecipeURL fetches and validates a recipe URL without writing the library.
+func (a *App) PreviewRecipeURL(url string) (desktop.RecipeURLPreview, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeURLPreview{}, err
+	}
+	return svc.PreviewRecipeURL(url)
+}
+
+// ConfirmRecipeYAML installs previewed YAML into the library (no VM create).
+func (a *App) ConfirmRecipeYAML(yamlText, id string, overwrite bool) (desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeInfo{}, err
+	}
+	return svc.ConfirmRecipeYAML(yamlText, id, overwrite)
+}
+
+// ImportRecipeURL downloads and installs a recipe into the library (no preview).
+// Prefer PreviewRecipeURL + ConfirmRecipeYAML for interactive UI.
+func (a *App) ImportRecipeURL(url string, overwrite bool) (desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeInfo{}, err
+	}
+	return svc.ImportRecipeURL(url, overwrite)
+}
+
+// SearchOfficialRecipes returns the official catalog index.
+func (a *App) SearchOfficialRecipes() ([]desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	return svc.SearchOfficialRecipes()
+}
+
+// AddOfficialRecipe installs one catalog recipe into the library.
+func (a *App) AddOfficialRecipe(id string, overwrite bool) (desktop.RecipeInfo, error) {
+	svc, err := a.service()
+	if err != nil {
+		return desktop.RecipeInfo{}, err
+	}
+	return svc.AddOfficialRecipe(id, overwrite)
+}
+
+// DeployRecipe creates a sandbox from a library recipe.
+func (a *App) DeployRecipe(opts desktop.DeployRecipeOpts) (*desktop.Sandbox, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.DeployRecipe(ctx, opts)
+}
+
 // EnableSandboxMetrics sets metrics_enabled on the VM meta (host data_dir) and
 // samples once so Overview can start filling the ring.
 func (a *App) EnableSandboxMetrics(name string, enabled bool) error {

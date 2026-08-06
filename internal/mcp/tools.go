@@ -16,6 +16,7 @@ import (
 	"github.com/cxdy/grain/client"
 	"github.com/cxdy/grain/internal/cloudinit"
 	"github.com/cxdy/grain/internal/presets"
+	"github.com/cxdy/grain/internal/recipe"
 	"github.com/cxdy/grain/internal/vmsync"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -56,6 +57,10 @@ const (
 	ToolK3s            = "grain_k3s"
 	ToolSyncPush       = "grain_sync_push"
 	ToolSyncPull       = "grain_sync_pull"
+	ToolRecipeList     = "grain_recipe_list"
+	ToolRecipeAdd      = "grain_recipe_add"
+	ToolRecipeSearch   = "grain_recipe_search"
+	ToolRecipeCreate   = "grain_recipe_create"
 	DefaultCreateImage = "grain-ubuntu"
 	DefaultCreateWait  = client.WaitAgent
 	DefaultExecTimeout = 15 * time.Minute
@@ -98,6 +103,10 @@ func ToolNames() []string {
 		ToolK3s,
 		ToolSyncPush,
 		ToolSyncPull,
+		ToolRecipeList,
+		ToolRecipeAdd,
+		ToolRecipeSearch,
+		ToolRecipeCreate,
 	}
 }
 
@@ -160,8 +169,31 @@ func (s *Server) register(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: ToolCreateVM,
 		Description: "Create a sandbox/VM (POST /vms). Defaults: image=grain-ubuntu, wait=agent (agent-ready). " +
-			"Ephemeral unless persistent=true. Prefer grain_workspace_sandbox for repo work.",
+			"Ephemeral unless persistent=true. Prefer grain_workspace_sandbox for repo work. " +
+			"Optional recipe= library name or path (grain/v1 Sandbox YAML).",
 	}, s.toolCreateVM)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        ToolRecipeList,
+		Description: "List recipes in the host local library (~/.grain/recipes). Does not create VMs.",
+	}, s.toolRecipeList)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: ToolRecipeAdd,
+		Description: "Add a recipe to the host library from file path, http(s) URL, or official catalog id. " +
+			"Validates only; never creates a VM. Use grain_recipe_create to deploy.",
+	}, s.toolRecipeAdd)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        ToolRecipeSearch,
+		Description: "Browse the official recipe catalog index (cached). Does not download recipe bodies or create VMs.",
+	}, s.toolRecipeSearch)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: ToolRecipeCreate,
+		Description: "Create a sandbox from a library recipe name or path (compile + POST /vms). " +
+			"Supports name override and wait until ready. Import tools never auto-create.",
+	}, s.toolRecipeCreate)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        ToolStartVM,
@@ -342,12 +374,26 @@ type createIn struct {
 	Arch       string   `json:"arch,omitempty" jsonschema:"guest arch arm64|amd64"`
 	GPU        string   `json:"gpu,omitempty" jsonschema:"virtio or empty"`
 	Network    string   `json:"network,omitempty" jsonschema:"slirp or overlay"`
-	Wait       string   `json:"wait,omitempty" jsonschema:"auto|ssh|agent|userdata; default agent"`
+	Wait       string   `json:"wait,omitempty" jsonschema:"auto|ssh|agent|userdata|bootstrap; default agent"`
 	Timeout    string   `json:"timeout,omitempty" jsonschema:"create readiness timeout e.g. 3m"`
 	Userdata   string   `json:"userdata,omitempty" jsonschema:"cloud-init userdata"`
 	Preset     string   `json:"preset,omitempty" jsonschema:"userdata preset docker|k3s|act"`
 	Publish    []string `json:"publish,omitempty" jsonschema:"HOST:GUEST or GUEST ports"`
 	Mounts     []string `json:"mounts,omitempty" jsonschema:"HOST:GUEST directory shares"`
+	Recipe     string   `json:"recipe,omitempty" jsonschema:"library recipe name or file path (grain/v1)"`
+}
+
+type recipeAddIn struct {
+	Source    string `json:"source" jsonschema:"file path, http(s) URL, or official catalog id"`
+	ID        string `json:"id,omitempty" jsonschema:"library id override (filename stem)"`
+	Overwrite bool   `json:"overwrite,omitempty" jsonschema:"replace existing library entry"`
+}
+
+type recipeCreateIn struct {
+	Recipe  string `json:"recipe" jsonschema:"library name or path"`
+	Name    string `json:"name,omitempty" jsonschema:"override sandbox name (default metadata.name)"`
+	Wait    string `json:"wait,omitempty" jsonschema:"override wait mode; default from recipe"`
+	Timeout string `json:"timeout,omitempty" jsonschema:"override ready timeout"`
 }
 
 type execIn struct {
@@ -522,6 +568,17 @@ func (s *Server) buildCreate(in createIn) (client.CreateRequest, error) {
 		Wait:       strings.TrimSpace(in.Wait),
 		Timeout:    strings.TrimSpace(in.Timeout),
 	}
+	if rpath := strings.TrimSpace(in.Recipe); rpath != "" {
+		rf, err := recipe.LoadResolved(recipe.DefaultLibraryDir(), rpath)
+		if err != nil {
+			return req, err
+		}
+		compiled, err := rf.Compile()
+		if err != nil {
+			return req, err
+		}
+		req = mergeCompiledCreate(req, compiled)
+	}
 	if req.Image == "" {
 		req.Image = DefaultCreateImage
 	}
@@ -580,6 +637,148 @@ func (s *Server) buildCreate(in createIn) (client.CreateRequest, error) {
 	}
 	req.Mounts = mounts
 	return req, nil
+}
+
+func mergeCompiledCreate(req client.CreateRequest, c *recipe.Compiled) client.CreateRequest {
+	if c == nil {
+		return req
+	}
+	if req.Name == "" {
+		req.Name = c.Name
+	}
+	if req.Image == "" {
+		req.Image = c.Image
+	}
+	if req.CPUs <= 0 {
+		req.CPUs = c.CPUs
+	}
+	if req.MemoryMB <= 0 {
+		req.MemoryMB = c.MemoryMB
+	}
+	if req.DiskGB <= 0 {
+		req.DiskGB = c.DiskGB
+	}
+	if !req.Persistent {
+		req.Persistent = c.Persistent
+	}
+	if req.Arch == "" {
+		req.Arch = c.Arch
+	}
+	if req.GPU == "" {
+		req.GPU = c.GPU
+	}
+	if req.Network == "" {
+		req.Network = c.Network
+	}
+	if req.Wait == "" {
+		req.Wait = c.Wait
+	}
+	if req.Timeout == "" {
+		req.Timeout = c.Timeout
+	}
+	if req.Userdata == "" {
+		req.Userdata = c.Userdata
+	}
+	if len(req.Mounts) == 0 && len(c.Mounts) > 0 {
+		for _, m := range c.Mounts {
+			req.Mounts = append(req.Mounts, client.Mount{Host: m.Host, Guest: m.Guest, Tag: m.Tag})
+		}
+	}
+	if len(req.Forwards) == 0 && len(c.Forwards) > 0 {
+		for _, f := range c.Forwards {
+			req.Forwards = append(req.Forwards, client.PortForward{HostPort: f.HostPort, GuestPort: f.GuestPort, Proto: f.Proto})
+		}
+	}
+	if len(req.SocketForwards) == 0 && len(c.SocketForwards) > 0 {
+		for _, sf := range c.SocketForwards {
+			req.SocketForwards = append(req.SocketForwards, client.SocketForward{HostPath: sf.HostPath, GuestPath: sf.GuestPath})
+		}
+	}
+	if req.Tags == nil {
+		req.Tags = map[string]string{}
+	}
+	for k, v := range c.Tags {
+		if _, ok := req.Tags[k]; !ok {
+			req.Tags[k] = v
+		}
+	}
+	return req
+}
+
+func (s *Server) toolRecipeList(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, any, error) {
+	_ = ctx
+	list, err := recipe.ListLibrary(recipe.DefaultLibraryDir())
+	if err != nil {
+		return toolErr(err)
+	}
+	if list == nil {
+		list = []recipe.LibraryEntry{}
+	}
+	return toolJSON(map[string]any{"recipes": list, "count": len(list), "dir": recipe.DefaultLibraryDir()})
+}
+
+func (s *Server) toolRecipeAdd(ctx context.Context, _ *mcp.CallToolRequest, in recipeAddIn) (*mcp.CallToolResult, any, error) {
+	_ = ctx
+	src := strings.TrimSpace(in.Source)
+	if src == "" {
+		return toolErr(fmt.Errorf("source is required"))
+	}
+	opts := recipe.SaveOptions{Overwrite: in.Overwrite, ID: strings.TrimSpace(in.ID)}
+	lib := recipe.DefaultLibraryDir()
+	var ent recipe.LibraryEntry
+	var err error
+	switch {
+	case strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://"):
+		ent, err = recipe.AddFromURL(nil, lib, src, "", opts)
+	case fileExistsLocal(src) || strings.Contains(src, string(os.PathSeparator)) || strings.HasPrefix(src, "./"):
+		ent, err = recipe.AddFile(lib, src, opts)
+	default:
+		cat, cerr := recipe.FetchCatalog(nil, recipe.CatalogURL(), recipe.CatalogCachePath())
+		if cerr != nil {
+			return toolErr(fmt.Errorf("catalog: %w", cerr))
+		}
+		ent, err = recipe.AddFromCatalog(nil, cat, lib, src, opts)
+	}
+	if err != nil {
+		return toolErr(err)
+	}
+	return toolJSON(map[string]any{"ok": true, "added": ent, "created_vm": false})
+}
+
+func (s *Server) toolRecipeSearch(ctx context.Context, _ *mcp.CallToolRequest, _ emptyIn) (*mcp.CallToolResult, any, error) {
+	_ = ctx
+	cat, err := recipe.FetchCatalog(nil, recipe.CatalogURL(), recipe.CatalogCachePath())
+	if err != nil {
+		return toolErr(err)
+	}
+	return toolJSON(map[string]any{"apiVersion": cat.APIVersion, "recipes": cat.Recipes, "count": len(cat.Recipes)})
+}
+
+func (s *Server) toolRecipeCreate(ctx context.Context, req *mcp.CallToolRequest, in recipeCreateIn) (*mcp.CallToolResult, any, error) {
+	rpath := strings.TrimSpace(in.Recipe)
+	if rpath == "" {
+		return toolErr(fmt.Errorf("recipe is required"))
+	}
+	cr, err := s.buildCreate(createIn{
+		Name:    strings.TrimSpace(in.Name),
+		Recipe:  rpath,
+		Wait:    strings.TrimSpace(in.Wait),
+		Timeout: strings.TrimSpace(in.Timeout),
+	})
+	if err != nil {
+		return toolErr(err)
+	}
+	inst, err := s.Client.Create(ctx, cr)
+	if err != nil {
+		return toolErr(err)
+	}
+	_ = req
+	return toolJSON(inst)
+}
+
+func fileExistsLocal(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }
 
 func (s *Server) toolStartVM(ctx context.Context, _ *mcp.CallToolRequest, in nameIn) (*mcp.CallToolResult, any, error) {

@@ -656,9 +656,11 @@ a:hover { text-decoration: underline; }
 .splash {
   position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
   background: var(--bg);
+  /* Never steal clicks if something goes wrong with [hidden] on WebKitGTK */
+  pointer-events: none;
 }
 .splash[hidden] { display: none !important; }
-.splash-card { text-align: center; }
+.splash-card { text-align: center; pointer-events: auto; }
 .splash-card h1 { margin: 0.75rem 0 0.35rem; font-size: 1.4rem; letter-spacing: -0.03em; }
 .splash-bar {
   width: 10rem; height: 0.25rem; margin: 1rem auto 0; border-radius: 999px;
@@ -688,3 +690,50 @@ a:hover { text-decoration: underline; }
   .content-row { flex-direction: column; }
   .inspector { width: 100%; border-left: none; border-top: 1px solid var(--border); max-height: 40vh; }
 }
+
+/* Recipes tab */
+.recipes-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 1rem;
+  align-items: start;
+  min-height: 12rem;
+}
+@media (max-width: 900px) {
+  .recipes-layout { grid-template-columns: 1fr; }
+}
+.recipes-detail {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 1rem 1rem;
+  background: var(--panel, var(--surface));
+}
+.recipe-yaml {
+  width: 100%;
+  min-height: 18rem;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  resize: vertical;
+  tab-size: 2;
+}
+.recipes-catalog {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+.error-text { color: var(--danger, #e35); font-size: 0.85rem; margin-top: 0.35rem; }
+.empty-hint { padding: 1rem 0.25rem; }
+.field-label { display: block; font-size: 0.8rem; font-weight: 500; margin: 0.5rem 0 0.25rem; }
+.recipe-url-preview {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.recipe-warn-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--warn, #c90);
+  font-size: 0.85rem;
+}
+.recipe-warn-list:empty { display: none; }

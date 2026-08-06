@@ -23,6 +23,7 @@ CLI-first path: install → `grain up` → `grain new` → `grain sh`.
 | **Sandboxes** | List, create, start/stop/remove, multi-select bulk actions, right-side inspector |
 | **Inspector** | Overview · Shell · Logs — in-app shell plus **open in new window**; **More → Export as recipe…** writes a portable [`grain/v1` Sandbox recipe](../get-started/recipe/) (create options, mounts, forwards — not bootstrap/userdata) |
 | **Images** | Catalog ready/missing, pull with progress |
+| **Recipes** | Local library (`~/.grain/recipes`), import file/URL, browse official catalog (index-only until Add), YAML edit (valid-only save), **Deploy…** with name override + wait until ready. Import never auto-creates a VM. |
 | **MCP** | Status, enable in config, copy IDE snippets, ensure-running (local) |
 | **Doctor** | Host tool + daemon checks with fix hints |
 | **Settings** | Preferences summary, hosts, Advanced config.yaml (strict validate) |
@@ -61,19 +62,22 @@ When a Desktop release artifact is not published yet, `--desktop` builds from so
 ### Linux
 
 ```bash
-# WebKitGTK (Debian/Ubuntu example)
+# WebKitGTK 4.1 (Ubuntu 22.04+ / 24.04 / 26.04 — no 4.0 package)
 sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
-just desktop-build
-# unsigned binary / package under desktop/build/bin/
+just desktop-build          # uses -tags webkit2_41; no codesign
+./bin/grain-desktop-bin     # or ./bin/grain-desktop
+grain up                    # daemon must be up for list/create
 ```
 
-Linux system tray is best-effort; the window is the primary surface.
+`just desktop-build` on Linux skips macOS codesign/`ditto`/`sips` and builds with `-tags webkit2_41 -nopackage`.
+
+If the window paints but **nothing is clickable**: ensure you rebuilt after the Linux fixes (splash no longer blocks the UI; Wails bindings resolve lazily). Also run from a terminal and check for JS/console errors; start the daemon with `grain up` first.
 
 ## UI map
 
 ```
-Host ▾ · health · Activity · Refresh
-Sandboxes | Images | MCP | Doctor | Settings
+Host ▾ · health · Activity · Doctor · Docs
+Sandboxes | Images | Recipes | Settings
 [ list .................. ] [ inspector: Overview | Shell | Logs ]
 ```
 

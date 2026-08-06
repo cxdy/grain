@@ -456,7 +456,7 @@ source; SSH/agent ports are allocated on the next start (clone is left stopped).
 				if userdataFile != "" {
 					return fmt.Errorf("use either --recipe or --userdata-file, not both")
 				}
-				rf, err := recipe.Load(recipePath)
+				rf, err := recipe.LoadResolved(recipe.DefaultLibraryDir(), recipePath)
 				if err != nil {
 					return err
 				}
@@ -677,7 +677,7 @@ source; SSH/agent ports are allocated on the next start (clone is left stopped).
 	cmd.Flags().StringVar(&gpu, "gpu", "", "guest GPU: virtio (virtio-gpu-pci) or empty for none")
 	cmd.Flags().StringVar(&network, "network", "", "slirp (default, isolated) or overlay (shared L2 between VMs)")
 	cmd.Flags().StringVar(&userdataFile, "userdata-file", "", "path to cloud-init userdata or shell script")
-	cmd.Flags().StringVar(&recipePath, "recipe", "", "sandbox recipe YAML (create + optional bootstrap readiness steps)")
+	cmd.Flags().StringVar(&recipePath, "recipe", "", "sandbox recipe: library name (~/.grain/recipes/<name>.yaml) or file path")
 	cmd.Flags().StringVar(&profileName, "profile", "", "named profile from config (flags override profile)")
 	cmd.Flags().StringVar(&presetName, "preset", "", "userdata preset: docker, k3s, act (merged into cloud-init)")
 	cmd.Flags().StringVar(&waitMode, "wait", "", "readiness: auto (agent if golden image), ssh, agent, userdata, or bootstrap")

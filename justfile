@@ -53,21 +53,46 @@ desktop-dev:
     # CGO required for OS webview (not Electron).
     CGO_ENABLED=1 wails dev
 
-# Linux desktop build path (same as desktop-build; unsigned OK). Requires WebKitGTK.
-# Example deps (Debian/Ubuntu): libgtk-3-dev libwebkit2gtk-4.1-dev
+# Linux desktop build (WebKitGTK 4.1). Alias of desktop-build on Linux hosts.
+# Deps (Ubuntu 22.04+/Debian 12+): libgtk-3-dev libwebkit2gtk-4.1-dev
 desktop-build-linux: desktop-build
 
-# Build grain-desktop binary + macOS Grain.app (nested module under desktop/).
-# Note: under iCloud/Documents, Wails' built-in codesign often fails on xattrs;
-# we always re-sign ourselves via ditto --norsrc after the build.
+# Build grain-desktop. macOS: Grain.app + ad-hoc codesign. Linux: bare binary with -tags webkit2_41.
 desktop-build:
     #!/usr/bin/env bash
     set -euo pipefail
     command -v wails >/dev/null 2>&1 || { echo "install wails: go install github.com/wailsapp/wails/v2/cmd/wails@latest"; exit 1; }
     cd desktop
-    xattr -cr . 2>/dev/null || true
-    rm -rf build/bin/Grain.app build/bin/Grain
+    os="$(uname -s)"
+    rm -rf build/bin/Grain.app build/bin/Grain 2>/dev/null || true
 
+    # ---- Linux (no codesign / ditto / .app) ---------------------------------
+    if [[ "$os" == "Linux" ]]; then
+      # Ubuntu 22.04+/24.04+/26.04 ship WebKit2GTK 4.1 only (no 4.0).
+      set +e
+      CGO_ENABLED=1 wails build -skipbindings -tags webkit2_41 -nopackage
+      wails_rc=$?
+      set -e
+      if [[ ! -f build/bin/Grain ]]; then
+        echo "wails build failed (exit ${wails_rc}) and produced no binary" >&2
+        exit 1
+      fi
+      mkdir -p ../bin
+      cp -f build/bin/Grain ../bin/grain-desktop-bin
+      chmod +x ../bin/grain-desktop-bin
+      # Launcher prefers .app; on Linux falls back to grain-desktop-bin.
+      cp -f ../scripts/grain-desktop-launch.sh ../bin/grain-desktop
+      chmod +x ../bin/grain-desktop
+      echo "✓ built bin/grain-desktop-bin (Linux, webkit2_41)"
+      echo "  run:  ./bin/grain-desktop-bin"
+      echo "  or:   ./bin/grain-desktop"
+      echo "  CLI:  ./bin/grain   (just build)"
+      echo "  tip:  grain up   # so Desktop can reach the daemon"
+      exit 0
+    fi
+
+    # ---- macOS ---------------------------------------------------------------
+    xattr -cr . 2>/dev/null || true
     # Prefer a packaged .app. Wails may exit non-zero on codesign even when packaging succeeded.
     set +e
     CGO_ENABLED=1 wails build -skipbindings

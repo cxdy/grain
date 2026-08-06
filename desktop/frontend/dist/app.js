@@ -6,7 +6,11 @@
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-  const go = window.go?.main?.App;
+  // Resolve Wails bindings at call time — capturing window.go at script load
+  // is often undefined on Linux WebKitGTK (bindings inject after first paint).
+  function appAPI() {
+    return window.go?.main?.App || null;
+  }
 
   const EVENTS_KEY = "grain-desktop-activity-v2";
   const THEME_KEY = "grain-desktop-theme";
@@ -43,7 +47,16 @@
   }
 
   async function call(name, ...args) {
-    if (!go || typeof go[name] !== "function") throw new Error(`binding ${name} unavailable`);
+    const go = appAPI();
+    if (!go || typeof go[name] !== "function") {
+      // Brief wait for late binding injection (common on Linux).
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        const g = appAPI();
+        if (g && typeof g[name] === "function") return g[name](...args);
+      }
+      throw new Error(`binding ${name} unavailable`);
+    }
     return go[name](...args);
   }
 
@@ -1747,7 +1760,269 @@
       loadSettings();
     }
     if (name === "images") loadImagesPage();
+    if (name === "recipes") loadRecipesPage();
     if (name === "sandboxes") showInspector(!!state.selected);
+  }
+
+  /* ── recipes library ── */
+  async function loadRecipesPage() {
+    const tbody = $("#recipes-tbody");
+    const empty = $("#recipes-empty");
+    if (!tbody) return;
+    try {
+      const list = (await call("ListLibraryRecipes")) || [];
+      state.recipes = list;
+      tbody.innerHTML = "";
+      if (!list.length) {
+        if (empty) empty.hidden = false;
+        $("#recipes-detail").hidden = true;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      for (const r of list) {
+        const tr = document.createElement("tr");
+        tr.dataset.id = r.id;
+        tr.innerHTML = `<td class="selectable">${escapeHtml(r.id)}</td>
+          <td>${escapeHtml(r.image || "—")}</td>
+          <td>${r.has_bootstrap ? "yes" : "no"}</td>
+          <td class="selectable">${escapeHtml(r.description || r.name || "")}</td>
+          <td class="no-select"><button type="button" class="btn btn-ghost btn-sm" data-recipe-open="${escapeHtml(r.id)}">Open</button></td>`;
+        tr.addEventListener("click", (e) => {
+          if (e.target.closest("button")) return;
+          openRecipe(r.id);
+        });
+        tbody.appendChild(tr);
+      }
+      $$("[data-recipe-open]").forEach((b) =>
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openRecipe(b.dataset.recipeOpen);
+        })
+      );
+      if (state.selectedRecipe) openRecipe(state.selectedRecipe);
+    } catch (e) {
+      toast(String(e), true);
+    }
+  }
+
+  async function openRecipe(id) {
+    state.selectedRecipe = id;
+    const detail = $("#recipes-detail");
+    if (!detail) return;
+    detail.hidden = false;
+    $("#recipe-detail-title").textContent = id;
+    $("#recipe-yaml-err").hidden = true;
+    try {
+      const yaml = await call("GetLibraryRecipeYAML", id);
+      $("#recipe-yaml").value = yaml || "";
+      const meta = (state.recipes || []).find((r) => r.id === id);
+      $("#recipe-detail-meta").textContent = meta
+        ? `${meta.image || "—"} · ${meta.cpus || "?"} vCPU · ${meta.memory_mb || "?"} MiB${meta.has_bootstrap ? " · bootstrap" : ""}`
+        : "";
+    } catch (e) {
+      toast(String(e), true);
+    }
+  }
+
+  async function saveSelectedRecipe() {
+    const id = state.selectedRecipe;
+    if (!id) return;
+    const yaml = $("#recipe-yaml")?.value || "";
+    const errEl = $("#recipe-yaml-err");
+    try {
+      await act("save recipe", () => call("SaveLibraryRecipeYAML", id, yaml), { target: id });
+      if (errEl) errEl.hidden = true;
+      toast(`Saved ${id}`);
+      await loadRecipesPage();
+      openRecipe(id);
+    } catch (e) {
+      if (errEl) {
+        errEl.hidden = false;
+        errEl.textContent = String(e);
+      }
+      toast(String(e), true);
+    }
+  }
+
+  async function deleteSelectedRecipe() {
+    const id = state.selectedRecipe;
+    if (!id) return;
+    if (!confirm(`Delete library recipe ${id}? (Sandboxes are not removed.)`)) return;
+    try {
+      await act("delete recipe", () => call("DeleteLibraryRecipe", id), { target: id });
+      state.selectedRecipe = null;
+      $("#recipes-detail").hidden = true;
+      toast(`Deleted ${id}`);
+      await loadRecipesPage();
+    } catch (e) {
+      toast(String(e), true);
+    }
+  }
+
+  async function importRecipeFile() {
+    try {
+      const ent = await act("import recipe", () => call("PickAndImportRecipe"), {});
+      toast(`Added ${ent?.id || "recipe"}`);
+      state.selectedRecipe = ent?.id;
+      await loadRecipesPage();
+      if (ent?.id) openRecipe(ent.id);
+    } catch (e) {
+      if (String(e).includes("cancelled")) return;
+      toast(String(e), true);
+    }
+  }
+
+  function resetRecipeURLModal() {
+    state.recipeURLPreview = null;
+    const prev = $("#recipe-url-preview");
+    if (prev) prev.hidden = true;
+    const btn = $("#recipe-url-confirm-btn");
+    if (btn) btn.disabled = true;
+    const err = $("#recipe-url-preview-err");
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    const kv = $("#recipe-url-preview-kv");
+    if (kv) kv.innerHTML = "";
+    const warn = $("#recipe-url-preview-warn");
+    if (warn) warn.innerHTML = "";
+  }
+
+  function renderRecipeURLPreview(p) {
+    const panel = $("#recipe-url-preview");
+    const kv = $("#recipe-url-preview-kv");
+    const warn = $("#recipe-url-preview-warn");
+    const btn = $("#recipe-url-confirm-btn");
+    const err = $("#recipe-url-preview-err");
+    if (!panel || !kv) return;
+    panel.hidden = false;
+    if (err) err.hidden = true;
+    const rows = [
+      ["ID", p.suggested_id || "—"],
+      ["Name", p.name || "—"],
+      ["Description", p.description || "—"],
+      ["Image", p.image || "—"],
+      ["Resources", `${p.cpus || "—"} vCPU / ${p.memory_mb || "—"} MiB` + (p.disk_gb ? ` / ${p.disk_gb} GiB` : "")],
+      ["Persistent", p.persistent ? "yes" : "no"],
+      ["Bootstrap", p.has_bootstrap ? (p.bootstrap_steps || []).join(", ") || "yes" : "no"],
+      ["Mounts", (p.mounts || []).length ? (p.mounts || []).join("; ") : "—"],
+      ["Forwards", (p.forwards || []).length ? (p.forwards || []).join("; ") : "—"],
+    ];
+    setKV(kv, rows);
+    if (warn) {
+      warn.innerHTML = (p.warnings || []).map((w) => `<li>${escapeHtml(w)}</li>`).join("");
+    }
+    if (btn) btn.disabled = !p.yaml;
+    state.recipeURLPreview = p;
+  }
+
+  async function previewRecipeURL(url) {
+    resetRecipeURLModal();
+    const p = await act("preview recipe URL", () => call("PreviewRecipeURL", url), { target: url });
+    renderRecipeURLPreview(p);
+    return p;
+  }
+
+  async function confirmRecipeURLPreview() {
+    const p = state.recipeURLPreview;
+    if (!p?.yaml) throw new Error("Preview the URL first");
+    const ent = await act(
+      "add recipe to library",
+      () => call("ConfirmRecipeYAML", p.yaml, p.suggested_id || "", false),
+      { target: p.suggested_id }
+    );
+    toast(`Added ${ent?.id || p.suggested_id || "recipe"}`);
+    state.selectedRecipe = ent?.id;
+    state.recipeURLPreview = null;
+    closeModal("modal-recipe-url");
+    $("#recipe-url-input").value = "";
+    resetRecipeURLModal();
+    await loadRecipesPage();
+    if (ent?.id) openRecipe(ent.id);
+  }
+
+  async function loadOfficialCatalog() {
+    const panel = $("#recipes-catalog");
+    const tbody = $("#catalog-tbody");
+    const err = $("#catalog-err");
+    if (!panel || !tbody) return;
+    panel.hidden = false;
+    if (err) err.hidden = true;
+    tbody.innerHTML = `<tr><td colspan="4" class="muted">Loading catalog…</td></tr>`;
+    try {
+      const list = (await call("SearchOfficialRecipes")) || [];
+      tbody.innerHTML = "";
+      if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="4" class="muted">Catalog empty or unavailable.</td></tr>`;
+        return;
+      }
+      for (const r of list) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td class="selectable">${escapeHtml(r.id)}</td>
+          <td>${escapeHtml(r.title || r.description || "")}</td>
+          <td>${r.in_library ? "yes" : "no"}</td>
+          <td class="no-select"><button type="button" class="btn btn-ghost btn-sm" data-catalog-add="${escapeHtml(r.id)}" ${r.in_library ? "disabled" : ""}>${r.in_library ? "Installed" : "Add"}</button></td>`;
+        tbody.appendChild(tr);
+      }
+      $$("[data-catalog-add]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          try {
+            const ent = await act("add official recipe", () => call("AddOfficialRecipe", b.dataset.catalogAdd, false), {
+              target: b.dataset.catalogAdd,
+            });
+            toast(`Added ${ent?.id || b.dataset.catalogAdd}`);
+            await loadRecipesPage();
+            await loadOfficialCatalog();
+            if (ent?.id) openRecipe(ent.id);
+          } catch (e) {
+            toast(String(e), true);
+          }
+        })
+      );
+    } catch (e) {
+      tbody.innerHTML = "";
+      if (err) {
+        err.hidden = false;
+        err.textContent = String(e);
+      }
+    }
+  }
+
+  function openDeployRecipeModal() {
+    const id = state.selectedRecipe;
+    if (!id) return;
+    const meta = (state.recipes || []).find((r) => r.id === id);
+    $("#recipe-deploy-id").textContent = `Recipe: ${id}`;
+    $("#recipe-deploy-name").value = meta?.name || id;
+    const warn = $("#recipe-deploy-warn");
+    if (meta?.has_bootstrap && warn) {
+      warn.hidden = false;
+      warn.textContent = "This recipe runs bootstrap scripts inside the guest until ready.";
+    } else if (warn) {
+      warn.hidden = true;
+    }
+    openModal("modal-recipe-deploy");
+  }
+
+  async function deploySelectedRecipe(name, waitReady) {
+    const id = state.selectedRecipe;
+    if (!id) return;
+    const opts = { recipe: id, name: name || id };
+    if (waitReady) {
+      opts.wait = ""; // recipe default / wait until ready
+    } else {
+      opts.wait = "ssh";
+    }
+    const sb = await act("deploy recipe", () => call("DeployRecipe", opts), {
+      target: name || id,
+      summary: `created sandbox from recipe ${id}`,
+    });
+    toast(`Created ${sb?.name || name}`);
+    closeModal("modal-recipe-deploy");
+    switchView("sandboxes");
+    await refreshList();
+    if (sb?.name) await selectVM(sb.name);
   }
 
   /* ── shell ── */
@@ -2354,6 +2629,56 @@
 
     $$(".nav-item").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.view)));
     $$(".ws-tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
+
+    $("#btn-recipe-import-file")?.addEventListener("click", () => importRecipeFile());
+    $("#btn-recipe-import-url")?.addEventListener("click", () => {
+      resetRecipeURLModal();
+      openModal("modal-recipe-url");
+    });
+    $("#btn-recipe-browse")?.addEventListener("click", () => loadOfficialCatalog());
+    $("#btn-recipe-refresh")?.addEventListener("click", () => loadRecipesPage());
+    $("#btn-recipe-catalog-close")?.addEventListener("click", () => {
+      const p = $("#recipes-catalog");
+      if (p) p.hidden = true;
+    });
+    $("#btn-recipe-save")?.addEventListener("click", () => saveSelectedRecipe());
+    $("#btn-recipe-delete")?.addEventListener("click", () => deleteSelectedRecipe());
+    $("#btn-recipe-deploy")?.addEventListener("click", () => openDeployRecipeModal());
+    $("#recipe-url-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const url = $("#recipe-url-input")?.value?.trim();
+      if (!url) return;
+      try {
+        await previewRecipeURL(url);
+      } catch (err) {
+        const errEl = $("#recipe-url-preview-err");
+        const panel = $("#recipe-url-preview");
+        if (panel) panel.hidden = false;
+        if (errEl) {
+          errEl.hidden = false;
+          errEl.textContent = String(err);
+        }
+        toast(String(err), true);
+      }
+    });
+    $("#recipe-url-confirm-btn")?.addEventListener("click", async (e) => {
+      e.preventDefault();
+      try {
+        await confirmRecipeURLPreview();
+      } catch (err) {
+        toast(String(err), true);
+      }
+    });
+    $("#recipe-deploy-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = $("#recipe-deploy-name")?.value?.trim();
+      const waitReady = $("#recipe-deploy-wait")?.checked !== false;
+      try {
+        await deploySelectedRecipe(name, waitReady);
+      } catch (err) {
+        toast(String(err), true);
+      }
+    });
     $$(".seg").forEach((s) => s.addEventListener("click", () => switchSettingsSeg(s.dataset.seg)));
     $$(".agent-tab").forEach((t) =>
       t.addEventListener("click", () => {
@@ -2689,6 +3014,18 @@
     });
   }
 
+  function showMainUI() {
+    const splash = $("#splash");
+    const app = $("#app");
+    if (splash) splash.hidden = true;
+    if (app) app.hidden = false;
+    // Focus into the webview so Linux/X11 WebKitGTK receives keyboard/clicks.
+    try {
+      document.body?.focus?.();
+      $("#btn-new")?.focus?.({ preventScroll: true });
+    } catch (_) {}
+  }
+
   async function boot() {
     let shellVM = "";
     try {
@@ -2709,27 +3046,25 @@
       return;
     }
 
-    $("#splash").hidden = false;
-    $("#app").hidden = true;
+    // Show main UI immediately so a slow/hung daemon never leaves a full-screen
+    // splash blocking all clicks (common on Linux when grain is not on PATH).
+    showMainUI();
+    $("#btn-new").hidden = false;
+    showInspector(false);
+    if ($("#splash-msg")) $("#splash-msg").textContent = "Connecting…";
+
     try {
       const splash = await call("EnsureReady");
-      $("#splash-msg").textContent = splash.message || "Ready";
+      if ($("#splash-msg")) $("#splash-msg").textContent = splash.message || "Ready";
       if (splash.health) setHealth(splash.health);
       if (splash.error) toast(splash.error, true, { action: "ensure ready" });
       await loadHostMenu();
       await refreshList();
-      showInspector(false);
-      $("#btn-new").hidden = false;
-      $("#splash").hidden = true;
-      $("#app").hidden = false;
       state.pollTimer = setInterval(async () => {
-        // Refresh active host health + list first; host menu probes secondaries only
         await refreshList();
         await loadHostMenu();
       }, 5000);
     } catch (e) {
-      $("#splash").hidden = true;
-      $("#app").hidden = false;
       try {
         await loadHostMenu();
         await refreshList();
@@ -2748,6 +3083,8 @@
     }
     updateActivityBadge();
     wire();
+    // Unblock UI before async boot (covers binding race + long EnsureReady).
+    showMainUI();
     boot();
   });
 })();

@@ -72,6 +72,30 @@ Examples in-repo: [`examples/recipes/`](https://github.com/cxdy/grain/tree/main/
 
 From **Grain Desktop**, select a sandbox → inspector **More → Export as recipe…** to save create options (image, resources, mounts, forwards) as a recipe file. Bootstrap steps and first-boot userdata are not recovered from a live VM — add those by hand if needed.
 
+### Local library (`~/.grain/recipes`)
+
+Install recipes once, then create by **name** (CLI, Desktop, MCP):
+
+```bash
+# Import (never creates a VM)
+grain recipe add ./git-lab.recipe.yaml          # → ~/.grain/recipes/git-lab.yaml
+grain recipe add https://example.com/lab.yaml   # http(s) YAML
+grain recipe search                             # official catalog index only
+grain recipe add git-lab                        # pull one official body into the library
+
+grain recipe list
+grain recipe show git-lab
+grain recipe validate git-lab
+grain new --recipe git-lab                      # name resolves under ~/.grain/recipes
+grain recipe delete git-lab                     # library file only — not sandboxes
+```
+
+**Desktop:** **Recipes** tab → Import file / URL / Browse official → Edit YAML (valid-only save) → **Deploy…** (name override + wait until ready).
+
+**Trust:** URL import is **preview then add** (Desktop fetches and validates, shows name/image/resources/mounts/bootstrap, then you confirm install). Official **Add** and CLI `recipe add <url>` install into the library only. Deploy/create is always a separate step. Prefer HTTPS; HTTP is allowed with a warning. Catalog entries may pin `sha256` (fail closed on mismatch). Offline: library always works; `recipe search` uses a cached index when present.
+
+Env overrides: `GRAIN_HOME` (library under `$GRAIN_HOME/recipes`), `GRAIN_RECIPE_CATALOG_URL` (official index URL).
+
 ---
 
 ## 3. Inspect without creating
@@ -79,6 +103,7 @@ From **Grain Desktop**, select a sandbox → inspector **More → Export as reci
 ```bash
 grain recipe validate ./git-lab.recipe.yaml
 grain recipe show ./git-lab.recipe.yaml
+grain recipe show git-lab                        # library name
 grain recipe show ./git-lab.recipe.yaml --userdata   # compiled cloud-init
 ```
 
