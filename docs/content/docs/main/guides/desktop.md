@@ -20,17 +20,19 @@ CLI-first path: install → `grain up` → `grain new` → `grain sh`.
 
 | Area | Notes |
 |------|--------|
-| **Sandboxes** | List, create, start/stop/remove, multi-select bulk actions, right-side inspector |
-| **Inspector** | Overview · Shell · Logs — in-app shell plus **open in new window**; **More → Export as recipe…** writes a portable [`grain/v1` Sandbox recipe](../get-started/recipe/) (create options, mounts, forwards — not bootstrap/userdata) |
+| **Sandboxes** | List with search/sort/compact density, create, start/stop/remove, multi-select bulk actions, right-side inspector |
+| **Inspector** | Overview (agent badge, metrics charts) · Shell · Logs — in-app shell plus **open in new window**; **More → Export as recipe…** / **Save as library recipe** / **Promote to golden + fill pool** |
+| **Agent honesty** | While a golden is still booting, failed agent health shows **checking…** (not “not installed”) until success or a short grace after create |
 | **Images** | Catalog ready/missing, pull with progress |
-| **Recipes** | Local library (`~/.grain/recipes`), **New from form…**, import file/URL (URL is preview→add), browse official catalog, YAML edit (valid-only save), **Deploy…** with preflight (image ready / mounts / remote host) + name override + wait. **More → Save as library recipe** from a sandbox. Import never auto-creates a VM. |
+| **Recipes** | Local library (`~/.grain/recipes`), **New from form…**, import file/URL (preview→add), official catalog, YAML edit (valid-only save), **Deploy…** with preflight. Import never auto-creates a VM. |
 | **MCP** | Status, enable in config, copy IDE snippets, ensure-running (local) |
 | **Doctor** | Host tool + daemon checks with fix hints |
 | **Settings** | Preferences, **Warm pool** (template / size / running mode + Fill), hosts, Advanced config.yaml (strict validate) |
-| **Activity** | Toasts + activity drawer (CLI/MCP/API/Desktop); optional **source filter** |
-| **Hosts** | Top-bar switcher; remote profiles never start a remote daemon |
-| **Fast create** | New sandbox: cold / from template / **from warm pool** (prefers pool when ready &gt; 0); bulk Start **preflight** against daemon caps |
-| **Multi-Run** | Multi-select **Run…** — progressive results, **re-run failed**, **copy all** (stdout/stderr) |
+| **Activity** | Toasts + drawer for **all clients** (CLI/MCP/API/Desktop via daemon `GET /activity`); optional **source filter**; persisted across daemon restarts |
+| **Hosts** | Top-bar switcher; remote profiles never start a remote engine |
+| **Fast create** | New: cold / from template / **from warm pool** (prefers pool when ready &gt; 0; honest empty/unconfigured copy) |
+| **Bulk Start** | Confirm dialog + progress; **preflight** against active host caps from `GET /info` (blocks over-cap) |
+| **Multi-Run** | Multi-select **Run…** — progressive results, **re-run failed**, **copy all** (stdout+stderr) |
 
 ## Install / launch
 
@@ -59,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh 
 ./scripts/install.sh --desktop
 ```
 
-When a Desktop release artifact is not published yet, `--desktop` builds from source if you run the installer inside a grain checkout with `just` + Wails available; otherwise it prints build instructions (non-fatal if the CLI installed).
+When a Desktop **release asset** is published on GitHub Releases, the installer prefers that binary. Until then (or if the asset is missing), `--desktop` builds from source if you run the installer inside a grain checkout with `just` + Wails available; otherwise it prints build instructions (non-fatal if the CLI installed).
 
 ### Linux
 
@@ -83,10 +85,12 @@ Sandboxes | Images | Recipes | Settings
 [ list .................. ] [ inspector: Overview | Shell | Logs ]
 ```
 
-- **Shell** focuses the in-app terminal; **⧉** opens a second Grain window (`--shell`).
+- **Shell** focuses the in-app terminal; **⧉** opens a second Grain window (`--shell`). Keyboard input goes through live Wails `ShellWrite` bindings.
 - **Start** and **Stop** never appear together.
+- Sandbox list: search by name/image/status; sort; compact density; always scrollable.
 - Header **Refresh** reloads the **current** view only.
 - Click a toast to open **Activity** for that event.
+- Theme toggle respects light/dark; native title bar and scrollbars follow the theme.
 
 ## Config
 
@@ -120,7 +124,23 @@ See [lifecycle — fast create](../lifecycle/#fast-create-spawn-and-warm-pool).
 
 ### Multi-host Run
 
-Select two or more sandboxes → **Run…**. Results stream per host. After a run: **Re-run failed** (only non-zero / error hosts) and **Copy all** (stdout + stderr export text).
+Select two or more sandboxes → **Run…**. Results stream per host (hostname highlighted). After a run:
+
+| Control | Behavior |
+|---------|----------|
+| **Re-run failed** | Re-executes only hosts that had an error or non-zero exit |
+| **Copy all** | Clipboard export with per-host stdout/stderr blocks |
+
+### Activity feed
+
+- Merges **daemon** events (`GET /activity`, all clients) with local UI notes.
+- Persisted on the daemon host at `data_dir/activity.json`.
+- Filter dropdown: All · Desktop · CLI · MCP · API/SDK.
+- Clients should send `X-Grain-Client: desktop|cli|mcp|sdk` (Desktop does this automatically).
+
+### Metrics charts
+
+When sandbox metrics are enabled (default), Overview shows guest history from the host-side ring. See [Metrics](../../reference/metrics/).
 
 Sandbox **disk** increases run `qemu-img resize` when the sandbox is **stopped** (refuses while running). Grow the guest filesystem separately after resize.
 

@@ -45,6 +45,10 @@ Package managers (Homebrew formula, apt/rpm, etc.) are **planned** but not shipp
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
+
+# Optional: also install Grain Desktop (GUI) when a release asset exists,
+# or build from source if you run the script inside a checkout with Wails.
+curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash -s -- --desktop
 ```
 
 The script:
@@ -53,10 +57,13 @@ The script:
 2. Downloads the latest release binary of `grain`  
 3. Installs the guest agent binary under `~/.grain/agent/` when available  
 4. Falls back to `go install` if no release asset exists  
+5. With `--desktop`: prefers a GitHub Release Desktop asset; otherwise may build via `just desktop-build` in a checkout  
 
 Default install locations: `/usr/local/bin` if writable, otherwise `~/.local/bin`. Override with `GRAIN_INSTALL_DIR`.
 
 After install, the script asks whether to **enable MCP by default** (`mcp.enabled` in `~/.grain/config.yaml`). Non-interactive installs skip the prompt; use `GRAIN_ENABLE_MCP=1` or `0` to force yes/no. If you skip, you can enable later with `grain up --mcp` — see [MCP server](../../mcp/).
+
+Desktop developer builds: [Grain Desktop](../../guides/desktop/) and `desktop/README.md` in the repo.
 
 ## Upgrade
 

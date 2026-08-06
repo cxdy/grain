@@ -74,21 +74,11 @@ func (s *Server) Handler() http.Handler {
 // ListenAndServe starts the HTTP server on TCP (always) and optionally on
 // virtio-vsock (Linux guests when AF_VSOCK is available). Blocks until
 // Shutdown or a fatal TCP listen error. Vsock listen failure is non-fatal.
+//
+// Clipboard helpers (OSC 52 shims + optional headless X11) start in the
+// background after TCP bind so create-wait / health never stall on Xvfb
+// (which can take several seconds and races under parallel tests in CI).
 func (s *Server) ListenAndServe() error {
-	// Guest clipboard shims (OSC 52) for TUIs over grain sh — best-effort.
-	if dir, err := ensureClipboardHelpers(); err != nil {
-		s.Log.Debug("clipboard helpers unavailable", "err", err)
-	} else {
-		s.Log.Info("clipboard helpers ready", "dir", dir)
-	}
-	// Headless X11 CLIPBOARD owner so arboard-based TUIs (e.g. Grok Build)
-	// can paste host images without a real desktop. Needs Xvfb on PATH.
-	ensureClipboardX11(s.Log, func(ctx context.Context) ([]byte, error) {
-		if s.clip == nil {
-			return nil, fmt.Errorf("clipboard bridge unavailable")
-		}
-		return s.clip.request(ctx)
-	})
 	ln, err := net.Listen("tcp", s.Addr)
 	if err != nil {
 		return err
@@ -101,6 +91,9 @@ func (s *Server) ListenAndServe() error {
 	s.mu.Unlock()
 
 	s.Log.Info("grain-agent listening", "addr", ln.Addr().String(), "version", Version)
+
+	// Best-effort clipboard setup — must not block health/agent wait.
+	go s.startClipboardServices()
 
 	// Best-effort vsock listener (same HTTP mux). Skipped on non-Linux builds
 	// or when the guest has no virtio-vsock device.
@@ -120,6 +113,23 @@ func (s *Server) ListenAndServe() error {
 		return nil
 	}
 	return err
+}
+
+// startClipboardServices installs guest clipboard shims and optional X11 owner.
+func (s *Server) startClipboardServices() {
+	if dir, err := ensureClipboardHelpers(); err != nil {
+		s.Log.Debug("clipboard helpers unavailable", "err", err)
+	} else {
+		s.Log.Info("clipboard helpers ready", "dir", dir)
+	}
+	// Headless X11 CLIPBOARD owner so arboard-based TUIs (e.g. Grok Build)
+	// can paste host images without a real desktop. Needs Xvfb on PATH.
+	ensureClipboardX11(s.Log, func(ctx context.Context) ([]byte, error) {
+		if s.clip == nil {
+			return nil, fmt.Errorf("clipboard bridge unavailable")
+		}
+		return s.clip.request(ctx)
+	})
 }
 
 // AddrString returns the bound address once listening, or the configured Addr.

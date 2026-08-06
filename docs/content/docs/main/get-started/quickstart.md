@@ -17,7 +17,7 @@ From zero to a working sandbox in a few minutes. When you finish this page you w
 
 **Platforms:** macOS and Linux (amd64 / arm64) with hardware virtualization. Native Windows is not a host — use a remote grain daemon. WSL reports as Linux; same virt requirements as other Linux hosts.
 
-Deep dives: [Install](../install/) · [First sandbox + demo](../first-sandbox/) · [Bootstrap until ready](../bootstrap/) · [Config](../../reference/config/).
+Deep dives: [Install](../install/) · [First sandbox + demo](../first-sandbox/) · [Bootstrap until ready](../bootstrap/) · [Config](../../reference/config/) · [Desktop GUI](../../guides/desktop/) · [Fast create / warm pool](../../guides/lifecycle/#fast-create-spawn-and-warm-pool).
 
 ---
 
@@ -148,6 +148,29 @@ next:  grain sh sbox-1
 | `grain ls` / `rm` | List / delete VMs |
 
 Ephemeral is the default: `rm`, `stop`, or daemon restart removes the VM. Use `grain new -p` for a persistent disk (`stop` / `start` later).
+
+### Optional: Desktop GUI
+
+```bash
+# With release asset or from a checkout that can build Wails:
+curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash -s -- --desktop
+# or: just desktop-build && ./bin/grain-desktop
+```
+
+Same daemon as the CLI — sandboxes, shell, recipes, warm pool Settings, activity feed. Guide: [Grain Desktop](../../guides/desktop/).
+
+### Optional: faster second sandboxes
+
+Cold boots are guest-bound (~seconds). After one golden is agent-ready:
+
+```bash
+grain new -i grain-ubuntu -n golden -p --wait agent
+grain suspend golden
+grain new --from golden -n work1          # clone + loadvm when snapshotted
+# or warm pool: set warm_pool.template/size, then grain pool fill && grain new --from-pool -n work2
+```
+
+Details: [lifecycle — create path and latency](../../guides/lifecycle/#create-path-and-latency).
 
 ---
 

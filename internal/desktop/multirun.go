@@ -77,14 +77,14 @@ func FormatMultiRunExport(command string, results []MultiRunResult) string {
 		if MultiRunFailed(r) {
 			status = "FAILED"
 		}
-		b.WriteString(fmt.Sprintf("=== %s (%s) ===\n", name, status))
+		fmt.Fprintf(&b, "=== %s (%s) ===\n", name, status)
 		if e := strings.TrimSpace(r.Error); e != "" {
 			b.WriteString("error: ")
 			b.WriteString(e)
 			b.WriteByte('\n')
 		}
 		if r.ExitCode != 0 {
-			b.WriteString(fmt.Sprintf("exit_code: %d\n", r.ExitCode))
+			fmt.Fprintf(&b, "exit_code: %d\n", r.ExitCode)
 		}
 		out := strings.TrimRight(r.Stdout, "\r\n")
 		errOut := strings.TrimRight(r.Stderr, "\r\n")
@@ -104,7 +104,7 @@ func FormatMultiRunExport(command string, results []MultiRunResult) string {
 				b.WriteString(ln)
 				b.WriteByte('\n')
 			} else {
-				b.WriteString(fmt.Sprintf("(exit %d)\n", r.ExitCode))
+				fmt.Fprintf(&b, "(exit %d)\n", r.ExitCode)
 			}
 		}
 		b.WriteByte('\n')

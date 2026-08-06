@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **golangci-lint** — G118: warm-pool background fill/refill uses `context.WithoutCancel` instead of `context.Background` when a request/daemon context is in scope; staticcheck S1008/QF1012 cleanups in activity classify and multi-Run export.
+
+### Docs
+
+- **Product surface refresh** — CLI/API/config/metrics references document warm pool, `--from` / `--from-pool`, activity, `/info` caps, sandbox metrics defaults; Desktop, lifecycle (create latency), recipes (`go-dev`), quickstart/install, and root README updated for the last wave of Desktop/pool/activity work.
+
 ### Added
 
 - **Docs versioning (issue #88)** — single live content tree `docs/content/docs/main/` only; removed per-release `docs/content/docs/0.x.y/` snapshots. Version switcher lists product SVU tags (`vX.Y.Z`, not fc/golden/sdk tags) with **git commit** links to GitHub; live site stays `/docs/main/`. `scripts/docs-version-bump.sh` updates metadata only.
