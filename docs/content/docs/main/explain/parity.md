@@ -45,7 +45,7 @@ grain’s local microVM product surface as of the v0.2 line.
 | Tier | What you get |
 |------|----------------|
 | **FC agent production (vFC-1)** | Linux+KVM; pull `fc-kernel` + `grain-ubuntu-fc`; doctor; create `--wait agent`; `grain x` / agent `sh` / cp / sync / MCP guest tools over vsock UDS + `CONNECT` |
-| **FC net (vFC-2 partial)** | TAP + `-P`/`grain fwd` (DNAT / TCP proxy); needs CAP_NET_ADMIN |
+| **FC net (vFC-2 partial)** | TAP + `-P`/`grain fwd` (DNAT/SNAT / TCP proxy); needs CAP_NET_ADMIN |
 | **Not on FC today (use QEMU)** | Overlay L2, 9p/virtiofs mounts, SLIRP proxy, virtio GPU |
 
 See [Firecracker on Linux](../../guides/firecracker/) and [Hypervisor matrix](../hypervisor-matrix/). Jailer and multi-host CNI stay deferred; single-tenant only.

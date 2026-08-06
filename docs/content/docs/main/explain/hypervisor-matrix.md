@@ -25,7 +25,7 @@ This page is the **capability snapshot** for grain’s two real hypervisors: **Q
 | Label | Meaning |
 |-------|---------|
 | **FC agent production (vFC-1)** | Supported for agent-first workflows on Linux+KVM: pull `fc-kernel` / `grain-ubuntu-fc`, `grain new --wait agent`, `grain x` / `sh` / `cp` / sync / MCP tools that use the guest agent. Host dial uses Firecracker vsock UDS + `CONNECT`. |
-| **FC net (vFC-2 partial)** | **Supported:** TAP + create-time `-P` / `--publish` (DNAT to guest IP), `grain fwd add/ls/rm` via host TCP proxy, optional SSH/agent TCP ports. **Still QEMU-only:** overlay L2, 9p/virtiofs mounts, SLIRP-style egress proxy. Needs `CAP_NET_ADMIN` + `/dev/net/tun`. |
+| **FC net (vFC-2 partial)** | **Supported:** TAP + create-time `-P` / `--publish` (DNAT + SNAT to TAP HostIP), `grain fwd add/ls/rm` via host TCP proxy, optional SSH/agent TCP ports. **Still QEMU-only:** overlay L2, 9p/virtiofs mounts, SLIRP-style egress proxy. Needs `CAP_NET_ADMIN` + `/dev/net/tun`. |
 | **QEMU default** | Full product path on macOS + Linux (SLIRP, publish, mounts, overlay, GPU where applicable). |
 
 CLI `--publish` / `grain fwd` work on **both** QEMU (SLIRP hostfwd / SSH `-L`) and Firecracker (TAP DNAT / TCP proxy). Prefer agent APIs when you do not need a guest TCP port on the host.
@@ -58,7 +58,7 @@ Statuses in the FC column are intentional honesty, not TODOs disguised as featur
 | **Acceleration / KVM** | HVF (macOS), KVM (Linux), TCG fallback on Linux | **KVM required** (`/dev/kvm` RDWR); no TCG | — (hard requirement today) |
 | **Images / rootfs** | Catalog qcow2 (`grain-ubuntu`, `ubuntu-cloud`, …) + import | Catalog **`grain-ubuntu-fc`** raw (pull `fc-latest`) or import; qcow2→raw via `qemu-img` at Start | — (vFC-1 catalog shipped) |
 | **Guest kernel** | QEMU/UEFI path from image | Catalog **`fc-kernel`** → `~/.grain/kernels/vmlinux`, or `kernel_path` / import | — (vFC-1 catalog shipped) |
-| **SSH + hostfwd / `-P` / `grain fwd`** | Yes (SLIRP hostfwd) | **Yes (vFC-2)** — TAP + DNAT for create-time `-P`; live `grain fwd add` via host TCP proxy to guest IP; SSH host port allocated (sshd must exist in guest). Needs CAP_NET_ADMIN | **vFC-2 net (partial done)** |
+| **SSH + hostfwd / `-P` / `grain fwd`** | Yes (SLIRP hostfwd) | **Yes (vFC-2)** — TAP + DNAT/SNAT for create-time `-P`; live `grain fwd add` via host TCP proxy to guest IP; SSH host port allocated (sshd must exist in guest). Needs CAP_NET_ADMIN | **vFC-2 net (partial done)** |
 | **Agent transport** | TCP hostfwd and/or host **AF_VSOCK** (`vhost-vsock-pci`); `agent_transport: auto\|tcp\|vsock` | **Primary:** Firecracker vsock UDS + `CONNECT` (`AgentCID`, `fc-vsock.sock`). Optional TCP DNAT to guest `:7475` when TAP is up. Create-wait / CLI / daemon proxy use vsock first | **vFC-1 agent (done)** |
 | **Mounts (9p / virtiofs)** | Yes (virtiofs on Linux) | **Not wired** | later (not in vFC-2 publish scope) |
 | **Overlay network** (`network: overlay`) | Yes (shared L2 between VMs) | **No** | later (QEMU-only for now) |
