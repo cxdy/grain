@@ -513,14 +513,8 @@ func pngDimensions(b []byte) (w, h int, ok bool) {
 	return w, h, true
 }
 
-// mustSmallPNG returns a valid 8×8 RGB PNG.
-func mustSmallPNG(t *testing.T) []byte {
-	t.Helper()
-	return mustPNG(t, 8, 8)
-}
-
-// mustLargePNG returns a PNG large enough that a botched TIFF→icon conversion
-// (~2KiB) cannot pass a size assertion.
+// mustLargePNG returns a PNG with enough pixels that a botched icon-sized
+// TIFF conversion fails the IHDR dimension check.
 func mustLargePNG(t *testing.T) []byte {
 	t.Helper()
 	return mustPNG(t, 320, 240)
