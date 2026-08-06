@@ -108,6 +108,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 a { color: var(--brand); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .muted { color: var(--muted); }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 .mono, code { font-family: var(--mono); font-size: 0.9em; }
 .hint { font-size: 0.8rem; color: var(--muted); margin: 0.5rem 0 0; }
 .hint.bad, .field-hint.bad { color: var(--danger); }
@@ -252,16 +256,95 @@ a:hover { text-decoration: underline; }
   overflow: auto;
 }
 .main > .view[hidden] { display: none !important; }
-/* Sandboxes + workspace: no page scroll — workspace absorbs remaining height */
+/* Sandboxes + workspace: no page scroll — list and workspace share the column */
 #view-sandboxes.view {
   overflow: hidden;
 }
 #view-sandboxes .view-head { flex-shrink: 0; }
-#view-sandboxes .table-wrap { flex-shrink: 0; }
-/* When a sandbox is selected, keep the list compact and give the workspace the rest */
+/*
+ * List must always be height-bounded so overflow-y:auto works.
+ * Unselected: fill remaining viewport. Selected: shorter cap for workspace.
+ */
+#view-sandboxes .table-wrap {
+  flex: 1 1 auto;
+  min-height: 6rem;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
 #view-sandboxes.view:has(#workspace:not([hidden])) .table-wrap {
-  max-height: 11rem;
+  flex: 0 1 auto;
+  max-height: min(40vh, 18rem);
+  min-height: 5.5rem;
+}
+#view-sandboxes #workspace:not([hidden]) {
+  flex: 1 1 auto;
+  min-height: 12rem;
+}
+.sandbox-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.65rem;
+  flex-shrink: 0;
+}
+.sandbox-search {
+  flex: 1 1 12rem;
+  min-width: 10rem;
+  max-width: 22rem;
+}
+.sandbox-search .input {
+  width: 100%;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.88rem;
+}
+/* xterm needs explicit focusable surface for keyboard input */
+.xterm-host .xterm,
+.xterm-host .xterm-screen,
+.xterm-host canvas {
+  cursor: text;
+}
+.xterm-host .xterm:focus,
+.xterm-host .xterm-helper-textarea:focus {
+  outline: none;
+}
+/* Multi-host run modal */
+.multi-ssh-hosts {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0 0 0.65rem;
+  font-family: var(--mono);
+  word-break: break-all;
+}
+.multi-ssh-form {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+}
+.multi-ssh-form .input {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+}
+.multi-ssh-out {
+  margin: 0;
+  min-height: 14rem;
+  max-height: min(50vh, 22rem);
   overflow: auto;
+  padding: 0.65rem 0.75rem;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.modal.modal-multi-ssh {
+  width: min(42rem, 96vw);
 }
 .view-head {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;

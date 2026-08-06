@@ -95,10 +95,17 @@
               <div class="view-head">
                 <h2>Sandboxes</h2>
                 <div id="bulk-bar" class="bulk-bar" hidden>
+                  <button type="button" class="btn btn-ghost btn-sm" id="bulk-ssh" title="Run a command on all selected sandboxes">Run…</button>
                   <button type="button" class="btn btn-ghost btn-sm" id="bulk-start">Start</button>
                   <button type="button" class="btn btn-ghost btn-sm" id="bulk-stop">Stop</button>
                   <button type="button" class="btn btn-danger-ghost btn-sm" id="bulk-rm">Remove</button>
                 </div>
+              </div>
+              <div class="sandbox-toolbar">
+                <label class="sandbox-search">
+                  <span class="sr-only">Search sandboxes</span>
+                  <input type="search" class="input" id="sandbox-search" placeholder="Search by name, image, status…" autocomplete="off" />
+                </label>
               </div>
               <div class="table-wrap">
                 <table class="data-table" id="vm-table">
@@ -465,6 +472,28 @@
           </div>
         </div>
         <div id="activity-list" class="activity-list"></div>
+      </div>
+    </div>
+
+    <!-- Multi-host command (bulk Run) -->
+    <div class="modal-backdrop" id="modal-multi-ssh" hidden>
+      <div class="modal modal-multi-ssh" role="dialog" aria-labelledby="multi-ssh-title">
+        <div class="modal-head no-select">
+          <strong id="multi-ssh-title">Run on selected sandboxes</strong>
+          <button type="button" class="btn-icon" data-close="modal-multi-ssh" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="multi-ssh-hosts" id="multi-ssh-hosts"></p>
+          <form id="multi-ssh-form" class="multi-ssh-form">
+            <input class="input" id="multi-ssh-cmd" type="text" autocomplete="off" spellcheck="false"
+              placeholder="uname -a" aria-label="Command" />
+            <button type="submit" class="btn btn-primary" id="multi-ssh-run">Run</button>
+          </form>
+          <pre class="multi-ssh-out" id="multi-ssh-out" aria-live="polite"></pre>
+          <div class="modal-foot no-select">
+            <button type="button" class="btn btn-ghost" data-close="modal-multi-ssh">Close</button>
+          </div>
+        </div>
       </div>
     </div>
 

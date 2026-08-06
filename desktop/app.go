@@ -227,6 +227,23 @@ func (a *App) StopSandbox(name string) error {
 	return svc.StopSandbox(ctx, name)
 }
 
+// BulkExec runs a shell command on many sandboxes in parallel (agent sh -c).
+// Returns one result per name with a ready-to-display "name: output" line.
+func (a *App) BulkExec(names []string, command string) ([]desktop.BulkExecResult, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Bound total wait so a hung guest cannot freeze the UI forever.
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	return svc.BulkExec(ctx, names, command)
+}
+
 // RemoveSandbox deletes a VM.
 func (a *App) RemoveSandbox(name string) error {
 	svc, err := a.service()
