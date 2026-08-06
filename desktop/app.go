@@ -175,6 +175,19 @@ func (a *App) SetActiveConnection(name string) error {
 	return svc.SetActive(name)
 }
 
+// ListActivity returns recent control-plane activity from the daemon (all clients).
+func (a *App) ListActivity(since string, limit int) ([]desktop.ActivityEvent, error) {
+	svc, err := a.service()
+	if err != nil {
+		return nil, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return svc.ListActivity(ctx, since, limit)
+}
+
 // ListSandboxes returns VMs from the daemon List API.
 func (a *App) ListSandboxes() ([]desktop.Sandbox, error) {
 	svc, err := a.service()

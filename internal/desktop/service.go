@@ -229,6 +229,18 @@ func (s *Service) EnsureReady(ctx context.Context) (StartDaemonResult, HealthSta
 	return res, hs, nil
 }
 
+// ActivityEvent is a daemon control-plane action (mirrors GET /activity).
+type ActivityEvent = client.ActivityEvent
+
+// ListActivity returns recent daemon activity (CLI, Desktop, MCP, API).
+func (s *Service) ListActivity(ctx context.Context, since string, limit int) ([]ActivityEvent, error) {
+	c, err := s.ensureClient()
+	if err != nil {
+		return nil, err
+	}
+	return c.ListActivity(ctx, since, limit)
+}
+
 // ListSandboxes returns VM summaries from the daemon List API.
 // For running VMs, probes guest agent health (short timeout).
 func (s *Service) ListSandboxes(ctx context.Context) ([]Sandbox, error) {

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	grainapi "github.com/cxdy/grain/api"
+	"github.com/cxdy/grain/internal/activity"
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/manager"
 	"github.com/cxdy/grain/internal/observability"
@@ -29,6 +30,8 @@ type Server struct {
 	mgr *manager.Manager
 	met *observability.Metrics
 	log *slog.Logger
+	// Act is the in-memory activity ring (CLI/Desktop/MCP/API). Never nil after New.
+	Act *activity.Log
 	// Secrets is the host-side secret store (optional; nil disables /secrets).
 	Secrets *secrets.Store
 	// APIToken, when non-empty, requires Authorization: Bearer <token>
@@ -43,7 +46,7 @@ func New(mgr *manager.Manager, met *observability.Metrics, log *slog.Logger) *Se
 	if met == nil {
 		met = observability.NewMetrics()
 	}
-	return &Server{mgr: mgr, met: met, log: log}
+	return &Server{mgr: mgr, met: met, log: log, Act: activity.New(activity.DefaultCapacity)}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -53,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /metrics", s.met.Handler())
 	mux.HandleFunc("GET /openapi.yaml", s.serveOpenAPI)
 	mux.HandleFunc("GET /openapi.json", s.serveOpenAPI)
+	mux.HandleFunc("GET /activity", s.listActivity)
 	mux.HandleFunc("GET /vms", s.listVMs)
 	mux.HandleFunc("POST /vms", s.createVM)
 	mux.HandleFunc("GET /vms/{name}", s.getVM)
@@ -93,7 +97,85 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /secrets/{name}", s.deleteSecret)
 	// Materialize host secret into guest
 	mux.HandleFunc("POST /vms/{name}/secrets/{secretName}", s.injectSecret)
-	return loggingMiddleware(s.log, authMiddleware(s.APIToken, mux))
+	return loggingMiddleware(s.log, authMiddleware(s.APIToken, activityMiddleware(s, mux)))
+}
+
+func (s *Server) listActivity(w http.ResponseWriter, r *http.Request) {
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+			if limit > 500 {
+				limit = 500
+			}
+		}
+	}
+	since := strings.TrimSpace(r.URL.Query().Get("since"))
+	var list []activity.Event
+	if s.Act == nil {
+		list = []activity.Event{}
+	} else if since != "" {
+		list = s.Act.ListSince(since, limit)
+	} else {
+		list = s.Act.List(limit)
+	}
+	if list == nil {
+		list = []activity.Event{}
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// statusRecorder captures the response status for activity logging.
+type statusRecorder struct {
+	http.ResponseWriter
+	code int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.code = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+// activityMiddleware records mutating control-plane requests for Desktop/operators.
+func activityMiddleware(s *Server, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s == nil || s.Act == nil || !activity.ShouldRecord(r.Method, r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		start := time.Now()
+		rw := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
+		next.ServeHTTP(rw, r)
+		action, target := activity.Classify(r.Method, r.URL.Path)
+		// Prefer path param name when present (more accurate than Classify for some routes).
+		if n := r.PathValue("name"); n != "" && target == "" {
+			target = n
+		}
+		// create may set name in body — leave empty; list still useful
+		st := "success"
+		detail := ""
+		if rw.code >= 400 {
+			st = "error"
+			detail = "http " + strconv.Itoa(rw.code)
+		}
+		src := activity.SourceFromRequest(r)
+		sum := action
+		if target != "" {
+			sum = action + " " + target
+		}
+		sum += " via " + src
+		s.Act.Record(activity.Event{
+			Action:     action,
+			Target:     target,
+			Source:     src,
+			Status:     st,
+			DurationMS: time.Since(start).Milliseconds(),
+			Summary:    sum,
+			Detail:     detail,
+			Method:     r.Method,
+			Path:       r.URL.Path,
+		})
+	})
 }
 
 func (s *Server) serveOpenAPI(w http.ResponseWriter, _ *http.Request) {
@@ -1347,6 +1429,8 @@ type Client struct {
 	Base  string // e.g. http://grain (with unix dialer)
 	HTTP  *http.Client
 	Token string // optional Bearer token (Authorization header)
+	// UserAgent identifies the caller for the activity feed (default grain-cli).
+	UserAgent string
 }
 
 func (c *Client) http() *http.Client {
@@ -1354,28 +1438,46 @@ func (c *Client) http() *http.Client {
 	if base == nil {
 		base = http.DefaultClient
 	}
-	if c.Token == "" {
-		return base
-	}
 	// Clone so we do not mutate a shared *http.Client (e.g. httptest.Client()).
 	clone := *base
 	rt := base.Transport
 	if rt == nil {
 		rt = http.DefaultTransport
 	}
-	clone.Transport = &bearerRoundTripper{base: rt, token: c.Token}
+	ua := c.UserAgent
+	if ua == "" {
+		ua = "grain-cli"
+	}
+	clone.Transport = &clientRoundTripper{base: rt, token: c.Token, userAgent: ua}
 	return &clone
 }
 
-// bearerRoundTripper injects Authorization: Bearer on every request.
-type bearerRoundTripper struct {
-	base  http.RoundTripper
-	token string
+// clientRoundTripper injects Bearer auth and grain client identity headers.
+type clientRoundTripper struct {
+	base      http.RoundTripper
+	token     string
+	userAgent string
 }
 
-func (b *bearerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+func (b *clientRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	req2 := req.Clone(req.Context())
-	req2.Header.Set("Authorization", "Bearer "+b.token)
+	if b.token != "" {
+		req2.Header.Set("Authorization", "Bearer "+b.token)
+	}
+	if req2.Header.Get("User-Agent") == "" && b.userAgent != "" {
+		req2.Header.Set("User-Agent", b.userAgent)
+	}
+	if req2.Header.Get("X-Grain-Client") == "" {
+		label := b.userAgent
+		if i := strings.IndexByte(label, '/'); i > 0 {
+			label = label[:i]
+		}
+		label = strings.TrimPrefix(label, "grain-")
+		if label == "" {
+			label = "cli"
+		}
+		req2.Header.Set("X-Grain-Client", label)
+	}
 	return b.base.RoundTrip(req2)
 }
 
