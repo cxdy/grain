@@ -511,13 +511,19 @@ func (m *Manager) waitAgentMode(
 	probeCancel()
 	if probeErr == nil {
 		m.log.Info("guest agent ready", "name", inst.Name, "agent_port", inst.AgentPort, "agent_cid", inst.AgentCID)
+		// vFC-2: configure guest eth0 once agent is up (vsock); TAP/DNAT already on host.
+		if err := m.configureFCGuestNet(ctx, inst); err != nil {
+			m.log.Warn("fc guest net config failed", "name", inst.Name, "err", err)
+			// Non-fatal for agent wait — publish may fail until reconfigured.
+		}
 		return nil
 	}
 
 	// Baked agent still down after full budget: soft-fail to SSH deploy only if
 	// SSH comes up; keep polling the agent in parallel (it often wins).
-	// Firecracker has no hostfwd SSH (SSHPort=0) — skip deploy and surface UDS hint.
-	if inst.SSHPort > 0 {
+	// Firecracker uses vsock UDS even when SSHPort is allocated for optional TCP
+	// DNAT — do not wait on guest sshd (image may not run sshd).
+	if inst.SSHPort > 0 && agentTarget(inst).FirecrackerUDS == "" {
 		if emit != nil {
 			emit(vm.CreateEvent{
 				Phase:   vm.PhaseWaitSSH,
@@ -537,6 +543,34 @@ func (m *Manager) waitAgentMode(
 	}
 
 	return wrapAgentWaitErr(inst, probeErr)
+}
+
+// configureFCGuestNet applies static eth0 addressing inside the guest over the
+// agent (vsock). Host TAP/DNAT is already up from FirecrackerRuntime.Start.
+func (m *Manager) configureFCGuestNet(ctx context.Context, inst *vm.Instance) error {
+	if m.cfg.Hypervisor != "firecracker" || inst == nil || inst.DiskPath == "" {
+		return nil
+	}
+	vmDir := filepath.Dir(inst.DiskPath)
+	st, err := hypervisor.ReadFCNetState(vmDir)
+	if err != nil {
+		return nil // net disabled or not set up
+	}
+	script := hypervisor.GuestNetConfigScript(st.FCNetPlan)
+	client, err := agent.Dial(ctx, agentTarget(inst))
+	if err != nil {
+		return err
+	}
+	// Agent runs as root on FC golden/baked images.
+	res, err := client.ExecBuffered(ctx, "/bin/sh", "-c", script)
+	if err != nil {
+		return err
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("guest net script exit %d: %s%s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	m.log.Info("fc guest net configured", "name", inst.Name, "guest_ip", st.GuestIP, "tap", st.TapName)
+	return nil
 }
 
 // wrapAgentWaitErr annotates agent wait failures. Firecracker guests only reach
@@ -1333,10 +1367,6 @@ func (m *Manager) AddForward(ctx context.Context, name string, hostPort, guestPo
 			return nil, fmt.Errorf("host port %d already forwarded on %q", hostPort, name)
 		}
 	}
-	if inst.SSHPort <= 0 {
-		return nil, fmt.Errorf("vm %q has no SSH port", name)
-	}
-
 	lf := vm.LiveForward{HostPort: hostPort, GuestPort: guestPort}
 
 	if m.cfg.Hypervisor == "mock" {
@@ -1346,6 +1376,30 @@ func (m *Manager) AddForward(ctx context.Context, name string, hostPort, guestPo
 			return nil, err
 		}
 		return &lf, nil
+	}
+
+	// Firecracker (and any guest with a real IP but no SSH hostfwd): host TCP
+	// proxy 127.0.0.1:host → guestIP:guest. QEMU still uses SSH -L when SSHPort>0.
+	if m.cfg.Hypervisor == "firecracker" || (inst.SSHPort <= 0 && inst.IP != "" && inst.IP != "127.0.0.1") {
+		if inst.IP == "" || inst.IP == "127.0.0.1" {
+			return nil, fmt.Errorf("vm %q has no guest IP for live forward (Firecracker TAP net required)", name)
+		}
+		pid, err := startTCPProxy(hostPort, inst.IP, guestPort)
+		if err != nil {
+			return nil, err
+		}
+		lf.PID = pid
+		inst.LiveForwards = append(inst.LiveForwards, lf)
+		if err := m.st.Put(inst); err != nil {
+			_ = killPID(lf.PID)
+			return nil, err
+		}
+		m.log.Info("live forward added (tcp proxy)", "name", name, "host_port", hostPort, "guest_port", guestPort, "guest_ip", inst.IP, "pid", lf.PID)
+		return &lf, nil
+	}
+
+	if inst.SSHPort <= 0 {
+		return nil, fmt.Errorf("vm %q has no SSH port", name)
 	}
 
 	priv, _, err := sshkey.Ensure(m.cfg.DataDir)

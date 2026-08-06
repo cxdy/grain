@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -39,17 +40,35 @@ func (t Target) HasEndpoint() bool {
 
 // TargetForInstance builds a Dial target from persisted instance agent fields.
 //
-// Firecracker guests have no TCP hostfwd (AgentPort=0) and a guest CID set for
-// the FC vsock device. Host reachability is UDS + CONNECT at
-// dirname(diskPath)/fc-vsock.sock — not host AF_VSOCK (QEMU vhost-vsock only).
+// Firecracker guests use host UDS + CONNECT at dirname(diskPath)/fc-vsock.sock
+// (AgentCID set). QEMU may set AgentCID for host AF_VSOCK plus AgentPort for
+// TCP hostfwd — those keep CID/Port and do not use FirecrackerUDS.
+//
+// Detection of FC (vs QEMU with both CID and Port): AgentPort==0, or root disk
+// basename disk.raw, or fc-vsock.sock already present under the VM dir.
 func TargetForInstance(agentCID, agentPort int, diskPath string) Target {
 	t := Target{CID: agentCID, Port: agentPort}
-	if agentPort <= 0 && agentCID > 0 && diskPath != "" {
+	if agentCID > 0 && diskPath != "" && isFirecrackerAgentPath(agentPort, diskPath) {
 		t.FirecrackerUDS = filepath.Join(filepath.Dir(diskPath), FirecrackerVsockSocket)
 		// Host AF_VSOCK does not speak Firecracker's CONNECT protocol.
 		t.CID = 0
 	}
 	return t
+}
+
+func isFirecrackerAgentPath(agentPort int, diskPath string) bool {
+	if agentPort <= 0 {
+		return true
+	}
+	base := filepath.Base(diskPath)
+	if base == "disk.raw" {
+		return true
+	}
+	// Live socket after Start.
+	if st, err := os.Stat(filepath.Join(filepath.Dir(diskPath), FirecrackerVsockSocket)); err == nil && !st.IsDir() {
+		return true
+	}
+	return false
 }
 
 // Dial connects to the guest agent for t.
@@ -67,12 +86,13 @@ func Dial(ctx context.Context, t Target) (*Client, error) {
 	}
 
 	if t.FirecrackerUDS != "" {
-		if c, err := dialFirecrackerUDS(ctx, t.FirecrackerUDS, DefaultVsockPort); err == nil {
-			return c, nil
-		} else if t.Port <= 0 && t.CID <= 0 {
+		// Always use FC UDS when set. Falling through to AgentPort TCP DNAT
+		// before guest eth0 is configured causes wait loops to hang on TCP.
+		c, err := dialFirecrackerUDS(ctx, t.FirecrackerUDS, DefaultVsockPort)
+		if err != nil {
 			return nil, fmt.Errorf("agent dial: firecracker vsock %s: %w", t.FirecrackerUDS, err)
 		}
-		// Fall through to AF_VSOCK / TCP if configured.
+		return c, nil
 	}
 
 	if t.CID > 0 {

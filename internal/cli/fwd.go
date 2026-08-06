@@ -97,10 +97,11 @@ func cmdFwd(cfgPath *string) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "fwd",
 		Short: "Inspect and manage port forwards",
-		Long: `Inspect SLIRP hostfwd and live SSH port mappings for grain VMs.
+		Long: `Inspect host port mappings for grain VMs.
 
-These flows use QEMU SLIRP hostfwd / SSH -L. Firecracker does not configure
-SSHPort or published ports (agent path only until vFC-2 networking).
+QEMU: create-time SLIRP hostfwd plus live SSH -L forwards.
+Firecracker (vFC-2): create-time DNAT publish on TAP + live TCP proxy
+(grain fwd add) to the guest IP (no SSH required). Agent path remains vsock.
 
 Create-time SLIRP forwards:
 

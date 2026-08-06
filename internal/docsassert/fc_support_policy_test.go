@@ -36,7 +36,7 @@ func readDoc(t *testing.T, rel string) string {
 }
 
 // TestFCSupportPolicyDocs asserts shipped docs mark agent path supported and
-// hostfwd/SSH/fwd/overlay/mounts as not available on Firecracker today.
+// vFC-2 partial net (publish/fwd) while overlay/mounts stay QEMU-only.
 func TestFCSupportPolicyDocs(t *testing.T) {
 	t.Parallel()
 	matrix := readDoc(t, "docs/content/docs/main/explain/hypervisor-matrix.md")
@@ -53,22 +53,23 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 			"vFC-1",
 			"vFC-2",
 			"grain fwd",
-			"**No**",
+			"TAP + DNAT",
+			"CAP_NET_ADMIN",
 		}},
 		{"guide", fcGuide, []string{
 			"Support policy",
 			"FC agent production (vFC-1)",
-			"Not available",
+			"FC net (vFC-2 partial)",
 			"grain fwd",
 			"grain-ubuntu-fc",
 			"grain image pull fc-kernel",
 			"grain image pull grain-ubuntu-fc",
 			"p95 ≈ 2166 ms",
-			"vFC-1 agent production",
+			"CAP_NET_ADMIN",
 		}},
 		{"parity", parity, []string{
 			"FC agent production (vFC-1)",
-			"Not on FC today",
+			"FC net (vFC-2 partial)",
 			"grain fwd",
 		}},
 	} {
@@ -79,7 +80,7 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 		}
 	}
 
-	// Must not claim hostfwd works on FC today, or deny published pull.
+	// Must not deny published pull or claim agent path is still scaffolding.
 	for _, bad := range []string{
 		"Host `agent.Dial` AF_VSOCK path does **not** speak CONNECT yet",
 		"catalog FC images remain deferred",
@@ -90,19 +91,23 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 		"Not configured (experimental)",
 		"FC is a separate experimental path",
 		"p95 ~1999",
+		// Stale pre-vFC-2 claim that publish never works on FC:
+		"They do **not** enable networking on `hypervisor: firecracker`",
 	} {
 		if strings.Contains(matrix, bad) || strings.Contains(fcGuide, bad) {
 			t.Errorf("stale claim still present: %q", bad)
 		}
 	}
 
-	// Matrix must say SSH/hostfwd is No on FC.
 	if !strings.Contains(matrix, "SSH + hostfwd") {
 		t.Error("matrix missing SSH+hostfwd row")
 	}
-	// Agent path done language (matrix table cell)
 	if !strings.Contains(matrix, "vFC-1 agent") {
 		t.Error("matrix missing vFC-1 agent status")
+	}
+	// Overlay/mounts remain QEMU-only.
+	if !strings.Contains(matrix, "Not wired") && !strings.Contains(fcGuide, "9p/virtiofs") {
+		t.Error("docs should still note mounts not on FC")
 	}
 }
 
@@ -133,14 +138,14 @@ func TestDoctorPullHintsForFCCatalog(t *testing.T) {
 	}
 }
 
-// TestCLIRootHelpNotesQEMUHostfwd ensures root help does not imply FC publish/fwd.
-func TestCLIRootHelpNotesQEMUHostfwd(t *testing.T) {
+// TestCLIRootHelpNotesPublishBothHypervisors ensures root help mentions both models.
+func TestCLIRootHelpNotesPublishBothHypervisors(t *testing.T) {
 	t.Parallel()
 	root := readDoc(t, "internal/cli/root.go")
-	if !strings.Contains(root, "not Firecracker") {
-		t.Error("root help should note publish is not Firecracker")
+	if !strings.Contains(root, "Firecracker") {
+		t.Error("root help should mention Firecracker publish path")
 	}
-	if !strings.Contains(root, "not FC") {
-		t.Error("root help should note fwd is not FC")
+	if !strings.Contains(root, "publish") && !strings.Contains(root, "-P") {
+		t.Error("root help should mention publish")
 	}
 }

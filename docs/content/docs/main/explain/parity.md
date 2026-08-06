@@ -38,15 +38,15 @@ grain’s local microVM product surface as of the v0.2 line.
 | Guest arch selection (`--arch`, incl. x86_64 on Apple Silicon via QEMU) | Done |
 | Virtio GPU (`--gpu` / `gpu: virtio`) | Done |
 | Shared overlay network between VMs (`network: overlay`) | Done |
-| Firecracker backend | **Agent production (vFC-1)** on Linux+KVM; **net/mounts still QEMU-only** (vFC-2 later) |
+| Firecracker backend | **Agent production (vFC-1)** + **partial net (vFC-2)**: TAP publish/fwd; overlay/mounts still QEMU-only |
 
 **Firecracker support policy**
 
 | Tier | What you get |
 |------|----------------|
 | **FC agent production (vFC-1)** | Linux+KVM; pull `fc-kernel` + `grain-ubuntu-fc`; doctor; create `--wait agent`; `grain x` / agent `sh` / cp / sync / MCP guest tools over vsock UDS + `CONNECT` |
-| **Not on FC today (use QEMU)** | SSH hostfwd, `grain new -P` / `grain fwd`, overlay, egress proxy hostfwd, 9p/virtiofs mounts, virtio GPU |
-| **Later (vFC-2)** | Guest networking / mounts parity path |
+| **FC net (vFC-2 partial)** | TAP + `-P`/`grain fwd` (DNAT / TCP proxy); needs CAP_NET_ADMIN |
+| **Not on FC today (use QEMU)** | Overlay L2, 9p/virtiofs mounts, SLIRP proxy, virtio GPU |
 
 See [Firecracker on Linux](../../guides/firecracker/) and [Hypervisor matrix](../hypervisor-matrix/). Jailer and multi-host CNI stay deferred; single-tenant only.
 

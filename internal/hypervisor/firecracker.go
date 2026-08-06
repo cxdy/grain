@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cxdy/grain/internal/hostbin"
+	"github.com/cxdy/grain/internal/netutil"
 	"github.com/cxdy/grain/internal/vm"
 )
 
@@ -37,11 +38,14 @@ const fcDefaultBootArgs = "console=ttyS0 reboot=k panic=1 pci=off i8042.noaux i8
 
 // FirecrackerRuntime launches guests with the Firecracker VMM (Linux only).
 // Jailer-less; agent connectivity is via Firecracker vsock (UDS on host).
-// Networking (TAP/CNI) is not configured in this experimental backend.
+// Optional single-tenant TAP + DNAT publish (vFC-2): disabled when DisableNet is set
+// or when SetupFCNet fails closed with a privilege error (caller sees the error).
 type FirecrackerRuntime struct {
 	Binary     string // firecracker binary name or path (default: firecracker)
 	DataDir    string
 	KernelPath string // optional vmlinux override
+	// DisableNet skips TAP/NAT (agent vsock only). Tests and degraded mode.
+	DisableNet bool
 }
 
 // runtimeGOOS is the OS gate for Start (overridable in tests).
@@ -88,17 +92,25 @@ type fcVsock struct {
 	UDSPath  string `json:"uds_path"`
 }
 
+// fcNetworkInterface is a Firecracker network-interfaces entry (TAP host_dev_name).
+type fcNetworkInterface struct {
+	IfaceID     string `json:"iface_id"`
+	GuestMAC    string `json:"guest_mac"`
+	HostDevName string `json:"host_dev_name"`
+}
+
 // fcConfig is the full Firecracker --config-file document.
 type fcConfig struct {
-	BootSource    fcBootSource    `json:"boot-source"`
-	Drives        []fcDrive       `json:"drives"`
-	MachineConfig fcMachineConfig `json:"machine-config"`
-	Vsock         *fcVsock        `json:"vsock,omitempty"`
+	BootSource        fcBootSource         `json:"boot-source"`
+	Drives            []fcDrive            `json:"drives"`
+	MachineConfig     fcMachineConfig      `json:"machine-config"`
+	Vsock             *fcVsock             `json:"vsock,omitempty"`
+	NetworkInterfaces []fcNetworkInterface `json:"network-interfaces,omitempty"`
 }
 
 // BuildFCConfig builds a Firecracker config JSON document.
-// Exported for unit tests.
-func BuildFCConfig(kernelPath, rootfsPath string, cpus, memMiB, guestCID int, vsockUDS string) fcConfig {
+// Exported for unit tests. net may be nil (vsock-only).
+func BuildFCConfig(kernelPath, rootfsPath string, cpus, memMiB, guestCID int, vsockUDS string, net *FCNetPlan) fcConfig {
 	if cpus < 1 {
 		cpus = 1
 	}
@@ -129,6 +141,13 @@ func BuildFCConfig(kernelPath, rootfsPath string, cpus, memMiB, guestCID int, vs
 			GuestCID: guestCID,
 			UDSPath:  vsockUDS,
 		}
+	}
+	if net != nil && net.TapName != "" {
+		cfg.NetworkInterfaces = []fcNetworkInterface{{
+			IfaceID:     net.IfaceID,
+			GuestMAC:    net.GuestMAC,
+			HostDevName: net.TapName,
+		}}
 	}
 	return cfg
 }
@@ -175,11 +194,8 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 	// or left to OS on success after cmd inherits fd — we Close after Start succeeds.
 	defer func() { _ = logFile.Close() }()
 
-	// No SLIRP/TAP in experimental FC backend: SSH/port-forwards unavailable.
-	// Agent reaches the host via Firecracker vsock (UDS + CONNECT protocol).
-	inst.SSHPort = 0
-	inst.AgentPort = 0
-	inst.IP = ""
+	// Agent always uses Firecracker vsock (UDS + CONNECT). Optional TAP/DNAT
+	// provides hostfwd-like publish and a real guest IP (vFC-2).
 	cid := AllocateGuestCID(inst.Name)
 	inst.AgentCID = cid
 
@@ -191,9 +207,52 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 	_ = os.Remove(vsockUDS)
 	_ = os.Remove(pidFile)
 
+	// Tear down any leftover net from a prior crash.
+	if old, err := ReadFCNetState(vmDir); err == nil {
+		_ = TeardownFCNet(old)
+		RemoveFCNetState(vmDir)
+	}
+
+	var netPlan *FCNetPlan
+	var netState FCNetState
+	// Real TAP only on actual Linux hosts. Tests that force runtimeGOOS=linux on
+	// macOS skip TAP; DisableNet skips TAP on Linux unit tests without CAP_NET_ADMIN.
+	if !f.DisableNet && runtime.GOOS == "linux" {
+		plan := PlanFCNet(inst.Name)
+		// Allocate host ports for SSH + optional agent TCP (publish UX parity).
+		sshPort, err := netutil.FreeTCPPort()
+		if err != nil {
+			return fmt.Errorf("allocate ssh host port: %w", err)
+		}
+		agentPort, err := netutil.FreeTCPPort()
+		if err != nil {
+			return fmt.Errorf("allocate agent host port: %w", err)
+		}
+		if err := AllocateForwardPorts(inst.Forwards); err != nil {
+			return err
+		}
+		st, err := SetupFCNet(plan, sshPort, agentPort, inst.Forwards)
+		if err != nil {
+			return err
+		}
+		netState = st
+		netPlan = &plan
+		inst.IP = plan.GuestIP
+		inst.SSHPort = sshPort
+		inst.AgentPort = agentPort
+		if err := WriteFCNetState(vmDir, netState); err != nil {
+			_ = TeardownFCNet(netState)
+			return fmt.Errorf("persist fc-net state: %w", err)
+		}
+	} else {
+		inst.SSHPort = 0
+		inst.AgentPort = 0
+		inst.IP = ""
+	}
+
 	// Attach cloud-init seed as a secondary read-only drive when present (best-effort;
 	// NoCloud typically expects an ISO/label; see guides/firecracker).
-	cfg := BuildFCConfig(kernel, rawDisk, inst.CPUs, inst.MemoryMB, cid, vsockUDS)
+	cfg := BuildFCConfig(kernel, rawDisk, inst.CPUs, inst.MemoryMB, cid, vsockUDS, netPlan)
 	seed := filepath.Join(vmDir, "seed.iso")
 	if st, err := os.Stat(seed); err == nil && st.Size() > 0 {
 		cfg.Drives = append(cfg.Drives, fcDrive{
@@ -206,9 +265,17 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 
 	cfgBytes, err := MarshalFCConfig(cfg)
 	if err != nil {
+		if netPlan != nil {
+			_ = TeardownFCNet(netState)
+			RemoveFCNetState(vmDir)
+		}
 		return fmt.Errorf("firecracker config: %w", err)
 	}
 	if err := os.WriteFile(cfgPath, cfgBytes, 0o644); err != nil {
+		if netPlan != nil {
+			_ = TeardownFCNet(netState)
+			RemoveFCNetState(vmDir)
+		}
 		return err
 	}
 
@@ -227,6 +294,10 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
+		if netPlan != nil {
+			_ = TeardownFCNet(netState)
+			RemoveFCNetState(vmDir)
+		}
 		return fmt.Errorf("firecracker: %w (see %s)", err, logPath)
 	}
 	inst.PID = cmd.Process.Pid
@@ -244,12 +315,20 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 	for time.Now().Before(deadline) {
 		select {
 		case waitErr := <-exitCh:
+			if netPlan != nil {
+				_ = TeardownFCNet(netState)
+				RemoveFCNetState(vmDir)
+			}
 			return fcImmediateExitErr(logPath, waitErr)
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
 			select {
 			case <-exitCh:
 			case <-time.After(time.Second):
+			}
+			if netPlan != nil {
+				_ = TeardownFCNet(netState)
+				RemoveFCNetState(vmDir)
 			}
 			return ctx.Err()
 		default:
@@ -261,8 +340,16 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 		if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
 			select {
 			case waitErr := <-exitCh:
+				if netPlan != nil {
+					_ = TeardownFCNet(netState)
+					RemoveFCNetState(vmDir)
+				}
 				return fcImmediateExitErr(logPath, waitErr)
 			case <-time.After(300 * time.Millisecond):
+				if netPlan != nil {
+					_ = TeardownFCNet(netState)
+					RemoveFCNetState(vmDir)
+				}
 				return fcImmediateExitErr(logPath, err)
 			}
 		}
@@ -274,6 +361,10 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 	for time.Now().Before(graceDeadline) {
 		select {
 		case waitErr := <-exitCh:
+			if netPlan != nil {
+				_ = TeardownFCNet(netState)
+				RemoveFCNetState(vmDir)
+			}
 			return fcImmediateExitErr(logPath, waitErr)
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
@@ -281,13 +372,25 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 			case <-exitCh:
 			case <-time.After(time.Second):
 			}
+			if netPlan != nil {
+				_ = TeardownFCNet(netState)
+				RemoveFCNetState(vmDir)
+			}
 			return ctx.Err()
 		case <-time.After(50 * time.Millisecond):
 			if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
 				select {
 				case waitErr := <-exitCh:
+					if netPlan != nil {
+						_ = TeardownFCNet(netState)
+						RemoveFCNetState(vmDir)
+					}
 					return fcImmediateExitErr(logPath, waitErr)
 				case <-time.After(300 * time.Millisecond):
+					if netPlan != nil {
+						_ = TeardownFCNet(netState)
+						RemoveFCNetState(vmDir)
+					}
 					return fcImmediateExitErr(logPath, err)
 				}
 			}
@@ -295,6 +398,10 @@ func (f *FirecrackerRuntime) Start(ctx context.Context, inst *vm.Instance, diskP
 	}
 
 	if !f.Running(inst) {
+		if netPlan != nil {
+			_ = TeardownFCNet(netState)
+			RemoveFCNetState(vmDir)
+		}
 		select {
 		case waitErr := <-exitCh:
 			return fcImmediateExitErr(logPath, waitErr)
@@ -547,6 +654,10 @@ func cleanupFCFiles(inst *vm.Instance) {
 		return
 	}
 	dir := filepath.Dir(inst.DiskPath)
+	if st, err := ReadFCNetState(dir); err == nil {
+		_ = TeardownFCNet(st)
+		RemoveFCNetState(dir)
+	}
 	for _, name := range []string{FCPidName, FCSocketName, FCVsockName} {
 		_ = os.Remove(filepath.Join(dir, name))
 	}

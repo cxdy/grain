@@ -53,6 +53,11 @@ func TestTargetForInstance(t *testing.T) {
 	if fc.Port != 0 {
 		t.Fatalf("fc port = %d", fc.Port)
 	}
+	// Firecracker vFC-2: AgentPort set for TCP DNAT; disk.raw still implies FC UDS.
+	fc2 := TargetForInstance(12, 19000, "/home/u/.grain/vms/sbox/disk.raw")
+	if fc2.FirecrackerUDS != wantUDS || fc2.Port != 19000 || fc2.CID != 0 {
+		t.Fatalf("fc with agent port: %+v", fc2)
+	}
 	// No disk path: cannot derive UDS.
 	empty := TargetForInstance(3, 0, "")
 	if empty.FirecrackerUDS != "" || empty.CID != 3 {
@@ -398,13 +403,17 @@ func TestDialFirecrackerUDSError(t *testing.T) {
 	if _, err := Dial(context.Background(), Target{FirecrackerUDS: "/nope.sock"}); err == nil {
 		t.Fatal("expected error")
 	}
-	// UDS fail + TCP port: fall through to TCP.
-	c, err := Dial(context.Background(), Target{FirecrackerUDS: "/nope.sock", Port: 4242})
-	if err != nil {
-		t.Fatal(err)
+	// Sticky UDS: when FirecrackerUDS is set, do not fall through to AgentPort TCP
+	// (TCP DNAT can accept before guest eth0 is up and hang wait loops).
+	_, err := Dial(context.Background(), Target{FirecrackerUDS: "/nope.sock", Port: 4242})
+	if err == nil {
+		t.Fatal("expected UDS error even when Port is set (sticky FC UDS)")
 	}
-	if c.BaseURL != "http://127.0.0.1:4242" {
-		t.Fatalf("BaseURL %q", c.BaseURL)
+	if !strings.Contains(err.Error(), "firecracker vsock") {
+		t.Fatalf("want firecracker vsock error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "uds down") {
+		t.Fatalf("want wrapped uds down, got: %v", err)
 	}
 }
 

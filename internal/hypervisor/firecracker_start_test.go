@@ -16,6 +16,8 @@ import (
 
 // TestFirecrackerStartErrorPaths forces the linux Start body (via runtimeGOOS) so
 // macOS/CI still cover binary/kernel/disk failure branches without a real VMM.
+// DisableNet avoids real TAP (CI runners lack CAP_NET_ADMIN); this test is about
+// Start error surfaces, not vFC-2 networking.
 func TestFirecrackerStartErrorPaths(t *testing.T) {
 	old := runtimeGOOS
 	runtimeGOOS = "linux"
@@ -23,6 +25,7 @@ func TestFirecrackerStartErrorPaths(t *testing.T) {
 
 	dir := t.TempDir()
 	rt := NewFirecrackerRuntime("grain-nonexistent-firecracker-xyz", dir, "")
+	rt.DisableNet = true
 
 	// Missing binary
 	err := rt.Start(context.Background(), &vm.Instance{Name: "a", CPUs: 1, MemoryMB: 128}, filepath.Join(dir, "d.raw"))
@@ -174,6 +177,7 @@ func TestFirecrackerStartWithSeedAndSleepBin(t *testing.T) {
 	}
 
 	rt := NewFirecrackerRuntime(fakeBin, dir, k)
+	rt.DisableNet = true // unit path: no CAP_NET_ADMIN TAP
 	inst := &vm.Instance{Name: "live", CPUs: 1, MemoryMB: 128}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

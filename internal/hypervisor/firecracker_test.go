@@ -76,10 +76,15 @@ func TestBuildFCConfigJSON(t *testing.T) {
 		2048,
 		42,
 		"/vms/sbox/fc-vsock.sock",
+		nil,
 	)
 	b, err := MarshalFCConfig(cfg)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// no network-interfaces without plan
+	if strings.Contains(string(b), "network-interfaces") {
+		t.Fatalf("unexpected network-interfaces: %s", b)
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(b, &raw); err != nil {
@@ -129,9 +134,34 @@ func TestBuildFCConfigJSON(t *testing.T) {
 	}
 }
 
+func TestBuildFCConfigWithNet(t *testing.T) {
+	t.Parallel()
+	plan := PlanFCNet("net-test")
+	cfg := BuildFCConfig("/k", "/d", 1, 512, MinGuestCID, "/v.sock", &plan)
+	b, err := MarshalFCConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatal(err)
+	}
+	nis, ok := raw["network-interfaces"].([]any)
+	if !ok || len(nis) != 1 {
+		t.Fatalf("network-interfaces: %s", b)
+	}
+	ni := nis[0].(map[string]any)
+	if ni["host_dev_name"] != plan.TapName {
+		t.Fatalf("tap %v want %s", ni["host_dev_name"], plan.TapName)
+	}
+	if ni["guest_mac"] != plan.GuestMAC {
+		t.Fatalf("mac %v", ni["guest_mac"])
+	}
+}
+
 func TestBuildFCConfigDefaults(t *testing.T) {
 	t.Parallel()
-	cfg := BuildFCConfig("/k", "/d", 0, 0, MinGuestCID, "/v.sock")
+	cfg := BuildFCConfig("/k", "/d", 0, 0, MinGuestCID, "/v.sock", nil)
 	if cfg.MachineConfig.VCPUCount != 1 {
 		t.Fatalf("cpus=%d", cfg.MachineConfig.VCPUCount)
 	}
@@ -142,7 +172,7 @@ func TestBuildFCConfigDefaults(t *testing.T) {
 		t.Fatalf("vsock=%+v", cfg.Vsock)
 	}
 	// Empty vsock UDS omits vsock even with good CID
-	cfg2 := BuildFCConfig("/k", "/d", 2, 256, 10, "")
+	cfg2 := BuildFCConfig("/k", "/d", 2, 256, 10, "", nil)
 	if cfg2.Vsock != nil {
 		t.Fatalf("expected nil vsock: %+v", cfg2.Vsock)
 	}
@@ -150,7 +180,7 @@ func TestBuildFCConfigDefaults(t *testing.T) {
 
 func TestBuildFCConfigOmitsVsockWhenCIDLow(t *testing.T) {
 	t.Parallel()
-	cfg := BuildFCConfig("/k", "/d", 1, 128, 0, "/v.sock")
+	cfg := BuildFCConfig("/k", "/d", 1, 128, 0, "/v.sock", nil)
 	b, err := MarshalFCConfig(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -166,7 +196,7 @@ func TestBuildFCConfigOmitsVsockWhenCIDLow(t *testing.T) {
 
 func TestBuildFCConfigSeedDriveFields(t *testing.T) {
 	t.Parallel()
-	cfg := BuildFCConfig("/k", "/d.raw", 4, 512, MinGuestCID+1, "/tmp/v.sock")
+	cfg := BuildFCConfig("/k", "/d.raw", 4, 512, MinGuestCID+1, "/tmp/v.sock", nil)
 	if cfg.BootSource.BootArgs != fcDefaultBootArgs {
 		t.Fatalf("boot args")
 	}
