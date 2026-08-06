@@ -9,19 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.0] - 2026-08-06
 
-Product-facing **minor** release after **v0.7.0**: optional Desktop, recipe library, warm pool / fast create, activity + metrics defaults, and **supported** Firecracker on Linux+KVM. Default hypervisor remains **QEMU**. Cold Ubuntu boot is still guest-bound (~seconds); sub-second “ready” means template/pool claim, not full cold boot.
+Product-facing **minor** release after **v0.7.0**: **Grain Desktop** (app + **release binaries**), recipe library, warm pool / fast create, activity + metrics defaults, and **supported** Firecracker on Linux+KVM. Default hypervisor remains **QEMU**. Cold Ubuntu boot is still guest-bound (~seconds); sub-second “ready” means template/pool claim, not full cold boot.
 
 ### Highlights
 
 | Theme | What shipped |
 |-------|----------------|
-| **Grain Desktop** | Optional Wails GUI: sandboxes, shell/logs, recipes, images, warm pool Settings, activity (all clients), bulk preflight, multi-Run v2 |
+| **Grain Desktop** | Operator GUI **and** GitHub Release assets: `Grain_darwin_<arch>.app.tar.gz`, `grain-desktop_linux_<arch>.tar.gz` (`install.sh --desktop`). Sandboxes, recipes, warm pool Settings, activity, bulk preflight, multi-Run v2 |
 | **Recipes** | `~/.grain/recipes` library, official catalog, form builder, deploy preflight, `go-dev` + expanded pack |
 | **Fast create** | `grain new --from`, warm pool (`grain pool *` / `--from-pool`), optional `warm_pool.running` |
 | **Firecracker** | **vFC-1** agent + **vFC-2** partial TAP publish/fwd; catalog `fc-kernel` / `grain-ubuntu-fc` |
 | **Ops / docs** | Activity ring, metrics default on, docs single-tree versioning (#88), README product surface |
 
-**Not in this release:** signed Desktop GitHub Release assets (install still prefers asset when present, else build-from-source), FC on macOS, multi-tenant RBAC.
+**Not in this release:** Apple notarization of Desktop (ad-hoc codesign on macOS assets), FC on macOS, multi-tenant RBAC.
+
+### Added (release packaging)
+
+- **Desktop release binaries** — CI workflow `Release Desktop` builds Wails Desktop on macOS (arm64/amd64) and Linux (amd64/arm64) and uploads assets to the `v*` GitHub Release. `scripts/install.sh --desktop` installs `~/Applications/Grain.app` (macOS) or `grain-desktop` (Linux) from those assets.
 
 ### Fixed
 

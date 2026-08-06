@@ -33,8 +33,10 @@ Remote profiles never attempt to start a remote engine. Site guide: [Grain Deskt
 ## Install / launch
 
 ```bash
-# Installer (prefers Release asset when present)
+# Installer — prefers GitHub Release Desktop assets (v0.8.0+)
 curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash -s -- --desktop
+# macOS → ~/Applications/Grain.app
+# Linux → ~/.local/bin/grain-desktop  (WebKitGTK 4.1 runtime)
 
 # From this repository
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -43,7 +45,15 @@ just desktop-test
 just desktop-build
 ./bin/grain-desktop            # launcher → Grain.app on macOS
 # not ./bin/Grain — collides with CLI on case-insensitive volumes
+
+# Package a release-shaped tarball for the current host (CI uses this):
+# ./scripts/package-desktop-release.sh   → dist/release/…
 ```
+
+| Release asset | Platform |
+|---------------|----------|
+| `Grain_darwin_<arch>.app.tar.gz` | macOS `.app` |
+| `grain-desktop_linux_<arch>.tar.gz` | Linux binary |
 
 ### Linux packages (Debian/Ubuntu)
 

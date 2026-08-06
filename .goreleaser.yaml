@@ -98,4 +98,11 @@ release:
     |---------|----------|
     | `grain_<os>_<arch>.tar.gz` | CLI binary `grain` |
     | `grain-agent-linux-<arch>.tar.gz` | Guest agent |
-    | `checksums.txt` | SHA-256 sums |
+    | `Grain_darwin_<arch>.app.tar.gz` | **Desktop** macOS app (Release Desktop workflow) |
+    | `grain-desktop_linux_<arch>.tar.gz` | **Desktop** Linux binary (Release Desktop workflow) |
+    | `checksums.txt` | SHA-256 sums (CLI + agent; Desktop assets listed on the release) |
+
+    **Desktop**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash -s -- --desktop
+    ```

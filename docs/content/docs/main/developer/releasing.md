@@ -71,7 +71,12 @@ svu next
 4. Watch **Release** (GoReleaser) on the tag — publishes `grain_*.tar.gz`,
    `grain-agent-linux-*.tar.gz`, and `checksums.txt`.
 
-5. Watch **Pages** — deploys grainvm.com with the new docs label + switcher.
+5. Watch **Release Desktop** — matrix builds Wails Desktop and **uploads** to the
+   same tag: `Grain_darwin_<arch>.app.tar.gz`, `grain-desktop_linux_<arch>.tar.gz`.
+   Waits for the GoReleaser release to exist, then attaches assets. Re-run via
+   workflow_dispatch if a leg fails.
+
+6. Watch **Pages** — deploys grainvm.com with the new docs label + switcher.
 
 Do **not** create release tags by hand unless fixing a one-off; prefer
 `just release-tag` so `svu`, docs version, and commit history stay aligned.

@@ -194,6 +194,37 @@ extract_binary_from_tarball() {
   return 0
 }
 
+# Extract a macOS .app bundle directory from a .tar.gz into dest path (e.g. ~/Applications/Grain.app).
+extract_app_from_tarball() {
+  local tarball="$1"
+  local member="$2" # e.g. Grain.app
+  local dest="$3"
+  local tmpdir
+  tmpdir="$(mktemp -d 2>/dev/null || mktemp -d -t grain.XXXXXX)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmpdir'" RETURN
+  if ! tar -xzf "$tarball" -C "$tmpdir" 2>/dev/null; then
+    return 1
+  fi
+  local found=""
+  if [[ -d "${tmpdir}/${member}" ]]; then
+    found="${tmpdir}/${member}"
+  else
+    found="$(find "$tmpdir" -type d -name "$member" 2>/dev/null | head -1 || true)"
+  fi
+  if [[ -z "$found" || ! -d "$found" ]]; then
+    return 1
+  fi
+  ensure_dir "$(dirname "$dest")"
+  rm -rf "$dest"
+  if command -v ditto >/dev/null 2>&1; then
+    ditto "$found" "$dest"
+  else
+    cp -R "$found" "$dest"
+  fi
+  return 0
+}
+
 looks_like_binary_or_archive() {
   local f="$1"
   [[ -s "$f" ]] || return 1
@@ -560,7 +591,11 @@ print_install_summary() {
 }
 
 # --- main ---------------------------------------------------------------------
-# Install optional Grain Desktop (GUI). Requires Wails toolchain when building from source.
+# Install optional Grain Desktop (GUI).
+# Release assets (Release Desktop workflow, v0.8.0+):
+#   macOS: Grain_darwin_<arch>.app.tar.gz  → ~/Applications/Grain.app
+#   Linux: grain-desktop_linux_<arch>.tar.gz → grain-desktop on PATH
+# Falls back to just desktop-build in a checkout.
 # Usage: install.sh --desktop
 #   or:  GRAIN_INSTALL_DESKTOP=1 install.sh
 install_desktop() {
@@ -569,21 +604,67 @@ install_desktop() {
   arch="$(detect_arch)"
   info "installing Grain Desktop (optional GUI) for ${os}/${arch}"
 
-  # Prefer a release asset when present (future GoReleaser desktop artifacts).
-  local url=""
-  if url="$(latest_asset_url_named "Grain_${os}_${arch}.app.tar.gz" 2>/dev/null)" && [[ -n "$url" ]]; then
-    info "downloading Desktop app ${url}"
-    local tmp dest_dir
-    tmp="$(mktemp -t grain-desktop.XXXXXX 2>/dev/null || mktemp)"
-    dest_dir="${HOME}/Applications"
-    ensure_dir "$dest_dir"
-    if download "$url" "$tmp" && extract_binary_from_tarball "$tmp" "Grain.app" "${dest_dir}/Grain.app" 2>/dev/null; then
-      ok "installed Desktop to ${dest_dir}/Grain.app"
-      info "open with: open ${dest_dir}/Grain.app"
-      rm -f "$tmp"
-      return 0
+  local url="" tmp
+
+  # --- macOS: .app bundle from release ---
+  if [[ "$os" == "darwin" ]]; then
+    if url="$(latest_asset_url_named "Grain_darwin_${arch}.app.tar.gz" 2>/dev/null)" && [[ -n "$url" ]]; then
+      info "downloading Desktop app ${url}"
+      tmp="$(mktemp -t grain-desktop.XXXXXX 2>/dev/null || mktemp)"
+      local dest_dir="${HOME}/Applications"
+      ensure_dir "$dest_dir"
+      if download "$url" "$tmp" && extract_app_from_tarball "$tmp" "Grain.app" "${dest_dir}/Grain.app"; then
+        ok "installed Desktop to ${dest_dir}/Grain.app"
+        info "open with: open ${dest_dir}/Grain.app"
+        local bindir dest launcher
+        bindir="$(pick_install_dir)"
+        dest="${bindir}/grain-desktop"
+        launcher="$(mktemp -t grain-desktop-launch.XXXXXX 2>/dev/null || mktemp)"
+        cat >"$launcher" <<'LAUNCH'
+#!/usr/bin/env bash
+exec open "${HOME}/Applications/Grain.app" "$@"
+LAUNCH
+        if install_file "$launcher" "$dest" 2>/dev/null; then
+          ok "launcher ${dest} → Grain.app"
+        fi
+        rm -f "$launcher" "$tmp"
+        return 0
+      fi
+      rm -f "$tmp" || true
+      warn "Desktop .app extract failed; trying other methods…"
     fi
-    rm -f "$tmp" || true
+    if url="$(latest_asset_url_named "grain-desktop_darwin_${arch}.tar.gz" 2>/dev/null)" && [[ -n "$url" ]]; then
+      info "downloading Desktop binary ${url}"
+      tmp="$(mktemp -t grain-desktop.XXXXXX 2>/dev/null || mktemp)"
+      local dest
+      dest="$(pick_install_dir)/grain-desktop"
+      if download "$url" "$tmp" && extract_binary_from_tarball "$tmp" "grain-desktop" "$dest"; then
+        ok "installed Desktop to ${dest}"
+        info "run:  grain-desktop   (requires grain up)"
+        rm -f "$tmp"
+        return 0
+      fi
+      rm -f "$tmp" || true
+    fi
+  fi
+
+  # --- Linux: bare binary from release ---
+  if [[ "$os" == "linux" ]]; then
+    if url="$(latest_asset_url_named "grain-desktop_linux_${arch}.tar.gz" 2>/dev/null)" && [[ -n "$url" ]]; then
+      info "downloading Desktop binary ${url}"
+      tmp="$(mktemp -t grain-desktop.XXXXXX 2>/dev/null || mktemp)"
+      local dest
+      dest="$(pick_install_dir)/grain-desktop"
+      if download "$url" "$tmp" && extract_binary_from_tarball "$tmp" "grain-desktop" "$dest"; then
+        ok "installed Desktop to ${dest}"
+        info "run:  grain-desktop   (WebKitGTK 4.1; grain up for daemon)"
+        info "docs: https://grainvm.com/docs/main/guides/desktop/"
+        rm -f "$tmp"
+        return 0
+      fi
+      rm -f "$tmp" || true
+      warn "Desktop binary extract failed; trying source build…"
+    fi
   fi
 
   # Build from source when in a grain checkout or via go/wails.
@@ -610,7 +691,7 @@ install_desktop() {
   fi
 
   cat >&2 <<EOF
-${YELLOW}!${RESET} Desktop release binary not available yet for ${os}/${arch}.
+${YELLOW}!${RESET} Desktop release binary not available for ${os}/${arch}.
 
 Build from source (developers):
   git clone https://github.com/${REPO}.git && cd grain

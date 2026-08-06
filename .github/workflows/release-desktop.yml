@@ -1,0 +1,135 @@
+# Build Grain Desktop (Wails/CGO) on native runners and attach assets to the
+# GitHub Release created by the main Release workflow (GoReleaser).
+#
+# Assets (matched by scripts/install.sh):
+#   Grain_darwin_<arch>.app.tar.gz     — macOS .app bundle
+#   grain-desktop_linux_<arch>.tar.gz  — Linux binary (+ short README)
+#
+# Runs on the same v* tag push as .github/workflows/release.yml.
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to attach Desktop assets to (e.g. v0.8.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  desktop:
+    name: Desktop ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            os: darwin
+            arch: arm64
+          - runner: macos-13
+            os: darwin
+            arch: amd64
+          - runner: ubuntu-24.04
+            os: linux
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            os: linux
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            desktop/go.sum
+
+      - name: Linux WebKitGTK deps
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            pkg-config \
+            build-essential
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install Wails
+        run: |
+          set -euo pipefail
+          # Match desktop/go.mod major line when possible.
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+          echo "$(go env GOPATH)/bin" >>"$GITHUB_PATH"
+          wails version || true
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >>"$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >>"$GITHUB_OUTPUT"
+
+      - name: Package Desktop release asset
+        env:
+          DESKTOP_VERSION: ${{ steps.ver.outputs.version }}
+          CGO_ENABLED: "1"
+        run: |
+          set -euo pipefail
+          chmod +x scripts/package-desktop-release.sh
+          ./scripts/package-desktop-release.sh
+          ls -la dist/release/
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Wait for the main Release job to create the GitHub Release (GoReleaser).
+          for i in $(seq 1 60); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "release ${TAG} exists"
+              break
+            fi
+            if [[ "$i" -eq 60 ]]; then
+              echo "timed out waiting for release ${TAG}" >&2
+              exit 1
+            fi
+            echo "waiting for release ${TAG}… (${i}/60)"
+            sleep 10
+          done
+          shopt -s nullglob
+          assets=(dist/release/*)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "no assets in dist/release" >&2
+            exit 1
+          fi
+          gh release upload "$TAG" "${assets[@]}" --clobber
+          gh release view "$TAG" --json assets --jq '.assets[].name'

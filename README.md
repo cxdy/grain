@@ -101,9 +101,13 @@ Operator console for the same daemon as the CLI — not Electron, not a second e
 | **Ops** | Activity feed (CLI/MCP/API too) · warm pool Settings · doctor · multi-host switcher |
 
 ```bash
+# Prefers GitHub Release Desktop assets (v0.8.0+); else build from a checkout
 curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash -s -- --desktop
 # or: just desktop-build && ./bin/grain-desktop
 ```
+
+Release assets: macOS `Grain_darwin_<arch>.app.tar.gz` → `~/Applications/Grain.app`;  
+Linux `grain-desktop_linux_<arch>.tar.gz` → `grain-desktop` on your PATH.
 
 → [Desktop guide](https://grainvm.com/docs/main/guides/desktop/) · [desktop/README.md](desktop/README.md)
 
