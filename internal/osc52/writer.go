@@ -404,31 +404,67 @@ func readClipboardDarwin() ([]byte, error) {
 }
 
 // readDarwinClipboardImage returns PNG (or JPEG) bytes from the macOS pasteboard.
-// Screenshots often land as TIFF; we convert TIFF → PNG via AppKit (Swift).
-// AppleScriptObjC is awkward with binary/NSData; /usr/bin/swift is always present
-// on macOS developer-capable hosts and ships with the OS.
+// Screenshots often land as TIFF only (no PNG type). Naive
+// NSBitmapImageRep(data: tiff) can yield a tiny/icon rep; we rasterize via
+// NSImage.cgImage at full size then encode PNG.
 func readDarwinClipboardImage() ([]byte, error) {
 	if _, err := exec.LookPath("swift"); err != nil {
 		return nil, errString("swift not found for image clipboard")
 	}
-	// Prefer PNG; convert TIFF (typical for screenshots); then public.jpeg.
+	// Prefer native PNG/JPEG; convert TIFF/public.tiff at full resolution.
 	const swiftSrc = `
 import AppKit
 import Foundation
-let pb = NSPasteboard.general
-if let png = pb.data(forType: .png), !png.isEmpty {
-  FileHandle.standardOutput.write(png)
+
+func writePNG(_ data: Data) {
+  FileHandle.standardOutput.write(data)
   exit(0)
 }
-if let tiff = pb.data(forType: .tiff),
-   let rep = NSBitmapImageRep(data: tiff),
-   let png = rep.representation(using: .png, properties: [:]), !png.isEmpty {
-  FileHandle.standardOutput.write(png)
-  exit(0)
+
+func tiffToPNG(_ tiff: Data) -> Data? {
+  guard let img = NSImage(data: tiff) else { return nil }
+  var rect = NSRect(origin: .zero, size: img.size)
+  // Full-size CGImage; avoids icon-sized NSBitmapImageRep(data:) picks.
+  guard let cg = img.cgImage(forProposedRect: &rect, context: nil, hints: nil) else {
+    // Fallback: largest bitmap rep on the image.
+    var best: NSBitmapImageRep?
+    for rep in img.representations {
+      guard let b = rep as? NSBitmapImageRep else { continue }
+      if best == nil || (b.pixelsWide * b.pixelsHigh) > (best!.pixelsWide * best!.pixelsHigh) {
+        best = b
+      }
+    }
+    return best?.representation(using: .png, properties: [:])
+  }
+  let rep = NSBitmapImageRep(cgImage: cg)
+  return rep.representation(using: .png, properties: [:])
+}
+
+let pb = NSPasteboard.general
+if let png = pb.data(forType: .png), !png.isEmpty {
+  writePNG(png)
 }
 if let jpeg = pb.data(forType: NSPasteboard.PasteboardType("public.jpeg")), !jpeg.isEmpty {
   FileHandle.standardOutput.write(jpeg)
   exit(0)
+}
+// .tiff and public.tiff (screenshot / Continuity Camera)
+let tiffType = NSPasteboard.PasteboardType.tiff
+let publicTIFF = NSPasteboard.PasteboardType("public.tiff")
+if let tiff = pb.data(forType: tiffType) ?? pb.data(forType: publicTIFF), !tiff.isEmpty,
+   let png = tiffToPNG(tiff), !png.isEmpty {
+  writePNG(png)
+}
+// Some apps only expose NSImage via readObjects
+if let imgs = pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+   let img = imgs.first {
+  var rect = NSRect(origin: .zero, size: img.size)
+  if let cg = img.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+    let rep = NSBitmapImageRep(cgImage: cg)
+    if let png = rep.representation(using: .png, properties: [:]), !png.isEmpty {
+      writePNG(png)
+    }
+  }
 }
 exit(1)
 `

@@ -21,17 +21,22 @@ func LinuxBinaryName(goarch string) string {
 // LinuxBinaryPath locates a prebuilt grain-agent Linux binary for SSH deploy
 // into guests. Search order (first existing regular file wins):
 //
-//  1. Same directory as the running executable (e.g. bin/grain-agent-linux-$GOARCH)
-//  2. bin/ next to the executable
-//  3. ./bin/ and ./ relative to the process working directory
-//  4. {dataDir}/agent/grain-agent-linux-$GOARCH
+//  1. {dataDir}/agent/grain-agent-linux-$GOARCH — install/update cache (preferred)
+//  2. Same directory as the running executable
+//  3. bin/ next to the executable
+//  4. ./bin/ and ./ relative to the process working directory (dev checkouts last)
 //
+// dataDir is preferred over cwd so `grain agent deploy` from a git checkout does
+// not ship a stale repo bin/ over the agent installed by `grain update`.
 // Host GOARCH is used as the guest arch (local QEMU typically matches the host).
 // Run `just agent-linux` to produce these binaries before live deploy.
 func LinuxBinaryPath(dataDir string) (string, error) {
 	name := LinuxBinaryName(runtime.GOARCH)
 	var candidates []string
 
+	if dataDir != "" {
+		candidates = append(candidates, filepath.Join(dataDir, "agent", name))
+	}
 	if exe, err := os.Executable(); err == nil {
 		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 			exe = resolved
@@ -47,9 +52,6 @@ func LinuxBinaryPath(dataDir string) (string, error) {
 			filepath.Join(cwd, "bin", name),
 			filepath.Join(cwd, name),
 		)
-	}
-	if dataDir != "" {
-		candidates = append(candidates, filepath.Join(dataDir, "agent", name))
 	}
 
 	seen := make(map[string]struct{}, len(candidates))

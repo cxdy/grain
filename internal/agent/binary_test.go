@@ -46,6 +46,50 @@ func TestLinuxBinaryPath_DataDir(t *testing.T) {
 	}
 }
 
+// TestLinuxBinaryPath_DataDirBeatsCWD ensures install-cache agent wins over a
+// stale checkout bin/ (common when developing grain and running grain deploy).
+func TestLinuxBinaryPath_DataDirBeatsCWD(t *testing.T) {
+	root := t.TempDir()
+	name := LinuxBinaryName(runtime.GOARCH)
+
+	dataDir := filepath.Join(root, "data")
+	if err := os.MkdirAll(filepath.Join(dataDir, "agent"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dataDir, "agent", name)
+	if err := os.WriteFile(want, []byte("install-cache-agent"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cwdRoot := filepath.Join(root, "checkout")
+	if err := os.MkdirAll(filepath.Join(cwdRoot, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(cwdRoot, "bin", name)
+	if err := os.WriteFile(stale, []byte("stale-repo-agent"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(cwdRoot); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	got, err := LinuxBinaryPath(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotAbs, _ := filepath.Abs(got)
+	wantAbs, _ := filepath.Abs(want)
+	if gotAbs != wantAbs {
+		t.Fatalf("prefer dataDir agent: got %q want %q", gotAbs, wantAbs)
+	}
+}
+
 func TestLinuxBinaryPath_CWDBin(t *testing.T) {
 	// Prefer cwd/bin when dataDir has nothing (and we are not next to a real exe binary).
 	// Use a unique temp cwd with bin/grain-agent-linux-$GOARCH.
