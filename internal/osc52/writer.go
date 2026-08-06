@@ -1,10 +1,10 @@
 // Package osc52 intercepts OSC 52 clipboard escape sequences in a PTY byte
 // stream and writes the decoded payload to the host clipboard.
 //
-// Interactive tools running inside a grain sandbox (e.g. Grok Build) emit OSC 52
-// so copy can reach the user's terminal over SSH/PTY. Terminals without native
-// OSC 52 support (notably Apple Terminal) never apply those sequences; grain sh
-// therefore copies on the host side — the same role `grok ssh` plays for SSH.
+// Interactive tools running inside a grain sandbox emit OSC 52 so copy can reach
+// the user's terminal over SSH/PTY. Terminals without native OSC 52 support
+// (notably Apple Terminal) never apply those sequences; grain sh therefore
+// copies on the host side.
 //
 // Sequence forms handled:
 //
@@ -371,7 +371,7 @@ func writeClipboard(data []byte) error {
 // ReadClipboard returns the host system clipboard as bytes (for paste into guest).
 // Prefers image data (PNG) when the clipboard holds a screenshot/image — plain
 // pbpaste/wl-paste text helpers return empty for image-only clipboards, which
-// breaks tools like Grok Build pasting screenshots into grain sh.
+// breaks guest tools pasting screenshots into grain sh (Cmd/Ctrl+V).
 func ReadClipboard() ([]byte, error) {
 	switch runtime.GOOS {
 	case "darwin":

@@ -34,6 +34,9 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 		s.Log.Error("shell websocket accept", "err", err)
 		return
 	}
+	// Default coder/websocket limit is 32KiB — too small for screenshot paste
+	// (host → client base64 clipboard reply on this socket).
+	conn.SetReadLimit(ShellWebSocketReadLimit)
 	// Close status set by bridge; ensure cleanup on early return.
 	defer func() { _ = conn.CloseNow() }()
 
