@@ -101,6 +101,10 @@
                   <button type="button" class="btn btn-danger-ghost btn-sm" id="bulk-rm">Remove</button>
                 </div>
               </div>
+              <div id="bulk-progress" class="bulk-progress" hidden>
+                <div class="bulk-progress-track" aria-hidden="true"><div class="bulk-progress-fill" id="bulk-progress-fill"></div></div>
+                <span class="bulk-progress-label selectable" id="bulk-progress-label">Working…</span>
+              </div>
               <div class="sandbox-toolbar">
                 <label class="sandbox-search">
                   <span class="sr-only">Search sandboxes</span>
@@ -623,12 +627,12 @@
     </div>
 
     <div class="modal-backdrop" id="modal-confirm" hidden>
-      <div class="modal sm" role="dialog">
+      <div class="modal sm" role="dialog" aria-labelledby="confirm-msg">
         <div class="modal-body">
           <p id="confirm-msg" class="selectable"></p>
           <div class="modal-foot no-select">
-            <button type="button" class="btn btn-ghost" id="confirm-later">Later</button>
-            <button type="button" class="btn btn-primary" id="confirm-yes">Yes</button>
+            <button type="button" class="btn btn-ghost" id="confirm-later">Cancel</button>
+            <button type="button" class="btn btn-primary" id="confirm-yes">Confirm</button>
           </div>
         </div>
       </div>
