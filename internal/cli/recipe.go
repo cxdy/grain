@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/cxdy/grain/internal/recipe"
@@ -11,26 +12,177 @@ import (
 func cmdRecipe() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "recipe",
-		Short: "Validate and inspect sandbox recipe files",
-		Long: `Sandbox recipes are portable YAML files that describe create options and
-optional bootstrap steps (readiness protocol). Apply with:
+		Short: "Manage sandbox recipe library and files",
+		Long: `Sandbox recipes are portable YAML files (apiVersion: grain/v1, kind: Sandbox)
+that describe create options and optional bootstrap steps.
 
-  grain new --recipe ./lab.recipe.yaml
+Library (default ~/.grain/recipes/<name>.yaml):
+  grain recipe list
+  grain recipe add ./lab.yaml
+  grain recipe add https://example.com/lab.yaml
+  grain recipe add git-lab          # from official catalog (after search)
+  grain recipe search               # browse official index (no install)
+  grain recipe show git-lab
+  grain recipe validate git-lab
+  grain recipe delete git-lab
 
-Commands here validate and show the compiled userdata without creating a VM.`,
+Create from a library name or path:
+  grain new --recipe git-lab
+  grain new --recipe ./lab.yaml
+`,
 	}
+	c.AddCommand(cmdRecipeList())
+	c.AddCommand(cmdRecipeAdd())
+	c.AddCommand(cmdRecipeSearch())
 	c.AddCommand(cmdRecipeValidate())
 	c.AddCommand(cmdRecipeShow())
+	c.AddCommand(cmdRecipeDelete())
 	return c
+}
+
+func recipeLibraryDir() string {
+	return recipe.DefaultLibraryDir()
+}
+
+func loadRecipeArg(nameOrPath string) (*recipe.File, error) {
+	return recipe.LoadResolved(recipeLibraryDir(), nameOrPath)
+}
+
+func cmdRecipeList() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List recipes in the local library (~/.grain/recipes)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			list, err := recipe.ListLibrary(recipeLibraryDir())
+			if err != nil {
+				return err
+			}
+			w := cmd.OutOrStdout()
+			if len(list) == 0 {
+				fmt.Fprintln(w, "No recipes in library. Import with: grain recipe add <file|url|catalog-id>")
+				return nil
+			}
+			fmt.Fprintf(w, "%-20s %-16s %-8s %s\n", "ID", "IMAGE", "BOOT", "DESCRIPTION")
+			for _, e := range list {
+				boot := "no"
+				if e.HasBootstrap {
+					boot = "yes"
+				}
+				desc := e.Description
+				if desc == "" {
+					desc = e.Name
+				}
+				fmt.Fprintf(w, "%-20s %-16s %-8s %s\n", e.ID, emptyDash(e.Image), boot, desc)
+			}
+			return nil
+		},
+	}
+}
+
+func cmdRecipeAdd() *cobra.Command {
+	var overwrite bool
+	var id string
+	cmd := &cobra.Command{
+		Use:   "add <file|url|catalog-id>",
+		Short: "Add a recipe to the local library (never creates a VM)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			src := strings.TrimSpace(args[0])
+			opts := recipe.SaveOptions{Overwrite: overwrite, ID: id}
+			lib := recipeLibraryDir()
+			var ent recipe.LibraryEntry
+			var err error
+			switch {
+			case strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://"):
+				if strings.HasPrefix(src, "http://") {
+					fmt.Fprintln(cmd.ErrOrStderr(), "warning: using cleartext HTTP for recipe download")
+				}
+				ent, err = recipe.AddFromURL(nil, lib, src, "", opts)
+			case fileExists(src) || strings.Contains(src, string(os.PathSeparator)) || strings.HasPrefix(src, "./") || strings.HasPrefix(src, "../"):
+				ent, err = recipe.AddFile(lib, src, opts)
+			default:
+				// catalog id
+				cat, cerr := recipe.FetchCatalog(nil, recipe.CatalogURL(), recipe.CatalogCachePath())
+				if cerr != nil {
+					return fmt.Errorf("catalog: %w (or pass a file path / URL)", cerr)
+				}
+				ent, err = recipe.AddFromCatalog(nil, cat, lib, src, opts)
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "added  %s  →  %s\n", ent.ID, ent.Path)
+			fmt.Fprintln(cmd.OutOrStdout(), "Deploy with: grain new --recipe", ent.ID)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "replace an existing library recipe with the same id")
+	cmd.Flags().StringVar(&id, "id", "", "library id (filename stem); default from metadata.name or source name")
+	return cmd
+}
+
+func cmdRecipeSearch() *cobra.Command {
+	return &cobra.Command{
+		Use:   "search",
+		Short: "List official catalog recipes (index only; does not download bodies)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cat, err := recipe.FetchCatalog(nil, recipe.CatalogURL(), recipe.CatalogCachePath())
+			if err != nil {
+				return err
+			}
+			w := cmd.OutOrStdout()
+			if len(cat.Recipes) == 0 {
+				fmt.Fprintln(w, "Catalog is empty.")
+				return nil
+			}
+			libIDs := map[string]bool{}
+			if list, err := recipe.ListLibrary(recipeLibraryDir()); err == nil {
+				for _, e := range list {
+					libIDs[e.ID] = true
+				}
+			}
+			fmt.Fprintf(w, "%-20s %-8s %s\n", "ID", "LOCAL", "TITLE")
+			for _, e := range cat.Recipes {
+				local := "no"
+				if libIDs[e.ID] {
+					local = "yes"
+				}
+				title := e.Title
+				if title == "" {
+					title = e.Description
+				}
+				fmt.Fprintf(w, "%-20s %-8s %s\n", e.ID, local, title)
+			}
+			fmt.Fprintln(cmd.ErrOrStderr(), "Install one: grain recipe add <id>")
+			return nil
+		},
+	}
+}
+
+func cmdRecipeDelete() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Remove a recipe from the local library (does not delete sandboxes)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := recipe.DeleteLibrary(recipeLibraryDir(), args[0]); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "deleted  %s\n", args[0])
+			return nil
+		},
+	}
 }
 
 func cmdRecipeValidate() *cobra.Command {
 	return &cobra.Command{
-		Use:   "validate <file>",
-		Short: "Validate a sandbox recipe YAML file",
+		Use:   "validate <name|file>",
+		Short: "Validate a sandbox recipe (library name or file path)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			f, err := recipe.Load(args[0])
+			f, err := loadRecipeArg(args[0])
 			if err != nil {
 				return err
 			}
@@ -54,11 +206,11 @@ func cmdRecipeValidate() *cobra.Command {
 func cmdRecipeShow() *cobra.Command {
 	var showUserdata bool
 	cmd := &cobra.Command{
-		Use:   "show <file>",
-		Short: "Show compiled create options (and optional userdata) for a recipe",
+		Use:   "show <name|file>",
+		Short: "Show compiled create options for a library recipe or file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			f, err := recipe.Load(args[0])
+			f, err := loadRecipeArg(args[0])
 			if err != nil {
 				return err
 			}

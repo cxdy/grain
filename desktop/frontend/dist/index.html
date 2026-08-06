@@ -84,6 +84,7 @@
         <nav class="sidebar no-select" aria-label="Primary">
           <button type="button" class="nav-item active" data-view="sandboxes">Sandboxes</button>
           <button type="button" class="nav-item" data-view="images">Images</button>
+          <button type="button" class="nav-item" data-view="recipes">Recipes</button>
           <button type="button" class="nav-item" data-view="settings">Settings</button>
         </nav>
 
@@ -214,6 +215,61 @@
                   </thead>
                   <tbody id="images-tbody"></tbody>
                 </table>
+              </div>
+            </section>
+
+            <!-- Recipes -->
+            <section id="view-recipes" class="view" hidden>
+              <div class="view-head">
+                <h2>Recipes</h2>
+                <div class="btn-row">
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-import-file">Import file…</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-import-url">Import URL…</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-browse">Browse official</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-refresh">Refresh</button>
+                </div>
+              </div>
+              <p class="hint muted" id="recipes-hint">Portable create + bootstrap configs in <code>~/.grain/recipes</code>. Import never creates a sandbox — use Deploy.</p>
+              <div class="recipes-layout">
+                <div class="table-wrap recipes-list">
+                  <table class="data-table">
+                    <thead>
+                      <tr><th>ID</th><th>Image</th><th>Bootstrap</th><th>Description</th><th></th></tr>
+                    </thead>
+                    <tbody id="recipes-tbody"></tbody>
+                  </table>
+                  <p class="muted empty-hint" id="recipes-empty" hidden>No recipes yet. Import a file, URL, or browse official catalog.</p>
+                </div>
+                <div class="recipes-detail" id="recipes-detail" hidden>
+                  <div class="view-head">
+                    <h3 id="recipe-detail-title">Recipe</h3>
+                    <div class="btn-row">
+                      <button type="button" class="btn btn-primary btn-sm" id="btn-recipe-deploy">Deploy…</button>
+                      <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-save">Save</button>
+                      <button type="button" class="btn btn-danger-ghost btn-sm" id="btn-recipe-delete">Delete</button>
+                    </div>
+                  </div>
+                  <p class="hint" id="recipe-detail-meta"></p>
+                  <label class="field-label" for="recipe-yaml">YAML <span class="muted">(valid only to save)</span></label>
+                  <textarea id="recipe-yaml" class="input recipe-yaml" spellcheck="false" autocomplete="off"></textarea>
+                  <p class="error-text" id="recipe-yaml-err" hidden></p>
+                </div>
+              </div>
+              <div id="recipes-catalog" class="recipes-catalog" hidden>
+                <div class="view-head">
+                  <h3>Official catalog</h3>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-recipe-catalog-close">Close</button>
+                </div>
+                <p class="hint muted">Index only — bodies download when you Add. Offline uses cached index when available.</p>
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr><th>ID</th><th>Title</th><th>Local</th><th></th></tr>
+                    </thead>
+                    <tbody id="catalog-tbody"></tbody>
+                  </table>
+                </div>
+                <p class="error-text" id="catalog-err" hidden></p>
               </div>
             </section>
 
@@ -538,6 +594,46 @@
             <button type="button" class="btn btn-primary" id="confirm-yes">Yes</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="modal-recipe-url" hidden>
+      <div class="modal sm" role="dialog">
+        <div class="modal-head no-select">
+          <strong>Import recipe from URL</strong>
+          <button type="button" class="btn-icon" data-close="modal-recipe-url" aria-label="Close">×</button>
+        </div>
+        <form id="recipe-url-form" class="modal-body">
+          <label class="field"><span>HTTPS or HTTP URL to a grain/v1 recipe YAML</span>
+            <input class="input" name="url" id="recipe-url-input" type="url" required placeholder="https://…/lab.yaml" />
+          </label>
+          <p class="hint">Adds to your library only — does not create a sandbox.</p>
+          <div class="modal-foot no-select">
+            <button type="button" class="btn btn-ghost" data-close="modal-recipe-url">Cancel</button>
+            <button type="submit" class="btn btn-primary">Add to library</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="modal-recipe-deploy" hidden>
+      <div class="modal sm" role="dialog">
+        <div class="modal-head no-select">
+          <strong>Deploy recipe</strong>
+          <button type="button" class="btn-icon" data-close="modal-recipe-deploy" aria-label="Close">×</button>
+        </div>
+        <form id="recipe-deploy-form" class="modal-body">
+          <p class="hint" id="recipe-deploy-id"></p>
+          <label class="field"><span>Sandbox name</span>
+            <input class="input" name="name" id="recipe-deploy-name" required autocomplete="off" />
+          </label>
+          <label class="check-label"><input type="checkbox" id="recipe-deploy-wait" checked /> Wait until ready</label>
+          <p class="hint" id="recipe-deploy-warn" hidden></p>
+          <div class="modal-foot no-select">
+            <button type="button" class="btn btn-ghost" data-close="modal-recipe-deploy">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create sandbox</button>
+          </div>
+        </form>
       </div>
     </div>
 

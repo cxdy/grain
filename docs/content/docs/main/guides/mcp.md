@@ -88,10 +88,14 @@ Each agent has its **own** config file and schema. Pick a host, choose **stdio**
 | `grain_health` | Daemon liveness + version |
 | `grain_list_vms` | List sandboxes |
 | `grain_get_vm` | Inspect one sandbox |
-| `grain_create_vm` | Create VM (**defaults:** `image=grain-ubuntu`, `wait=agent`) |
+| `grain_create_vm` | Create VM (**defaults:** `image=grain-ubuntu`, `wait=agent`). Optional `recipe` = library name or path |
 | `grain_start_vm` / `grain_stop_vm` | Start / stop |
 | `grain_delete_vm` | Delete (**idempotent** if missing) |
 | `grain_workspace_sandbox` | One-shot: create + mount host dir at `/work` + wait agent + optional first command |
+| `grain_recipe_list` | List host library (`~/.grain/recipes`) — no VM create |
+| `grain_recipe_add` | Add to library from file path, http(s) URL, or official catalog id — **never creates a VM** |
+| `grain_recipe_search` | Official catalog index (cached); does not download bodies |
+| `grain_recipe_create` | Create sandbox from library recipe (name override + wait) |
 
 ### Guest exec & files
 
@@ -118,12 +122,14 @@ Each agent has its **own** config file and schema. Pick a host, choose **stdio**
 | `grain_forward_add` / `grain_forward_remove` | Live host→guest TCP forwards; add returns `localhost:PORT` |
 | `grain_image_list` / `grain_image_pull` | Catalog + local readiness; pull base images on the host |
 
-### Recipes
+### Labs & presets
 
 | Tool | Purpose |
 |------|---------|
 | `grain_act` | GitHub Actions via **nektos/act** in an ephemeral act-preset sandbox (mounts project at `/work`) |
 | `grain_k3s` | **k3s** lab (k3s preset, port 6443, waits for `kubectl get nodes` unless `skip_wait`). Kind is not a separate preset—use k3s. |
+
+Sandbox **recipe library** tools are listed under Lifecycle above (`grain_recipe_*`). See [Sandbox recipes](../get-started/recipe/).
 
 ### Create parameters (high level)
 

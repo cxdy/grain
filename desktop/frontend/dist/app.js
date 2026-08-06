@@ -1747,7 +1747,207 @@
       loadSettings();
     }
     if (name === "images") loadImagesPage();
+    if (name === "recipes") loadRecipesPage();
     if (name === "sandboxes") showInspector(!!state.selected);
+  }
+
+  /* ── recipes library ── */
+  async function loadRecipesPage() {
+    const tbody = $("#recipes-tbody");
+    const empty = $("#recipes-empty");
+    if (!tbody) return;
+    try {
+      const list = (await call("ListLibraryRecipes")) || [];
+      state.recipes = list;
+      tbody.innerHTML = "";
+      if (!list.length) {
+        if (empty) empty.hidden = false;
+        $("#recipes-detail").hidden = true;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      for (const r of list) {
+        const tr = document.createElement("tr");
+        tr.dataset.id = r.id;
+        tr.innerHTML = `<td class="selectable">${escapeHtml(r.id)}</td>
+          <td>${escapeHtml(r.image || "—")}</td>
+          <td>${r.has_bootstrap ? "yes" : "no"}</td>
+          <td class="selectable">${escapeHtml(r.description || r.name || "")}</td>
+          <td class="no-select"><button type="button" class="btn btn-ghost btn-sm" data-recipe-open="${escapeHtml(r.id)}">Open</button></td>`;
+        tr.addEventListener("click", (e) => {
+          if (e.target.closest("button")) return;
+          openRecipe(r.id);
+        });
+        tbody.appendChild(tr);
+      }
+      $$("[data-recipe-open]").forEach((b) =>
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openRecipe(b.dataset.recipeOpen);
+        })
+      );
+      if (state.selectedRecipe) openRecipe(state.selectedRecipe);
+    } catch (e) {
+      toast(String(e), true);
+    }
+  }
+
+  async function openRecipe(id) {
+    state.selectedRecipe = id;
+    const detail = $("#recipes-detail");
+    if (!detail) return;
+    detail.hidden = false;
+    $("#recipe-detail-title").textContent = id;
+    $("#recipe-yaml-err").hidden = true;
+    try {
+      const yaml = await call("GetLibraryRecipeYAML", id);
+      $("#recipe-yaml").value = yaml || "";
+      const meta = (state.recipes || []).find((r) => r.id === id);
+      $("#recipe-detail-meta").textContent = meta
+        ? `${meta.image || "—"} · ${meta.cpus || "?"} vCPU · ${meta.memory_mb || "?"} MiB${meta.has_bootstrap ? " · bootstrap" : ""}`
+        : "";
+    } catch (e) {
+      toast(String(e), true);
+    }
+  }
+
+  async function saveSelectedRecipe() {
+    const id = state.selectedRecipe;
+    if (!id) return;
+    const yaml = $("#recipe-yaml")?.value || "";
+    const errEl = $("#recipe-yaml-err");
+    try {
+      await act("save recipe", () => call("SaveLibraryRecipeYAML", id, yaml), { target: id });
+      if (errEl) errEl.hidden = true;
+      toast(`Saved ${id}`);
+      await loadRecipesPage();
+      openRecipe(id);
+    } catch (e) {
+      if (errEl) {
+        errEl.hidden = false;
+        errEl.textContent = String(e);
+      }
+      toast(String(e), true);
+    }
+  }
+
+  async function deleteSelectedRecipe() {
+    const id = state.selectedRecipe;
+    if (!id) return;
+    if (!confirm(`Delete library recipe ${id}? (Sandboxes are not removed.)`)) return;
+    try {
+      await act("delete recipe", () => call("DeleteLibraryRecipe", id), { target: id });
+      state.selectedRecipe = null;
+      $("#recipes-detail").hidden = true;
+      toast(`Deleted ${id}`);
+      await loadRecipesPage();
+    } catch (e) {
+      toast(String(e), true);
+    }
+  }
+
+  async function importRecipeFile() {
+    try {
+      const ent = await act("import recipe", () => call("PickAndImportRecipe"), {});
+      toast(`Added ${ent?.id || "recipe"}`);
+      state.selectedRecipe = ent?.id;
+      await loadRecipesPage();
+      if (ent?.id) openRecipe(ent.id);
+    } catch (e) {
+      if (String(e).includes("cancelled")) return;
+      toast(String(e), true);
+    }
+  }
+
+  async function importRecipeURL(url) {
+    const ent = await act("import recipe URL", () => call("ImportRecipeURL", url, false), {});
+    toast(`Added ${ent?.id || "recipe"}`);
+    state.selectedRecipe = ent?.id;
+    await loadRecipesPage();
+    if (ent?.id) openRecipe(ent.id);
+  }
+
+  async function loadOfficialCatalog() {
+    const panel = $("#recipes-catalog");
+    const tbody = $("#catalog-tbody");
+    const err = $("#catalog-err");
+    if (!panel || !tbody) return;
+    panel.hidden = false;
+    if (err) err.hidden = true;
+    tbody.innerHTML = `<tr><td colspan="4" class="muted">Loading catalog…</td></tr>`;
+    try {
+      const list = (await call("SearchOfficialRecipes")) || [];
+      tbody.innerHTML = "";
+      if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="4" class="muted">Catalog empty or unavailable.</td></tr>`;
+        return;
+      }
+      for (const r of list) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td class="selectable">${escapeHtml(r.id)}</td>
+          <td>${escapeHtml(r.title || r.description || "")}</td>
+          <td>${r.in_library ? "yes" : "no"}</td>
+          <td class="no-select"><button type="button" class="btn btn-ghost btn-sm" data-catalog-add="${escapeHtml(r.id)}" ${r.in_library ? "disabled" : ""}>${r.in_library ? "Installed" : "Add"}</button></td>`;
+        tbody.appendChild(tr);
+      }
+      $$("[data-catalog-add]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          try {
+            const ent = await act("add official recipe", () => call("AddOfficialRecipe", b.dataset.catalogAdd, false), {
+              target: b.dataset.catalogAdd,
+            });
+            toast(`Added ${ent?.id || b.dataset.catalogAdd}`);
+            await loadRecipesPage();
+            await loadOfficialCatalog();
+            if (ent?.id) openRecipe(ent.id);
+          } catch (e) {
+            toast(String(e), true);
+          }
+        })
+      );
+    } catch (e) {
+      tbody.innerHTML = "";
+      if (err) {
+        err.hidden = false;
+        err.textContent = String(e);
+      }
+    }
+  }
+
+  function openDeployRecipeModal() {
+    const id = state.selectedRecipe;
+    if (!id) return;
+    const meta = (state.recipes || []).find((r) => r.id === id);
+    $("#recipe-deploy-id").textContent = `Recipe: ${id}`;
+    $("#recipe-deploy-name").value = meta?.name || id;
+    const warn = $("#recipe-deploy-warn");
+    if (meta?.has_bootstrap && warn) {
+      warn.hidden = false;
+      warn.textContent = "This recipe runs bootstrap scripts inside the guest until ready.";
+    } else if (warn) {
+      warn.hidden = true;
+    }
+    openModal("modal-recipe-deploy");
+  }
+
+  async function deploySelectedRecipe(name, waitReady) {
+    const id = state.selectedRecipe;
+    if (!id) return;
+    const opts = { recipe: id, name: name || id };
+    if (waitReady) {
+      opts.wait = ""; // recipe default / wait until ready
+    } else {
+      opts.wait = "ssh";
+    }
+    const sb = await act("deploy recipe", () => call("DeployRecipe", opts), {
+      target: name || id,
+      summary: `created sandbox from recipe ${id}`,
+    });
+    toast(`Created ${sb?.name || name}`);
+    closeModal("modal-recipe-deploy");
+    switchView("sandboxes");
+    await refreshList();
+    if (sb?.name) await selectVM(sb.name);
   }
 
   /* ── shell ── */
@@ -2354,6 +2554,40 @@
 
     $$(".nav-item").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.view)));
     $$(".ws-tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
+
+    $("#btn-recipe-import-file")?.addEventListener("click", () => importRecipeFile());
+    $("#btn-recipe-import-url")?.addEventListener("click", () => openModal("modal-recipe-url"));
+    $("#btn-recipe-browse")?.addEventListener("click", () => loadOfficialCatalog());
+    $("#btn-recipe-refresh")?.addEventListener("click", () => loadRecipesPage());
+    $("#btn-recipe-catalog-close")?.addEventListener("click", () => {
+      const p = $("#recipes-catalog");
+      if (p) p.hidden = true;
+    });
+    $("#btn-recipe-save")?.addEventListener("click", () => saveSelectedRecipe());
+    $("#btn-recipe-delete")?.addEventListener("click", () => deleteSelectedRecipe());
+    $("#btn-recipe-deploy")?.addEventListener("click", () => openDeployRecipeModal());
+    $("#recipe-url-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const url = $("#recipe-url-input")?.value?.trim();
+      if (!url) return;
+      try {
+        await importRecipeURL(url);
+        closeModal("modal-recipe-url");
+        $("#recipe-url-input").value = "";
+      } catch (err) {
+        toast(String(err), true);
+      }
+    });
+    $("#recipe-deploy-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = $("#recipe-deploy-name")?.value?.trim();
+      const waitReady = $("#recipe-deploy-wait")?.checked !== false;
+      try {
+        await deploySelectedRecipe(name, waitReady);
+      } catch (err) {
+        toast(String(err), true);
+      }
+    });
     $$(".seg").forEach((s) => s.addEventListener("click", () => switchSettingsSeg(s.dataset.seg)));
     $$(".agent-tab").forEach((t) =>
       t.addEventListener("click", () => {
