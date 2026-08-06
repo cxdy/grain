@@ -45,17 +45,22 @@ paginate = 20
   description = "Linux microVM sandboxes on your own hardware — shells, GitHub Actions, and k3s labs."
   github = "https://github.com/cxdy/grain"
   # Current *released* docs version (patch path).
-  docsVersion = "0.6.3"
-  docsVersionLabel = "v0.6.3"
+  docsVersion = "0.7.0"
+  docsVersionLabel = "v0.7.0"
   # Git commit for the default docs version (tag v0.6.3). Prefer per-entry
   # commit below; this is the homepage/marketing fallback.
-  docsVersionCommit = "a391ed3653fbf80b932119f5cc18a0c83d04a286"
+  docsVersionCommit = "ddce19b3bb772a7397f694a0ed615a6b2f40c684"
   # Shown in version dropdown. Each entry may include `commit` (full SHA of
   # the release tag / branch tip) so the UI can link to source without keeping
   # full content trees as the long-term model (see scripts/docs-version-bump.sh).
   [[params.docsVersions]]
+    version = "0.7.0"
+    label = "v0.7.0 (latest)"
+    path = "/docs/0.7.0/"
+    commit = "ddce19b3bb772a7397f694a0ed615a6b2f40c684"
+  [[params.docsVersions]]
     version = "0.6.3"
-    label = "v0.6.3 (latest)"
+    label = "v0.6.3"
     path = "/docs/0.6.3/"
     commit = "a391ed3653fbf80b932119f5cc18a0c83d04a286"
   [[params.docsVersions]]
@@ -97,7 +102,7 @@ paginate = 20
     version = "main"
     label = "main (bleeding edge)"
     path = "/docs/main/"
-    commit = "e829594fd7f9a02975532f256b6a226171777f9c"
+    commit = "ddce19b3bb772a7397f694a0ed615a6b2f40c684"
 
   brand = "grain"
 
