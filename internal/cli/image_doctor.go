@@ -236,22 +236,23 @@ func runDoctor(cfg config.Config) error {
 	check("base image "+def, func() error {
 		if !imgs.Ready(def) {
 			if def == image.IDGrainUbuntuFC {
-				return fmt.Errorf("missing — run: grain image import <raw-rootfs> --id %s (catalog pull not published yet)", def)
+				return fmt.Errorf("missing — run: grain image pull %s (or BYO: grain image import <raw-rootfs> --id %s)", def, def)
 			}
 			if def == image.IDFCKernel {
-				return fmt.Errorf("missing — run: grain image import <vmlinux> --id %s (not a rootfs; installs under kernels/)", def)
+				return fmt.Errorf("missing — run: grain image pull %s (or BYO: grain image import <vmlinux> --id %s; installs under kernels/)", def, def)
 			}
 			return fmt.Errorf("missing — run: grain image pull %s", def)
 		}
 		return nil
 	})
 	// Firecracker soft guidance: QEMU cloud images are not drop-in FC guests.
+	// vFC-1 happy path is pull grain-ubuntu-fc; import remains BYO fallback.
 	if hv == "firecracker" {
 		if def == image.IDUbuntuCloud || def == image.IDGrainUbuntu || def == image.IDAlpineCloud {
-			fmt.Printf("  · default image %s is QEMU-oriented — prefer grain image import … --id %s for Firecracker rootfs\n", def, image.IDGrainUbuntuFC)
+			fmt.Printf("  · default image %s is QEMU-oriented — prefer grain image pull %s (or BYO import) for Firecracker rootfs\n", def, image.IDGrainUbuntuFC)
 		}
 		if def != image.IDGrainUbuntuFC && !imgs.Ready(image.IDGrainUbuntuFC) {
-			fmt.Printf("  · %s not imported (optional catalog FC rootfs id; BYO image ids also work)\n", image.IDGrainUbuntuFC)
+			fmt.Printf("  · %s not pulled — run: grain image pull %s (BYO image ids also work)\n", image.IDGrainUbuntuFC, image.IDGrainUbuntuFC)
 		} else if def != image.IDGrainUbuntuFC && imgs.Ready(image.IDGrainUbuntuFC) {
 			fmt.Printf("  ✓ %s ready (FC rootfs catalog id)\n", image.IDGrainUbuntuFC)
 		}
@@ -291,7 +292,8 @@ func runDoctor(cfg config.Config) error {
 
 // checkFirecrackerKernel returns a doctor check for the FC guest kernel.
 // Explicit kernel_path that is missing is a BYO misconfiguration; empty
-// kernel_path with no default file is a missing artifact (import/place vmlinux).
+// kernel_path with no default file is a missing artifact (pull fc-kernel, or
+// place/import vmlinux).
 func checkFirecrackerKernel(cfg config.Config) func() error {
 	return func() error {
 		explicit := strings.TrimSpace(cfg.KernelPath)
@@ -304,11 +306,11 @@ func checkFirecrackerKernel(cfg config.Config) func() error {
 			return nil
 		}
 		if explicit != "" {
-			return fmt.Errorf("kernel_path %s missing or empty (BYO misconfigured) — fix the path, or remove kernel_path to use %s; import: grain image import <vmlinux> --id %s",
-				explicit, defaultPath, image.IDFCKernel)
+			return fmt.Errorf("kernel_path %s missing or empty (BYO misconfigured) — fix the path, or remove kernel_path to use %s; pull: grain image pull %s; or import: grain image import <vmlinux> --id %s",
+				explicit, defaultPath, image.IDFCKernel, image.IDFCKernel)
 		}
-		return fmt.Errorf("missing at %s — place a Firecracker vmlinux there, or: grain image import <vmlinux> --id %s (pull not published yet; see guides/firecracker)",
-			defaultPath, image.IDFCKernel)
+		return fmt.Errorf("missing at %s — run: grain image pull %s (or place a Firecracker vmlinux there / BYO: grain image import <vmlinux> --id %s; see guides/firecracker)",
+			defaultPath, image.IDFCKernel, image.IDFCKernel)
 	}
 }
 

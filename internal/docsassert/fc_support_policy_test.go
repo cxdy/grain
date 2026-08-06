@@ -61,6 +61,10 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 			"Not available",
 			"grain fwd",
 			"grain-ubuntu-fc",
+			"grain image pull fc-kernel",
+			"grain image pull grain-ubuntu-fc",
+			"p95 ≈ 2166 ms",
+			"vFC-1 agent production",
 		}},
 		{"parity", parity, []string{
 			"FC agent production (vFC-1)",
@@ -75,11 +79,16 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 		}
 	}
 
-	// Must not claim hostfwd works on FC today.
+	// Must not claim hostfwd works on FC today, or deny published pull.
 	for _, bad := range []string{
 		"Host `agent.Dial` AF_VSOCK path does **not** speak CONNECT yet",
 		"catalog FC images remain deferred",
 		"Catalog IDs `grain-ubuntu-fc` / `fc-kernel` are reserved scaffolding",
+		"pull not published yet",
+		"catalog pull not published yet",
+		"Firecracker (experimental)",
+		"Not configured (experimental)",
+		"p95 ~1999",
 	} {
 		if strings.Contains(matrix, bad) || strings.Contains(fcGuide, bad) {
 			t.Errorf("stale claim still present: %q", bad)
@@ -93,6 +102,33 @@ func TestFCSupportPolicyDocs(t *testing.T) {
 	// Agent path done language (matrix table cell)
 	if !strings.Contains(matrix, "vFC-1 agent") {
 		t.Error("matrix missing vFC-1 agent status")
+	}
+}
+
+// TestDoctorPullHintsForFCCatalog asserts doctor errors recommend published pull.
+func TestDoctorPullHintsForFCCatalog(t *testing.T) {
+	t.Parallel()
+	src := readDoc(t, "internal/cli/image_doctor.go")
+	for _, bad := range []string{
+		"catalog pull not published yet",
+		"pull not published yet",
+	} {
+		if strings.Contains(src, bad) {
+			t.Errorf("doctor source still has stale unpublished wording: %q", bad)
+		}
+	}
+	for _, want := range []string{
+		"grain image pull %s",
+		"IDGrainUbuntuFC",
+		"IDFCKernel",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("doctor source missing %q", want)
+		}
+	}
+	// Soft note should prefer pull, not "not imported".
+	if strings.Contains(src, "not imported") {
+		t.Error("doctor soft note still says 'not imported'; prefer pull wording")
 	}
 }
 

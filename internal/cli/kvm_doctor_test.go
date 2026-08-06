@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -131,11 +132,139 @@ func TestCheckFirecrackerKernelMissingDefault(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing kernel")
 	}
-	if !strings.Contains(err.Error(), "missing") {
+	msg := err.Error()
+	if !strings.Contains(msg, "missing") {
 		t.Fatalf("err: %v", err)
 	}
-	if !strings.Contains(err.Error(), "fc-kernel") {
-		t.Fatalf("want fc-kernel import hint: %v", err)
+	// vFC-1 happy path is published pull, not "not published yet".
+	if strings.Contains(msg, "not published") {
+		t.Fatalf("stale unpublished-catalog wording: %v", err)
+	}
+	if !strings.Contains(msg, "grain image pull fc-kernel") {
+		t.Fatalf("want pull fc-kernel hint: %v", err)
+	}
+	// BYO import remains a valid fallback mention.
+	if !strings.Contains(msg, "fc-kernel") {
+		t.Fatalf("want fc-kernel id: %v", err)
+	}
+}
+
+func TestDoctorFCMissingRootfsPullHintStdout(t *testing.T) {
+	// Captures doctor stdout so we assert the printed ✗ base image line (real path).
+	dir := t.TempDir()
+	fakeBin := filepath.Join(dir, "firecracker")
+	if err := os.WriteFile(fakeBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kpath := filepath.Join(dir, "kernels", "vmlinux")
+	if err := os.MkdirAll(filepath.Dir(kpath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kpath, []byte("vmlinux"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := kvmDevicePath
+	t.Cleanup(func() { kvmDevicePath = old })
+	if runtime.GOOS == "linux" {
+		if st, err := os.Stat("/dev/kvm"); err == nil && !st.IsDir() {
+			kvmDevicePath = "/dev/kvm"
+		} else {
+			t.Skip("no /dev/kvm")
+		}
+	}
+	cfg := config.Config{
+		DataDir:           dir,
+		Hypervisor:        "firecracker",
+		FirecrackerBinary: fakeBin,
+		KernelPath:        kpath,
+		Image:             "grain-ubuntu-fc",
+		Socket:            filepath.Join(dir, "grain.sock"),
+		SSHUser:           "ubuntu",
+	}
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	runErr := runDoctor(cfg)
+	_ = w.Close()
+	os.Stdout = oldStdout
+	outB, _ := io.ReadAll(r)
+	_ = r.Close()
+	out := string(outB)
+	if runErr == nil {
+		t.Fatal("expected doctor issues")
+	}
+	if strings.Contains(out, "not published") {
+		t.Fatalf("stale unpublished wording in doctor output:\n%s", out)
+	}
+	if !strings.Contains(out, "grain image pull grain-ubuntu-fc") {
+		t.Fatalf("want pull grain-ubuntu-fc in doctor output:\n%s", out)
+	}
+}
+
+func TestDoctorFCSoftNotePrefersPullWhenDefaultIsQEMU(t *testing.T) {
+	// When default image is QEMU-oriented and grain-ubuntu-fc is not ready,
+	// soft · notes must recommend pull (not only import / "not imported").
+	dir := t.TempDir()
+	fakeBin := filepath.Join(dir, "firecracker")
+	if err := os.WriteFile(fakeBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kpath := filepath.Join(dir, "kernels", "vmlinux")
+	if err := os.MkdirAll(filepath.Dir(kpath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kpath, []byte("vmlinux"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Plant default QEMU image so base-image hard check passes.
+	imgDir := filepath.Join(dir, "images", "ubuntu-cloud")
+	if err := os.MkdirAll(imgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(imgDir, "disk.qcow2"), make([]byte, 2*1024*1024), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := kvmDevicePath
+	t.Cleanup(func() { kvmDevicePath = old })
+	if runtime.GOOS == "linux" {
+		if st, err := os.Stat("/dev/kvm"); err == nil && !st.IsDir() {
+			kvmDevicePath = "/dev/kvm"
+		} else {
+			t.Skip("no /dev/kvm")
+		}
+	}
+	cfg := config.Config{
+		DataDir:           dir,
+		Hypervisor:        "firecracker",
+		FirecrackerBinary: fakeBin,
+		KernelPath:        kpath,
+		Image:             "ubuntu-cloud",
+		Socket:            filepath.Join(dir, "grain.sock"),
+		SSHUser:           "ubuntu",
+	}
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	_ = runDoctor(cfg)
+	_ = w.Close()
+	os.Stdout = oldStdout
+	outB, _ := io.ReadAll(r)
+	_ = r.Close()
+	out := string(outB)
+	if strings.Contains(out, "not published") {
+		t.Fatalf("stale unpublished wording:\n%s", out)
+	}
+	if !strings.Contains(out, "grain image pull grain-ubuntu-fc") {
+		t.Fatalf("want soft pull hint for grain-ubuntu-fc:\n%s", out)
+	}
+	if strings.Contains(out, "not imported") {
+		t.Fatalf("prefer pull wording over 'not imported':\n%s", out)
 	}
 }
 
