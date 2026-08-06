@@ -36,6 +36,7 @@
     expandedEvent: null,
     currentView: "sandboxes",
     hostTestedOK: false,
+    sandboxFilter: "",
   };
 
   function escapeHtml(s) {
@@ -503,19 +504,39 @@
     if (!multi) state.selectedSet.clear();
   }
 
+  function sandboxMatchesFilter(vm, q) {
+    if (!q) return true;
+    const hay = [vm.name, vm.status, vm.image, vm.agent_version, String(vm.cpus || ""), String(vm.memory_mb || "")]
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(q);
+  }
+
+  function filteredSandboxes() {
+    const q = (state.sandboxFilter || "").trim().toLowerCase();
+    const list = state.sandboxes || [];
+    if (!q) return list;
+    return list.filter((vm) => sandboxMatchesFilter(vm, q));
+  }
+
   function renderTable() {
     const tb = $("#vm-tbody");
     if (!tb) return;
-    const list = state.sandboxes || [];
-    const multi = list.length >= 2;
+    const all = state.sandboxes || [];
+    const list = filteredSandboxes();
+    const multi = all.length >= 2;
     if (!multi) state.selectedSet.clear();
     updateBulkBar();
 
-    if (!list.length) {
+    if (!all.length) {
       updateBulkBar();
       tb.innerHTML = `<tr><td colspan="6" class="empty-cell">No sandboxes yet.<br/><br/>
         <button type="button" class="btn btn-primary" id="empty-new">New sandbox</button></td></tr>`;
       $("#empty-new")?.addEventListener("click", () => openCreate());
+      return;
+    }
+    if (!list.length) {
+      tb.innerHTML = `<tr><td colspan="6" class="empty-cell muted">No sandboxes match “${escapeHtml(state.sandboxFilter)}”.</td></tr>`;
       return;
     }
     tb.innerHTML = list
@@ -549,9 +570,51 @@
         else state.selectedSet.delete(c.dataset.name);
         updateBulkBar();
         const ca = $("#check-all");
-        if (ca) ca.checked = state.selectedSet.size === list.length;
+        if (ca) ca.checked = state.selectedSet.size === all.length;
       });
     });
+  }
+
+  function openMultiSSH() {
+    const names = [...state.selectedSet].sort();
+    if (names.length < 2) return;
+    const hosts = $("#multi-ssh-hosts");
+    if (hosts) hosts.textContent = names.join(", ");
+    const out = $("#multi-ssh-out");
+    if (out) out.textContent = "";
+    const cmd = $("#multi-ssh-cmd");
+    if (cmd) cmd.value = "";
+    openModal("modal-multi-ssh");
+    setTimeout(() => cmd?.focus(), 50);
+  }
+
+  async function runMultiSSH(e) {
+    if (e) e.preventDefault();
+    const names = [...state.selectedSet].sort();
+    if (names.length < 2) return;
+    const command = ($("#multi-ssh-cmd")?.value || "").trim();
+    if (!command) {
+      toast("Enter a command", true);
+      return;
+    }
+    const out = $("#multi-ssh-out");
+    const btn = $("#multi-ssh-run");
+    if (out) out.textContent = "Running…";
+    if (btn) btn.disabled = true;
+    try {
+      const results = await act(
+        "bulk exec",
+        () => call("BulkExec", names, command),
+        { target: `${names.length} sandboxes`, summary: `ran “${command}” on ${names.length} sandboxes` }
+      );
+      const lines = (results || []).map((r) => r.line || `${r.name}: (no output)`);
+      if (out) out.textContent = lines.join("\n") || "(no results)";
+    } catch (err) {
+      if (out) out.textContent = String(err);
+      toast(String(err), true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   function isRunning(status) {
@@ -1388,6 +1451,7 @@
       requestAnimationFrame(() => {
         try {
           state.fit?.fit();
+          term?.focus();
         } catch (_) {}
       });
       if (term) attachShell(state.selected, term);
@@ -2269,8 +2333,15 @@
         state[fitKey] = fit;
       } catch (_) {}
     }
+    // Always resolve bindings at write time (do not capture a stale `go` binding).
     term.onData((data) => {
-      if (typeof go?.ShellWrite === "function") go.ShellWrite(data).catch(() => {});
+      call("ShellWrite", data).catch(() => {});
+    });
+    // Clicking the host should focus the terminal for keyboard input.
+    el.addEventListener("mousedown", () => {
+      try {
+        term.focus();
+      } catch (_) {}
     });
     state[termKey] = term;
     return term;
@@ -2323,6 +2394,15 @@
     try {
       await call("ShellAttach", vm, term.cols || 80, term.rows || 24);
       term.writeln(`\x1b[32mconnected\x1b[0m \x1b[90m${vm}\x1b[0m`);
+      try {
+        term.focus();
+      } catch (_) {}
+      requestAnimationFrame(() => {
+        try {
+          state.fit?.fit();
+          state.fitOnly?.fit();
+        } catch (_) {}
+      });
     } catch (e) {
       term.writeln(`\x1b[31m${String(e)}\x1b[0m`);
     }
@@ -2797,17 +2877,15 @@
   function openDocs(e) {
     if (e) e.preventDefault();
     // Prefer bound method (always works in Wails), then runtime helper, then window.open
-    if (typeof go?.OpenDocs === "function") {
-      go.OpenDocs().catch(() => {});
-      return;
-    }
-    try {
-      if (window.runtime?.BrowserOpenURL) {
-        window.runtime.BrowserOpenURL("https://grainvm.com");
-        return;
-      }
-    } catch (_) {}
-    window.open("https://grainvm.com", "_blank", "noopener,noreferrer");
+    call("OpenDocs").catch(() => {
+      try {
+        if (window.runtime?.BrowserOpenURL) {
+          window.runtime.BrowserOpenURL("https://grainvm.com");
+          return;
+        }
+      } catch (_) {}
+      window.open("https://grainvm.com", "_blank", "noopener,noreferrer");
+    });
   }
 
   function wire() {
@@ -3155,6 +3233,12 @@
     $("#bulk-start")?.addEventListener("click", () => bulk("start"));
     $("#bulk-stop")?.addEventListener("click", () => bulk("stop"));
     $("#bulk-rm")?.addEventListener("click", () => bulk("rm"));
+    $("#bulk-ssh")?.addEventListener("click", () => openMultiSSH());
+    $("#multi-ssh-form")?.addEventListener("submit", (e) => runMultiSSH(e));
+    $("#sandbox-search")?.addEventListener("input", (e) => {
+      state.sandboxFilter = e.target.value || "";
+      renderTable();
+    });
     $("#check-all")?.addEventListener("change", (e) => {
       state.selectedSet = new Set();
       if (e.target.checked) state.sandboxes.forEach((s) => state.selectedSet.add(s.name));

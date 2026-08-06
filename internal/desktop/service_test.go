@@ -600,3 +600,32 @@ func TestExecRunnerLookPath(t *testing.T) {
 		t.Fatalf("%q %v", p, err)
 	}
 }
+
+func TestBulkExecParallel(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("POST /vms/{name}/exec", func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		_ = json.NewEncoder(w).Encode(client.ExecResult{Stdout: "ok-" + name + "\n", ExitCode: 0})
+	})
+	sock := startFakeDaemon(t, mux)
+	cfg := Defaults()
+	cfg.Socket = sock
+	svc := NewService(cfg)
+	if err := svc.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := svc.BulkExec(context.Background(), []string{"a", "b", "a"}, "uname -a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("dedupe want 2 got %d", len(out))
+	}
+	if out[0].Name != "a" || out[0].Line != "a: ok-a" {
+		t.Fatalf("%+v", out[0])
+	}
+	if out[1].Name != "b" || out[1].Line != "b: ok-b" {
+		t.Fatalf("%+v", out[1])
+	}
+}

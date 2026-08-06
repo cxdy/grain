@@ -508,6 +508,97 @@ func (s *Service) RemoveSandbox(ctx context.Context, name string) error {
 	return c.Delete(ctx, name)
 }
 
+// BulkExecResult is one sandbox's response to a parallel shell command.
+type BulkExecResult struct {
+	Name     string `json:"name"`
+	Stdout   string `json:"stdout,omitempty"`
+	Stderr   string `json:"stderr,omitempty"`
+	ExitCode int    `json:"exit_code"`
+	Error    string `json:"error,omitempty"`
+	// Line is a ready-to-display "name: response" (or name: error=…).
+	Line string `json:"line"`
+}
+
+// BulkExec runs command via guest agent on each named sandbox in parallel
+// (sh -c). Order of results matches names. Command is required and non-empty.
+func (s *Service) BulkExec(ctx context.Context, names []string, command string) ([]BulkExecResult, error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return nil, fmt.Errorf("command is required")
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("at least one sandbox name is required")
+	}
+	c, err := s.ensureClient()
+	if err != nil {
+		return nil, err
+	}
+	// Deduplicate while preserving order.
+	seen := map[string]struct{}{}
+	var list []string
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		list = append(list, n)
+	}
+	if len(list) == 0 {
+		return nil, fmt.Errorf("at least one sandbox name is required")
+	}
+
+	type slot struct {
+		i int
+		r BulkExecResult
+	}
+	ch := make(chan slot, len(list))
+	for i, name := range list {
+		i, name := i, name
+		go func() {
+			res := BulkExecResult{Name: name}
+			// Guest shell: one string command for uname -a etc.
+			er, eerr := c.Exec(ctx, name, "sh", "-c", command)
+			if eerr != nil {
+				res.Error = eerr.Error()
+				res.ExitCode = -1
+				res.Line = name + ": error: " + res.Error
+			} else if er != nil {
+				res.Stdout = strings.TrimRight(er.Stdout, "\r\n")
+				res.Stderr = strings.TrimRight(er.Stderr, "\r\n")
+				res.ExitCode = er.ExitCode
+				out := res.Stdout
+				if out == "" && res.Stderr != "" {
+					out = res.Stderr
+				}
+				if out == "" {
+					out = fmt.Sprintf("(exit %d)", res.ExitCode)
+				}
+				// Collapse multi-line to first line + … if needed for table-ish display;
+				// keep full output after the prefix (user asked name: response).
+				res.Line = name + ": " + out
+				if res.ExitCode != 0 && res.Stderr != "" && res.Stdout != "" {
+					res.Line = name + ": " + res.Stdout + "\n" + name + ": stderr: " + res.Stderr
+				}
+			} else {
+				res.Error = "empty result"
+				res.ExitCode = -1
+				res.Line = name + ": error: empty result"
+			}
+			ch <- slot{i: i, r: res}
+		}()
+	}
+	out := make([]BulkExecResult, len(list))
+	for range list {
+		s := <-ch
+		out[s.i] = s.r
+	}
+	return out, nil
+}
+
 // GetSandbox returns one VM.
 func (s *Service) GetSandbox(ctx context.Context, name string) (*Sandbox, error) {
 	if name == "" {
