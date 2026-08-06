@@ -32,14 +32,14 @@ func startAgentClient(t *testing.T) *Client {
 		}
 	})
 	var base string
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		addr := srv.AddrString()
 		if addr != "" && !strings.HasSuffix(addr, ":0") {
 			base = "http://" + addr
 			break
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 	if base == "" {
 		t.Fatal("no base")

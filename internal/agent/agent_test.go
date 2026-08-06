@@ -27,16 +27,22 @@ func startTestServer(t *testing.T) *Client {
 		errCh <- srv.ListenAndServe()
 	}()
 
-	// Wait briefly for listen.
-	deadline := time.Now().Add(2 * time.Second)
+	// Wait for TCP bind. Clipboard/X11 setup runs after listen and must not
+	// gate health (see Server.ListenAndServe).
+	deadline := time.Now().Add(5 * time.Second)
 	var base string
 	for time.Now().Before(deadline) {
+		select {
+		case err := <-errCh:
+			t.Fatalf("ListenAndServe exited before bind: %v", err)
+		default:
+		}
 		addr := srv.AddrString()
 		if addr != "" && addr != "127.0.0.1:0" && !strings.HasSuffix(addr, ":0") {
 			base = "http://" + addr
 			break
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 	if base == "" {
 		t.Fatal("server did not bind a port")

@@ -29,7 +29,7 @@ func TestWaitImmediateSuccessAndCancel(t *testing.T) {
 		case <-time.After(2 * time.Second):
 		}
 	})
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	var c *Client
 	for time.Now().Before(deadline) {
 		addr := srv.AddrString()
@@ -37,7 +37,7 @@ func TestWaitImmediateSuccessAndCancel(t *testing.T) {
 			c = &Client{BaseURL: "http://" + addr}
 			break
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 	if c == nil {
 		t.Fatal("no addr")
