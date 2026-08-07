@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/cxdy/grain/internal/agent"
 	"github.com/cxdy/grain/internal/api"
 	"github.com/cxdy/grain/internal/config"
@@ -2073,6 +2074,60 @@ func TestShellProxyToAgent(t *testing.T) {
 	// Should not be 404
 	if rr.Code == http.StatusNotFound {
 		t.Fatalf("shell missing: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+// TestShellWebSocketUpgradeThroughActivity ensures activityMiddleware's
+// statusRecorder still implements http.Hijacker so remote `grain sh` works.
+// Regression: statusRecorder without Hijack → 502 "can't switch protocols".
+func TestShellWebSocketUpgradeThroughActivity(t *testing.T) {
+	s, st := testServerWithStore(t)
+	port := startLocalAgent(t)
+	h := s.Handler()
+	createMockVM(t, h, "sh-ws")
+	setAgentPort(t, st, "sh-ws", port)
+
+	// Real TCP server so ResponseWriter is a Hijacker (httptest.ResponseRecorder is not).
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/vms/sh-ws/shell?cols=80&rows=24"
+	conn, resp, err := websocket.Dial(ctx, wsURL, nil)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
+	if err != nil {
+		// Guest agent may refuse PTY off-linux (501). That is still a successful
+		// protocol switch path vs activity middleware 502 Hijacker failure.
+		if resp != nil && resp.StatusCode == http.StatusNotImplemented {
+			t.Skipf("agent shell not implemented on this OS: %v", err)
+		}
+		if resp != nil && resp.StatusCode == http.StatusBadGateway {
+			t.Fatalf("shell WebSocket 502 (activity Hijacker regression?): %v body=%v", err, resp.Status)
+		}
+		// Other dial errors after upgrade (agent close) are OK if we got 101.
+		if resp == nil || resp.StatusCode != http.StatusSwitchingProtocols {
+			t.Fatalf("shell WebSocket dial: %v (status=%v)", err, resp)
+		}
+	}
+	if conn != nil {
+		_ = conn.Close(websocket.StatusNormalClosure, "test")
+	}
+	// Activity middleware should have recorded the shell attempt.
+	if s.Act != nil {
+		evs := s.Act.List(20)
+		found := false
+		for _, e := range evs {
+			if e.Action == "shell" && e.Target == "sh-ws" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected activity shell sh-ws, got %+v", evs)
+		}
 	}
 }
 

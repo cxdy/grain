@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -126,6 +128,9 @@ func (s *Server) listActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 // statusRecorder captures the response status for activity logging.
+// It must preserve optional ResponseWriter interfaces (Hijacker for WebSocket
+// /shell upgrades, Flusher for NDJSON streams) so activityMiddleware does not
+// break reverse-proxy upgrades (remote grain sh 502 regression).
 type statusRecorder struct {
 	http.ResponseWriter
 	code int
@@ -134,6 +139,27 @@ type statusRecorder struct {
 func (s *statusRecorder) WriteHeader(code int) {
 	s.code = code
 	s.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap exposes the underlying writer for http.ResponseController and friends.
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
+
+// Hijack implements http.Hijacker when the underlying writer does (WebSocket).
+func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := s.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("ResponseWriter does not implement http.Hijacker")
+	}
+	return h.Hijack()
+}
+
+// Flush implements http.Flusher when the underlying writer does (streaming).
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // activityMiddleware records mutating control-plane requests for Desktop/operators.
