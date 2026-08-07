@@ -61,7 +61,14 @@ curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh 
 ./scripts/install.sh --desktop
 ```
 
-When a Desktop **release asset** is published on GitHub Releases, the installer prefers that binary. Until then (or if the asset is missing), `--desktop` builds from source if you run the installer inside a grain checkout with `just` + Wails available; otherwise it prints build instructions (non-fatal if the CLI installed).
+From **v0.8.0** onward, GitHub Releases attach Desktop assets built by the **Release Desktop** workflow:
+
+| Platform | Asset | Install location |
+|----------|--------|------------------|
+| macOS | `Grain_darwin_<arch>.app.tar.gz` | `~/Applications/Grain.app` (+ optional `grain-desktop` launcher) |
+| Linux | `grain-desktop_linux_<arch>.tar.gz` | `~/.local/bin/grain-desktop` (or `GRAIN_INSTALL_DIR`) |
+
+`install.sh --desktop` prefers those assets. If missing (or offline), it builds from source in a checkout with `just` + Wails; otherwise it prints build instructions (non-fatal when the CLI still installs).
 
 ### Linux
 

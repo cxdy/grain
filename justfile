@@ -57,6 +57,10 @@ desktop-dev:
 # Deps (Ubuntu 22.04+/Debian 12+): libgtk-3-dev libwebkit2gtk-4.1-dev
 desktop-build-linux: desktop-build
 
+# Package Desktop for GitHub Releases (current OS/arch → dist/release/).
+desktop-package-release:
+    ./scripts/package-desktop-release.sh
+
 # Build grain-desktop. macOS: Grain.app + ad-hoc codesign. Linux: bare binary with -tags webkit2_41.
 desktop-build:
     #!/usr/bin/env bash
