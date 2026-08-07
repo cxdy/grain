@@ -10,15 +10,33 @@
   ·
   <a href="https://grainvm.com/docs/main/get-started/quickstart/">Quick start</a>
   ·
+  <a href="https://grainvm.com/docs/main/guides/desktop/">Desktop</a>
+  ·
+  <a href="https://grainvm.com/docs/main/get-started/recipe/">Recipes</a>
+  ·
   <a href="https://github.com/cxdy/grain/releases">Releases</a>
 </p>
 
 <p align="center">
   Apache-2.0
   · macOS &amp; Linux
+  · QEMU · Firecracker · Desktop · MCP
 </p>
 
-grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Actions](https://grainvm.com/docs/main/guides/recipes/act/) (`grain act`), or for a [throwaway k3s](https://grainvm.com/docs/main/guides/recipes/k3s/) lab. Ephemeral by default; persistent when you want it.
+grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Actions](https://grainvm.com/docs/main/guides/recipes/act/) (`grain act`), or for a [throwaway k3s](https://grainvm.com/docs/main/guides/recipes/k3s/) lab. **CLI, optional Desktop GUI, recipe library, and MCP** all talk to the same daemon. Ephemeral by default; persistent when you want it.
+
+---
+
+## Product surface
+
+| | |
+|--|--|
+| **Desktop** | Optional Wails operator console — sandboxes, shell, multi-Run, recipes tab, warm pool, activity feed, multi-host. Not Electron. [`install.sh --desktop`](https://grainvm.com/docs/main/guides/desktop/) |
+| **Recipes** | Portable YAML (`grain/v1`) in `~/.grain/recipes` + official catalog. Import never creates a VM; deploy is a separate step. [`recipe guide`](https://grainvm.com/docs/main/get-started/recipe/) |
+| **Warm pool** | Suspend a golden → `grain new --from` / `--from-pool` for fast clone+loadvm claims. Desktop prefers the pool when ready. [`lifecycle`](https://grainvm.com/docs/main/guides/lifecycle/) |
+| **Firecracker** | Supported second hypervisor on Linux+KVM (vFC-1 agent over vsock, vFC-2 TAP publish/fwd). QEMU remains the default. [`Firecracker`](https://grainvm.com/docs/main/guides/firecracker/) · [`matrix`](https://grainvm.com/docs/main/explain/hypervisor-matrix/) |
+| **MCP** | Built into `grain` — coding agents create/exec/delete sandboxes. [`MCP`](https://grainvm.com/docs/main/guides/mcp/) |
+| **SDKs** | [Go](https://pkg.go.dev/github.com/cxdy/grain/client) · [TypeScript](https://www.npmjs.com/package/@cxdy/grain) · [Python](https://pypi.org/project/grainvm/) · [OpenAPI](api/openapi.yaml) |
 
 ---
 
@@ -26,6 +44,9 @@ grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Acti
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
+
+# Optional: also install Grain Desktop (release assets from v0.8.0+)
+# curl -fsSL …/install.sh | bash -s -- --desktop
 ```
 
 Install QEMU, then check dependencies:
@@ -60,36 +81,9 @@ grain down
 
 Optional starter config and more flags: **[quick start](https://grainvm.com/docs/main/get-started/quickstart/)**.
 
-### Faster creates (template / warm pool)
+---
 
-Cold boots are guest-bound (~seconds). After a golden is agent-ready:
-
-```bash
-grain new -i grain-ubuntu -n golden -p --wait agent
-grain suspend golden
-grain new --from golden -n work1                 # clone + loadvm when snapshotted
-# config warm_pool.template/size, then:
-# grain pool fill && grain new --from-pool -n work2
-```
-
-→ [Lifecycle: create path & warm pool](https://grainvm.com/docs/main/guides/lifecycle/)
-
-### Recipes library
-
-Portable YAML sandboxes (`grain/v1`) live under `~/.grain/recipes`. Import never creates a VM — deploy is a separate step.
-
-```bash
-grain recipe search              # official catalog (git index)
-grain recipe add python-dev      # pull one official body into the library
-grain recipe add ./my-lab.yaml   # or a local file / https URL
-grain new --recipe python-dev    # create from a library name
-```
-
-Official pack includes act/k3s/docker labs, `python-dev`, `go-dev`, `remote-coding`, and more. Desktop has a full Recipes tab (catalog, form builder, deploy preflight).
-
-→ [Sandbox recipes](https://grainvm.com/docs/main/get-started/recipe/)
-
-### Desktop (optional GUI)
+## Desktop (optional GUI)
 
 Operator console for the same daemon as the CLI — not Electron, not a second engine.
 
@@ -111,7 +105,42 @@ Linux `grain-desktop_linux_<arch>.tar.gz` → `grain-desktop` on your PATH.
 
 → [Desktop guide](https://grainvm.com/docs/main/guides/desktop/) · [desktop/README.md](desktop/README.md)
 
-### Firecracker (Linux + KVM)
+---
+
+## Recipes library
+
+Portable YAML sandboxes (`grain/v1`) live under `~/.grain/recipes`. Import never creates a VM — deploy is a separate step.
+
+```bash
+grain recipe search              # official catalog (git index)
+grain recipe add python-dev      # pull one official body into the library
+grain recipe add ./my-lab.yaml   # or a local file / https URL
+grain new --recipe python-dev    # create from a library name
+```
+
+Official pack includes act/k3s/docker labs, `python-dev`, `go-dev`, `remote-coding`, and more. Desktop has a full Recipes tab (catalog, form builder, deploy preflight).
+
+→ [Sandbox recipes](https://grainvm.com/docs/main/get-started/recipe/)
+
+---
+
+## Faster creates (template / warm pool)
+
+Cold boots are guest-bound (~seconds). After a golden is agent-ready:
+
+```bash
+grain new -i grain-ubuntu -n golden -p --wait agent
+grain suspend golden
+grain new --from golden -n work1                 # clone + loadvm when snapshotted
+# config warm_pool.template/size, then:
+# grain pool fill && grain new --from-pool -n work2
+```
+
+→ [Lifecycle: create path & warm pool](https://grainvm.com/docs/main/guides/lifecycle/)
+
+---
+
+## Firecracker (Linux + KVM)
 
 Default hypervisor is still **QEMU** (macOS and Linux). On Linux with `/dev/kvm`, Firecracker is a **supported** second backend:
 
@@ -131,7 +160,9 @@ grain new -i grain-ubuntu-fc --wait agent
 
 → [Firecracker on Linux](https://grainvm.com/docs/main/guides/firecracker/) · [Hypervisor matrix](https://grainvm.com/docs/main/explain/hypervisor-matrix/)
 
-### MCP (coding agents)
+---
+
+## MCP (coding agents)
 
 MCP is built into `grain` (not a separate binary):
 
@@ -177,13 +208,13 @@ grain fwd ls lab         # host port → guest 6443
 | Area | What you get |
 |------|----------------|
 | **CLI** | `up` · `new` · `sh` · `x` · `rm` · mounts · port forwards · profiles · warm pool |
+| **Desktop** | Optional Wails operator console · sandboxes, recipes, warm pool, activity · [guide](https://grainvm.com/docs/main/guides/desktop/) |
 | **Recipes** | Library + official catalog · `grain new --recipe` · bootstrap readiness · [guide](https://grainvm.com/docs/main/get-started/recipe/) |
 | **Presets** | `act` · `k3s` · `docker` |
 | **Guest agent** | Exec, shell, file copy, and fs ops without living in SSH |
 | **Hypervisors** | **QEMU** default (macOS/Linux); **Firecracker** supported on Linux+KVM ([vFC-1](https://grainvm.com/docs/main/guides/firecracker/) agent + [vFC-2](https://grainvm.com/docs/main/guides/firecracker/) partial net) |
 | **API** | Unix socket + optional TCP · [OpenAPI](api/openapi.yaml) |
 | **SDKs** | [Go](https://pkg.go.dev/github.com/cxdy/grain/client) · [TypeScript](https://www.npmjs.com/package/@cxdy/grain) · [Python](https://pypi.org/project/grainvm/) |
-| **Desktop** | Optional Wails operator console · sandboxes, recipes, warm pool, activity · [guide](https://grainvm.com/docs/main/guides/desktop/) |
 
 ---
 
@@ -191,11 +222,12 @@ grain fwd ls lab         # host port → guest 6443
 
 | Page | |
 |------|--|
-| [Install](https://grainvm.com/docs/main/get-started/install/) | Platforms and install options |
+| [Install](https://grainvm.com/docs/main/get-started/install/) | Platforms and install options (incl. Desktop) |
 | [Quick start](https://grainvm.com/docs/main/get-started/quickstart/) | Config + first VM |
 | [First sandbox](https://grainvm.com/docs/main/get-started/first-sandbox/) | Tutorial + interactive demo |
 | [Recipes](https://grainvm.com/docs/main/get-started/recipe/) | Library, official catalog, bootstrap readiness |
 | [Desktop](https://grainvm.com/docs/main/guides/desktop/) | Optional operator GUI |
+| [Warm pool](https://grainvm.com/docs/main/guides/lifecycle/) | Fast create / suspend / pool |
 | [act](https://grainvm.com/docs/main/guides/recipes/act/) | GitHub Actions in a microVM |
 | [k3s](https://grainvm.com/docs/main/guides/recipes/k3s/) | Single-node cluster preset |
 | [Remote lab](https://grainvm.com/docs/main/guides/remote-lab/) | Host + laptop CLI happy path |

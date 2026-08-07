@@ -12,6 +12,21 @@ How-to guides assume you already installed grain and created at least one sandbo
 
 If you are brand new, start with the [quick start](../get-started/quickstart/).
 
+## Highlights
+
+| Guide | Outcome |
+|-------|---------|
+| [Grain Desktop (GUI)](./desktop/) | Optional operator console — sandboxes, shell, **recipes tab**, warm pool, activity, multi-Run |
+| [Sandbox recipes](../get-started/recipe/) | Library + official catalog · `grain new --recipe` · Desktop import/deploy |
+| [Pause, suspend, restore](./lifecycle/) | **Fast create / warm pool / latency** (`--from`, `--from-pool`) |
+| [Firecracker](./firecracker/) | Supported Linux+KVM backend (vFC-1 agent + vFC-2 TAP publish/fwd) |
+
+```bash
+curl -fsSL …/install.sh | bash -s -- --desktop   # Desktop release assets (v0.8.0+)
+grain recipe search && grain new --recipe python-dev
+# Linux+KVM: hypervisor: firecracker  →  see Firecracker guide
+```
+
 ## Popular workloads
 
 | Guide | Outcome |
@@ -28,10 +43,8 @@ grain new --preset k3s -n lab -p --wait userdata
 
 | Guide | When you need it |
 |-------|------------------|
-| [Grain Desktop (GUI)](./desktop/) | Optional operator console (sandboxes, shell, recipes, warm pool, activity, multi-Run) |
 | [Images & golden boots](./images/) | Pull, import, bake, lean golden for pool/claim |
 | [Guest agent](./agent/) | Exec, shell, cp, fs without living in SSH |
-| [Pause, suspend, restore](./lifecycle/) | Lifecycle + **fast create / warm pool / latency** |
 | [Networking & ports](./networking/) | Publish ports, live forwards, SLIRP limits |
 | [Overlay network](./networking-overlay/) | Guest↔guest L2 on one host (`network: overlay`) |
 | [Guest architecture](./multi-arch/) | arm64 / amd64 guests (TCG cross-arch) |
@@ -48,7 +61,6 @@ grain new --preset k3s -n lab -p --wait userdata
 | [Egress proxy](./proxy/) | Admins locking down outbound HTTP(S) |
 | [MCP server](../mcp/) | Claude Code / Codex / OpenCode / Grok Build tool host |
 | [Secrets](./secrets/) | Host secrets and inject into VMs |
-| [Firecracker](./firecracker/) | Supported Linux+KVM backend (agent + partial net) |
 | [Troubleshooting](./troubleshooting/) | When boot, agent, or QEMU misbehaves |
 
 ## More recipes

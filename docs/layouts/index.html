@@ -10,14 +10,15 @@
       <h1>Real Linux sandboxes.<br><span class="hero-line2">On your machine.</span></h1>
       <p class="hero-lead">
         grain runs small, disposable Linux VMs locally — for a shell, for GitHub Actions,
-        or for a throwaway k3s lab. Ephemeral by default; persistent when you need it.
+        or for a throwaway k3s lab. CLI, optional Desktop GUI, recipe library, and MCP —
+        all talking to the same daemon. Ephemeral by default; persistent when you need it.
       </p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#install">Install</a>
-        <a class="btn btn-ghost" href="#demo-section">Try the demo</a>
+        <a class="btn btn-ghost" href="#product">What’s new</a>
         <a class="btn btn-ghost" href="{{ printf "%sget-started/quickstart/" $docs | relURL }}">Quick start</a>
       </div>
-      <p class="hero-meta">macOS · Linux · QEMU · optional Firecracker · MCP · Go · TypeScript · Python</p>
+      <p class="hero-meta">macOS · Linux · QEMU · Firecracker · Desktop · Recipes · MCP · Go · TypeScript · Python</p>
     </div>
 
     <div class="install-card" id="install" data-tabs>
@@ -51,6 +52,57 @@
 <span class="line"><span class="prompt">$</span> just build &amp;&amp; just agent-linux &amp;&amp; ./bin/grain doctor</span></code></pre>
         <p class="panel-note">Requires Go 1.23+. Release binaries also ship on <a href="https://github.com/cxdy/grain/releases">GitHub Releases</a>.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-rule" id="product">
+  <div class="wrap">
+    <h2 class="section-title">Product surface</h2>
+    <p class="section-lead">
+      More than a CLI. Same control plane for Desktop, recipes, warm pool, and Firecracker.
+    </p>
+    <div class="feature-grid">
+      <a class="feature-card" href="{{ printf "%sguides/desktop/" $docs | relURL }}">
+        <span class="feature-kicker">Desktop</span>
+        <h3>Operator console</h3>
+        <p>
+          Optional Wails GUI — sandboxes, shell, multi-Run, recipes tab, warm pool,
+          activity feed, multi-host. Not Electron; thin client of the daemon API.
+        </p>
+        <p class="feature-cmd">install.sh --desktop</p>
+        <span class="path-go">Desktop guide →</span>
+      </a>
+      <a class="feature-card" href="{{ printf "%sget-started/recipe/" $docs | relURL }}">
+        <span class="feature-kicker">Recipes</span>
+        <h3>YAML library + catalog</h3>
+        <p>
+          Portable create + bootstrap files in <code>~/.grain/recipes</code>.
+          Official catalog, URL import (preview then add), deploy as a separate step.
+        </p>
+        <p class="feature-cmd">grain recipe search && grain new --recipe …</p>
+        <span class="path-go">Recipe guide →</span>
+      </a>
+      <a class="feature-card" href="{{ printf "%sguides/lifecycle/" $docs | relURL }}">
+        <span class="feature-kicker">Speed</span>
+        <h3>Warm pool &amp; fast create</h3>
+        <p>
+          Suspend a golden, clone + loadvm, or claim a pre-filled pool member.
+          Desktop prefers the pool when ready &gt; 0.
+        </p>
+        <p class="feature-cmd">grain new --from-pool</p>
+        <span class="path-go">Lifecycle →</span>
+      </a>
+      <a class="feature-card" href="{{ printf "%sguides/firecracker/" $docs | relURL }}">
+        <span class="feature-kicker">Firecracker</span>
+        <h3>Linux + KVM backend</h3>
+        <p>
+          Supported second hypervisor: vFC-1 agent over vsock, vFC-2 TAP publish/fwd.
+          QEMU stays the default on macOS and Linux.
+        </p>
+        <p class="feature-cmd">hypervisor: firecracker</p>
+        <span class="path-go">Firecracker →</span>
+      </a>
     </div>
   </div>
 </section>
@@ -114,20 +166,20 @@
       <div class="map-card">
         <p class="map-kind">Tutorials</p>
         <h3>Learn</h3>
-        <p>Guided paths from zero to a working sandbox.</p>
+        <p>Install, first shell, bootstrap, and recipe library.</p>
         <a href="{{ printf "%sget-started/quickstart/" $docs | relURL }}">Get started →</a>
+      </div>
+      <div class="map-card">
+        <p class="map-kind">How-to</p>
+        <h3>Do</h3>
+        <p>Desktop, act/k3s, Firecracker, warm pool, mounts, networking.</p>
+        <a href="{{ printf "%sguides/" $docs | relURL }}">Guides →</a>
       </div>
       <div class="map-card">
         <p class="map-kind">Agents</p>
         <h3>MCP</h3>
         <p>Host config and tools for coding agents.</p>
         <a href="{{ printf "%smcp/" $docs | relURL }}">MCP →</a>
-      </div>
-      <div class="map-card">
-        <p class="map-kind">How-to</p>
-        <h3>Do</h3>
-        <p>Recipes for act, k3s, mounts, networking, and more.</p>
-        <a href="{{ printf "%sguides/" $docs | relURL }}">Guides →</a>
       </div>
       <div class="map-card">
         <p class="map-kind">Reference</p>

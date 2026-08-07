@@ -42,7 +42,7 @@ paginate = 20
     ordered = false
 
 [params]
-  description = "Linux microVM sandboxes on your own hardware — shells, GitHub Actions, and k3s labs."
+  description = "Linux microVM sandboxes on your own hardware — CLI, Desktop GUI, recipes, Firecracker, MCP."
   github = "https://github.com/cxdy/grain"
   # Latest product docs path (/docs/X.Y.Z/). Source in git is only docs/main/;
   # CI materializes version dirs from tags (issue #88).
@@ -140,11 +140,20 @@ paginate = 20
       title = "Guides overview"
       path = "guides/"
     [[params.docsNav.groups.links]]
+      title = "Grain Desktop (GUI)"
+      path = "guides/desktop/"
+    [[params.docsNav.groups.links]]
       title = "GitHub Actions (act)"
       path = "guides/recipes/act/"
     [[params.docsNav.groups.links]]
       title = "k3s lab"
       path = "guides/recipes/k3s/"
+    [[params.docsNav.groups.links]]
+      title = "Firecracker (Linux)"
+      path = "guides/firecracker/"
+    [[params.docsNav.groups.links]]
+      title = "Warm pool & fast create"
+      path = "guides/lifecycle/"
     [[params.docsNav.groups.links]]
       title = "Images & golden boots"
       path = "guides/images/"
@@ -178,12 +187,6 @@ paginate = 20
     [[params.docsNav.groups.links]]
       title = "Secrets"
       path = "guides/secrets/"
-    [[params.docsNav.groups.links]]
-      title = "Pause, suspend, restore"
-      path = "guides/lifecycle/"
-    [[params.docsNav.groups.links]]
-      title = "Firecracker (Linux)"
-      path = "guides/firecracker/"
     [[params.docsNav.groups.links]]
       title = "Troubleshooting"
       path = "guides/troubleshooting/"
@@ -232,6 +235,9 @@ paginate = 20
     [[params.docsNav.groups.links]]
       title = "Architecture"
       path = "explain/architecture/"
+    [[params.docsNav.groups.links]]
+      title = "Hypervisor matrix"
+      path = "explain/hypervisor-matrix/"
     [[params.docsNav.groups.links]]
       title = "Agent vs SSH"
       path = "explain/agent-vs-ssh/"
