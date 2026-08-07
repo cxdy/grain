@@ -25,28 +25,14 @@
 
 grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Actions](https://grainvm.com/docs/main/guides/recipes/act/) (`grain act`), or for a [throwaway k3s](https://grainvm.com/docs/main/guides/recipes/k3s/) lab. **CLI, optional Desktop GUI, recipe library, and MCP** all talk to the same daemon. Ephemeral by default; persistent when you want it.
 
----
-
-## Product surface
-
-| | |
-|--|--|
-| **Desktop** | Optional Wails operator console — sandboxes, shell, multi-Run, recipes tab, warm pool, activity feed, multi-host. Not Electron. [`install.sh --desktop`](https://grainvm.com/docs/main/guides/desktop/) |
-| **Recipes** | Portable YAML (`grain/v1`) in `~/.grain/recipes` + official catalog. Import never creates a VM; deploy is a separate step. [`recipe guide`](https://grainvm.com/docs/main/get-started/recipe/) |
-| **Warm pool** | Suspend a golden → `grain new --from` / `--from-pool` for fast clone+loadvm claims. Desktop prefers the pool when ready. [`lifecycle`](https://grainvm.com/docs/main/guides/lifecycle/) |
-| **Firecracker** | Supported second hypervisor on Linux+KVM (vFC-1 agent over vsock, vFC-2 TAP publish/fwd). QEMU remains the default. [`Firecracker`](https://grainvm.com/docs/main/guides/firecracker/) · [`matrix`](https://grainvm.com/docs/main/explain/hypervisor-matrix/) |
-| **MCP** | Built into `grain` — coding agents create/exec/delete sandboxes. [`MCP`](https://grainvm.com/docs/main/guides/mcp/) |
-| **SDKs** | [Go](https://pkg.go.dev/github.com/cxdy/grain/client) · [TypeScript](https://www.npmjs.com/package/@cxdy/grain) · [Python](https://pypi.org/project/grainvm/) · [OpenAPI](api/openapi.yaml) |
-
----
 
 ## Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash
 
-# Optional: also install Grain Desktop (release assets from v0.8.0+)
-# curl -fsSL …/install.sh | bash -s -- --desktop
+# Optional: also install Grain Desktop
+curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash -s -- --desktop
 ```
 
 Install QEMU, then check dependencies:
@@ -56,7 +42,7 @@ Install QEMU, then check dependencies:
 brew install qemu
 
 # Debian / Ubuntu
-# sudo apt-get install -y qemu-system qemu-utils
+sudo apt-get install -y qemu-system qemu-utils
 
 grain doctor
 ```
