@@ -27,27 +27,19 @@
     });
   }
 
-  // Version switcher — live tree stays on-site; historical SVU tags open GitHub at commit (#88)
+  // Version switcher — navigate on-site between /docs/<ver>/… (materialized at build).
+  // GitHub commit link is a separate control in the version switcher partial.
   var verSelect = document.querySelector("[data-version-select]");
   if (verSelect) {
     verSelect.addEventListener("change", function () {
-      var targetRoot = verSelect.value; // /docs/main/ or https://github.com/.../tree/<sha>
+      var targetRoot = verSelect.value; // e.g. /docs/0.8.0/ or /docs/main/
       if (!targetRoot) return;
-      var opt = verSelect.options[verSelect.selectedIndex];
-      var external =
-        (opt && opt.getAttribute("data-external") === "1") ||
-        /^https?:\/\//i.test(targetRoot);
-      if (external) {
+      if (/^https?:\/\//i.test(targetRoot)) {
+        // Legacy external entries (if any) — open source, don't leave broken.
         window.open(targetRoot, "_blank", "noopener,noreferrer");
-        // Reset select to current live option so the control stays truthful.
-        for (var i = 0; i < verSelect.options.length; i++) {
-          if (verSelect.options[i].getAttribute("data-live") === "1") {
-            verSelect.selectedIndex = i;
-            break;
-          }
-        }
         return;
       }
+      if (targetRoot.charAt(targetRoot.length - 1) !== "/") targetRoot += "/";
       var path = window.location.pathname;
       var m = path.match(/^\/docs\/[^/]+\/(.*)$/);
       if (m) {

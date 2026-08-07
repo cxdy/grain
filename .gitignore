@@ -36,3 +36,5 @@ docs/_site/
 docs/public/
 docs/resources/
 docs/.hugo_build.lock
+# Version trees materialized at build from git tags (issue #88 — not committed)
+docs/content/docs/[0-9]*/
