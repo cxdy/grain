@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-07
+
+Patch release after **v0.8.0**: restore remote interactive shell, which broke when activity logging wrapped WebSocket responses.
+
+### Fixed
+
+- **Remote `grain sh` 502** — activity middleware recorded `GET /vms/{name}/shell` with a `statusRecorder` that did not implement `http.Hijacker`. The daemon reverse-proxy then failed WebSocket upgrade with `can't switch protocols using non-Hijacker ResponseWriter`. `statusRecorder` now delegates `Hijack` / `Flush` / `Unwrap`. Affects remote CLI (and Desktop shell over a remote host API). Local shells were unaffected. **Restart the host daemon** after upgrade.
+
+### Docs
+
+- **Product surface** — homepage, docs nav, and README call out Desktop, recipe library, warm pool, and Firecracker more prominently.
+
 ## [0.8.0] - 2026-08-06
 
 Product-facing **minor** release after **v0.7.0**: **Grain Desktop** (app + **release binaries**), recipe library, warm pool / fast create, activity + metrics defaults, and **supported** Firecracker on Linux+KVM. Default hypervisor remains **QEMU**. Cold Ubuntu boot is still guest-bound (~seconds); sub-second “ready” means template/pool claim, not full cold boot.
