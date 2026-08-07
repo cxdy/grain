@@ -47,18 +47,24 @@ paginate = 20
   # Live docs path slug (single content tree: docs/content/docs/main/).
   docsVersion = "main"
   # Product label for the live site (updated by scripts/docs-version-bump.sh).
-  docsVersionLabel = "v0.7.0"
+  docsVersionLabel = "v0.8.0"
   # Git commit for the latest product release tag (homepage/marketing fallback).
-  docsVersionCommit = "ea3ee95644a5832be47c36fc0f051302ba38f32a"
+  docsVersionCommit = "6c8f68ca49a08e0d2a61efe3b57428bf3a9fed6b"
   # Version dropdown: live site + product SVU tags as GitHub commit links.
   # No per-release content copies under docs/content/docs/ (issue #88).
   # Non-product tags (fc-*, golden-*, sdk-*, guest-agent) are excluded.
   [[params.docsVersions]]
     version = "main"
-    label = "v0.7.0 (latest)"
+    label = "v0.8.0 (latest)"
     path = "/docs/main/"
     live = true
-    commit = "ea3ee95644a5832be47c36fc0f051302ba38f32a"
+    commit = "6c8f68ca49a08e0d2a61efe3b57428bf3a9fed6b"
+  [[params.docsVersions]]
+    version = "0.8.0"
+    label = "v0.8.0"
+    path = "https://github.com/cxdy/grain/tree/6c8f68ca49a08e0d2a61efe3b57428bf3a9fed6b"
+    external = true
+    commit = "6c8f68ca49a08e0d2a61efe3b57428bf3a9fed6b"
   [[params.docsVersions]]
     version = "0.7.0"
     label = "v0.7.0"
