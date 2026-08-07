@@ -44,105 +44,51 @@ paginate = 20
 [params]
   description = "Linux microVM sandboxes on your own hardware — shells, GitHub Actions, and k3s labs."
   github = "https://github.com/cxdy/grain"
-  # Live docs path slug (single content tree: docs/content/docs/main/).
-  docsVersion = "main"
+  # Latest product docs path (/docs/X.Y.Z/). Source in git is only docs/main/;
+  # CI materializes version dirs from tags (issue #88).
+  docsVersion = "0.8.0"
   # Product label for the live site (updated by scripts/docs-version-bump.sh).
   docsVersionLabel = "v0.8.0"
   # Git commit for the latest product release tag (homepage/marketing fallback).
-  docsVersionCommit = "6c8f68ca49a08e0d2a61efe3b57428bf3a9fed6b"
-  # Version dropdown: live site + product SVU tags as GitHub commit links.
-  # No per-release content copies under docs/content/docs/ (issue #88).
+  docsVersionCommit = "062f4c4ac4b60cd564fd9c0762025993be911ce2"
+  # Version dropdown: on-site /docs/<ver>/ paths. Commit SHA shown for source.
   # Non-product tags (fc-*, golden-*, sdk-*, guest-agent) are excluded.
   [[params.docsVersions]]
-    version = "main"
-    label = "v0.8.0 (latest)"
-    path = "/docs/main/"
-    live = true
-    commit = "6c8f68ca49a08e0d2a61efe3b57428bf3a9fed6b"
-  [[params.docsVersions]]
     version = "0.8.0"
-    label = "v0.8.0"
-    path = "https://github.com/cxdy/grain/tree/6c8f68ca49a08e0d2a61efe3b57428bf3a9fed6b"
-    external = true
-    commit = "6c8f68ca49a08e0d2a61efe3b57428bf3a9fed6b"
+    label = "v0.8.0 (latest)"
+    path = "/docs/0.8.0/"
+    live = true
+    commit = "062f4c4ac4b60cd564fd9c0762025993be911ce2"
   [[params.docsVersions]]
     version = "0.7.0"
     label = "v0.7.0"
-    path = "https://github.com/cxdy/grain/tree/ea3ee95644a5832be47c36fc0f051302ba38f32a"
-    external = true
+    path = "/docs/0.7.0/"
     commit = "ea3ee95644a5832be47c36fc0f051302ba38f32a"
   [[params.docsVersions]]
     version = "0.6.0"
     label = "v0.6.0"
-    path = "https://github.com/cxdy/grain/tree/1267d2fd70f65206f199806704a9cec7434afee7"
-    external = true
+    path = "/docs/0.6.0/"
     commit = "1267d2fd70f65206f199806704a9cec7434afee7"
   [[params.docsVersions]]
     version = "0.5.0"
     label = "v0.5.0"
-    path = "https://github.com/cxdy/grain/tree/74f81d91bc65b4b7c3643112df8381277f2e9462"
-    external = true
+    path = "/docs/0.5.0/"
     commit = "74f81d91bc65b4b7c3643112df8381277f2e9462"
   [[params.docsVersions]]
     version = "0.4.0"
     label = "v0.4.0"
-    path = "https://github.com/cxdy/grain/tree/6a2ea0fac89b50d29f78a08cc1098f535d9d8971"
-    external = true
+    path = "/docs/0.4.0/"
     commit = "6a2ea0fac89b50d29f78a08cc1098f535d9d8971"
   [[params.docsVersions]]
     version = "0.3.0"
     label = "v0.3.0"
-    path = "https://github.com/cxdy/grain/tree/e9888194916d46ec9088e80eb35629bcb2db7ef6"
-    external = true
+    path = "/docs/0.3.0/"
     commit = "e9888194916d46ec9088e80eb35629bcb2db7ef6"
   [[params.docsVersions]]
-    version = "0.2.2"
-    label = "v0.2.2"
-    path = "https://github.com/cxdy/grain/tree/e11bae9883914e32fafe6868a2c50dbdb8bac826"
-    external = true
-    commit = "e11bae9883914e32fafe6868a2c50dbdb8bac826"
-  [[params.docsVersions]]
-    version = "0.2.1"
-    label = "v0.2.1"
-    path = "https://github.com/cxdy/grain/tree/e94c7b80a74764f04b6634098489ac6e61937fcd"
-    external = true
-    commit = "e94c7b80a74764f04b6634098489ac6e61937fcd"
-  [[params.docsVersions]]
-    version = "0.2.0"
-    label = "v0.2.0"
-    path = "https://github.com/cxdy/grain/tree/68610a4b2f3d4c680a1b57be7174f0ec0d0574bb"
-    external = true
-    commit = "68610a4b2f3d4c680a1b57be7174f0ec0d0574bb"
-  [[params.docsVersions]]
-    version = "0.1.4"
-    label = "v0.1.4"
-    path = "https://github.com/cxdy/grain/tree/facf152b7624f16724fac595740c56dbcf7b27ae"
-    external = true
-    commit = "facf152b7624f16724fac595740c56dbcf7b27ae"
-  [[params.docsVersions]]
-    version = "0.1.3"
-    label = "v0.1.3"
-    path = "https://github.com/cxdy/grain/tree/1f36cb2621d4db9072b6eeb5e7d210699d2dc4af"
-    external = true
-    commit = "1f36cb2621d4db9072b6eeb5e7d210699d2dc4af"
-  [[params.docsVersions]]
-    version = "0.1.2"
-    label = "v0.1.2"
-    path = "https://github.com/cxdy/grain/tree/bcfeb685370a6bb45abfef26f7e747c7565c154c"
-    external = true
-    commit = "bcfeb685370a6bb45abfef26f7e747c7565c154c"
-  [[params.docsVersions]]
-    version = "0.1.1"
-    label = "v0.1.1"
-    path = "https://github.com/cxdy/grain/tree/30e58f3eaf9ebf01742c8d826d9a91551dc5ab69"
-    external = true
-    commit = "30e58f3eaf9ebf01742c8d826d9a91551dc5ab69"
-  [[params.docsVersions]]
-    version = "0.1.0"
-    label = "v0.1.0"
-    path = "https://github.com/cxdy/grain/tree/4e1678fe109b3d49c3facf9bc42662b925a03c61"
-    external = true
-    commit = "4e1678fe109b3d49c3facf9bc42662b925a03c61"
+    version = "main"
+    label = "main (edge)"
+    path = "/docs/main/"
+    commit = "062f4c4ac4b60cd564fd9c0762025993be911ce2"
 
   brand = "grain"
 

@@ -1,7 +1,8 @@
 {{/*
-  Live docs: single tree at /docs/main/ (params.docsVersion).
-  Historical product SVU tags: external GitHub tree URLs at the release commit
-  (no per-release content copies — issue #88).
+  Version switcher: all options are on-site /docs/<ver>/ paths.
+  Historical content is materialized from git tags at Hugo build time
+  (scripts/docs-materialize-versions.sh) — not stored as permanent trees on main.
+  The short commit link opens GitHub source for the selected version.
 */}}
 {{ $current := partial "docs-version.html" . }}
 {{ $commit := "" }}
@@ -17,12 +18,11 @@
     {{ range .Site.Params.docsVersions }}
       <option value="{{ .path }}"
         {{ if eq .version $current }}selected{{ end }}
-        {{ if .external }}data-external="1"{{ end }}
         {{ if .live }}data-live="1"{{ end }}
-        {{ with .commit }}data-commit="{{ . }}"{{ end }}>{{ .label }}{{ if .external }} (source){{ end }}</option>
+        {{ with .commit }}data-commit="{{ . }}"{{ end }}>{{ .label }}</option>
     {{ end }}
   </select>
   {{ with $commit }}
-  <a class="version-commit" href="{{ $.Site.Params.github }}/tree/{{ . }}" title="Git commit for this docs version" rel="noopener" target="_blank">{{ slicestr . 0 7 }}</a>
+  <a class="version-commit" href="{{ $.Site.Params.github }}/tree/{{ . }}" title="Source commit for this docs version" rel="noopener" target="_blank">{{ slicestr . 0 7 }}</a>
   {{ end }}
 </div>

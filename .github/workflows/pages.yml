@@ -41,6 +41,15 @@ jobs:
           hugo-version: "0.139.4"
           extended: true
 
+      # Issue #88: versioned docs paths without committing per-release trees.
+      # Extract docs/main from each product tag into docs/content/docs/X.Y.Z/.
+      - name: Materialize versioned docs from tags
+        run: |
+          set -euo pipefail
+          chmod +x scripts/docs-materialize-versions.sh
+          ./scripts/docs-materialize-versions.sh
+          ls -la docs/content/docs/ | head -30
+
       - name: Build site
         working-directory: docs
         run: hugo --minify --gc

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Update the Hugo docs version switcher for a product release WITHOUT copying
-# per-release content trees (see GitHub issue #88).
+# Update Hugo docs version switcher for a product release WITHOUT committing
+# per-release content trees (issue #88).
 #
-# Live docs are a single tree: docs/content/docs/main/ → site path /docs/main/.
-# Historical product SVU tags (vX.Y.Z only; not fc/golden/sdk/guest-agent tags)
-# appear in the switcher as GitHub commit links (source at that tag).
+# Git keeps a single source tree: docs/content/docs/main/.
+# Switcher entries use on-site paths /docs/X.Y.Z/ (and /docs/main/ edge).
+# CI runs scripts/docs-materialize-versions.sh before hugo to extract each
+# tag's docs into those paths at build time; commit SHAs still show in the UI.
 #
 # Usage:
 #   ./scripts/docs-version-bump.sh 0.3.1
@@ -42,9 +43,10 @@ if [[ ! -f "$HUGO" ]]; then
   exit 1
 fi
 
-# Refuse to reintroduce per-release content trees.
-if [[ -d "docs/content/docs/${VER}" ]]; then
-  echo "error: found legacy tree docs/content/docs/${VER} — remove it (issue #88: no per-release content copies)" >&2
+# Refuse to *commit* per-release trees (build-time materialize dirs are gitignored).
+if git ls-files --error-unmatch "docs/content/docs/${VER}" >/dev/null 2>&1 \
+  || git ls-files "docs/content/docs/${VER}" | grep -q .; then
+  echo "error: tracked per-release tree docs/content/docs/${VER} — remove from git (issue #88)" >&2
   exit 1
 fi
 
@@ -139,13 +141,38 @@ def list_product_tags() -> list[tuple[str, str, str]]:
         return tuple(parts[:3])
 
     ordered = sorted(found.keys(), key=ver_key, reverse=True)
-    return [(v, found[v][0], found[v][1]) for v in ordered]
+    out = []
+    for v in ordered:
+        name, commit = found[v]
+        # Only list tags that have a docs tree (materialize will extract it).
+        has_main = (
+            subprocess.call(
+                ["git", "cat-file", "-e", f"{name}:docs/content/docs/main/_index.md"],
+                cwd=str(repo),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            == 0
+        )
+        has_ver = (
+            subprocess.call(
+                ["git", "cat-file", "-e", f"{name}:docs/content/docs/{v}/_index.md"],
+                cwd=str(repo),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            == 0
+        )
+        if has_main or has_ver:
+            out.append((v, name, commit))
+    return out
 
 
-# Patch default docs labels (path slug stays main).
+# Default site version = latest product release slug (on-site /docs/X.Y.Z/).
+# Content still lives only as docs/main/ in git; CI materializes version dirs.
 text, n1 = re.subn(
     r'(docsVersion\s*=\s*")[^"]*(")',
-    r'\g<1>main\2',
+    rf"\g<1>{ver}\2",
     text,
     count=1,
 )
@@ -178,42 +205,38 @@ tags = list_product_tags()
 if not any(v == ver for v, _, _ in tags):
     tags = [(ver, f"v{ver}", live_commit)] + tags
 else:
-    # Prefer live_commit for this version.
     tags = [(v, n, live_commit if v == ver else c) for v, n, c in tags]
 
 
-def fmt_live(label: str, commit: str) -> str:
-    lines = [
-        "  [[params.docsVersions]]\n",
-        '    version = "main"\n',
-        f'    label = "{label}"\n',
-        '    path = "/docs/main/"\n',
-        "    live = true\n",
-    ]
-    if commit:
-        lines.append(f'    commit = "{commit}"\n')
-    return "".join(lines)
-
-
-def fmt_external(version: str, commit: str, tag_name: str) -> str:
-    ref = commit or tag_name
-    path = f"{github}/tree/{ref}"
+def fmt_version(version: str, label: str, commit: str, *, live: bool = False) -> str:
+    """On-site path /docs/<ver>/ — materialize script fills content at build time."""
     lines = [
         "  [[params.docsVersions]]\n",
         f'    version = "{version}"\n',
-        f'    label = "v{version}"\n',
-        f'    path = "{path}"\n',
-        "    external = true\n",
+        f'    label = "{label}"\n',
+        f'    path = "/docs/{version}/"\n',
     ]
+    if live:
+        lines.append("    live = true\n")
     if commit:
         lines.append(f'    commit = "{commit}"\n')
     return "".join(lines)
 
 
-parts = [fmt_live(f"v{ver} (latest)", live_commit)]
-for v, name, commit in tags:
-    # Historical rows for all product tags (including current) as commit view.
-    parts.append(fmt_external(v, commit, name))
+parts = []
+# Newest first; first entry is latest release (live).
+for i, (v, name, commit) in enumerate(tags):
+    label = f"v{v} (latest)" if i == 0 else f"v{v}"
+    parts.append(fmt_version(v, label, commit, live=(i == 0)))
+# Optional edge tree always present in git.
+parts.append(
+    fmt_version(
+        "main",
+        "main (edge)",
+        git_rev("HEAD") or live_commit,
+        live=False,
+    )
+)
 new_block = "".join(parts)
 
 block_re = re.compile(
@@ -231,7 +254,7 @@ if region_end < len(text) and text[region_end] == "\n":
 
 text = text[:region_start] + new_block + "\n" + text[region_end:]
 hugo.write_text(text)
-print(f"updated {hugo}: live=/docs/main/ label=v{ver}, {len(tags)} product tag(s) as commit links")
+print(f"updated {hugo}: docsVersion={ver} on-site paths, {len(tags)} version(s) + main edge")
 PY
 
-echo "docs-version-bump: done (live docs = main, latest label v${VER})"
+echo "docs-version-bump: done (latest /docs/${VER}/; content source remains docs/main/ in git)"

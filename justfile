@@ -326,10 +326,18 @@ version:
     echo "current: $(svu current 2>/dev/null || echo '(none)')"
     echo "next:    $(svu next)"
 
-# Update docs switcher label + product tag→commit list (no per-release content copy; #88).
+# Update docs switcher label + on-site /docs/X.Y.Z/ list (no committed version trees; #88).
 # Example: just docs-version 0.3.1
 docs-version ver:
     ./scripts/docs-version-bump.sh {{ ver }}
+
+# Materialize version trees from tags + build Hugo site (matches Pages CI).
+docs-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./scripts/docs-materialize-versions.sh
+    (cd docs && hugo --minify --gc)
+    echo "✓ docs/public (open docs/public/index.html)"
 
 # Create and push the next semver tag from conventional commits (svu next).
 # Also updates Hugo docs switcher metadata (single live tree + SVU commit links)
