@@ -46,18 +46,23 @@ paginate = 20
   github = "https://github.com/cxdy/grain"
   # Latest product docs path (/docs/X.Y.Z/). Source in git is only docs/main/;
   # CI materializes version dirs from tags (issue #88).
-  docsVersion = "0.8.0"
+  docsVersion = "0.8.1"
   # Product label for the live site (updated by scripts/docs-version-bump.sh).
-  docsVersionLabel = "v0.8.0"
+  docsVersionLabel = "v0.8.1"
   # Git commit for the latest product release tag (homepage/marketing fallback).
-  docsVersionCommit = "062f4c4ac4b60cd564fd9c0762025993be911ce2"
+  docsVersionCommit = "7b0522dd14fe9a93e0220b5f4f40854b4ef426c6"
   # Version dropdown: on-site /docs/<ver>/ paths. Commit SHA shown for source.
   # Non-product tags (fc-*, golden-*, sdk-*, guest-agent) are excluded.
   [[params.docsVersions]]
-    version = "0.8.0"
-    label = "v0.8.0 (latest)"
-    path = "/docs/0.8.0/"
+    version = "0.8.1"
+    label = "v0.8.1 (latest)"
+    path = "/docs/0.8.1/"
     live = true
+    commit = "7b0522dd14fe9a93e0220b5f4f40854b4ef426c6"
+  [[params.docsVersions]]
+    version = "0.8.0"
+    label = "v0.8.0"
+    path = "/docs/0.8.0/"
     commit = "062f4c4ac4b60cd564fd9c0762025993be911ce2"
   [[params.docsVersions]]
     version = "0.7.0"
@@ -88,7 +93,7 @@ paginate = 20
     version = "main"
     label = "main (edge)"
     path = "/docs/main/"
-    commit = "062f4c4ac4b60cd564fd9c0762025993be911ce2"
+    commit = "7b0522dd14fe9a93e0220b5f4f40854b4ef426c6"
 
   brand = "grain"
 
