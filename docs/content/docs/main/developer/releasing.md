@@ -75,6 +75,10 @@ svu next
    same tag: `Grain_darwin_<arch>.app.tar.gz`, `grain-desktop_linux_<arch>.tar.gz`.
    Waits for the GoReleaser release to exist, then attaches assets. Re-run via
    workflow_dispatch if a leg fails.
+   On macOS, if these Actions secrets are set, the app is **Developer ID signed +
+   notarized + stapled**: `APPLE_TEAM_ID`, `MACOS_CERTIFICATE` (base64 `.p12`),
+   `MACOS_CERTIFICATE_PWD`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`,
+   `APPLE_API_KEY` (base64 `.p8` or PEM). Without secrets, assets are ad-hoc signed.
 
 6. Watch **Pages** — deploys grainvm.com with the new docs label + switcher.
 

@@ -21,7 +21,7 @@ Product-facing **minor** release after **v0.7.0**: **Grain Desktop** (app + **re
 | **Firecracker** | **vFC-1** agent + **vFC-2** partial TAP publish/fwd; catalog `fc-kernel` / `grain-ubuntu-fc` |
 | **Ops / docs** | Activity ring, metrics default on, docs single-tree versioning (#88), README product surface |
 
-**Not in this release:** Apple notarization of Desktop (ad-hoc codesign on macOS assets), FC on macOS, multi-tenant RBAC.
+**Not in this release:** FC on macOS, multi-tenant RBAC. macOS Desktop is **Developer ID + notarized** when Apple signing secrets are configured on the repo (otherwise ad-hoc codesign).
 
 ### Added (release packaging)
 

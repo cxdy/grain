@@ -28,15 +28,18 @@ version="${version#v}"
 
 echo "package-desktop-release: os=${os} arch=${arch} version=${version}"
 
-command -v wails >/dev/null 2>&1 || {
-  echo "installing wails CLI…"
-  go install github.com/wailsapp/wails/v2/cmd/wails@latest
-  export PATH="${PATH}:$(go env GOPATH)/bin"
-}
+if [[ "${PACKAGE_ONLY:-}" == "1" ]]; then
+  echo "package-desktop-release: PACKAGE_ONLY=1 (skip rebuild)"
+else
+  command -v wails >/dev/null 2>&1 || {
+    echo "installing wails CLI…"
+    go install github.com/wailsapp/wails/v2/cmd/wails@latest
+    export PATH="${PATH}:$(go env GOPATH)/bin"
+  }
 
-# Inject product version into wails.json when present (best-effort).
-if [[ -f desktop/wails.json ]] && command -v python3 >/dev/null 2>&1; then
-  python3 - "$version" <<'PY'
+  # Inject product version into wails.json when present (best-effort).
+  if [[ -f desktop/wails.json ]] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$version" <<'PY'
 import json, sys
 from pathlib import Path
 ver = sys.argv[1]
@@ -47,9 +50,10 @@ info["productVersion"] = ver
 p.write_text(json.dumps(data, indent=2) + "\n")
 print(f"wails.json productVersion={ver}")
 PY
-fi
+  fi
 
-just desktop-build
+  just desktop-build
+fi
 
 outdir="${ROOT}/dist/release"
 mkdir -p "$outdir"

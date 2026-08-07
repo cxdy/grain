@@ -96,10 +96,38 @@ jobs:
           echo "tag=${TAG}" >>"$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >>"$GITHUB_OUTPUT"
 
+      - name: Build Desktop
+        env:
+          DESKTOP_VERSION: ${{ steps.ver.outputs.version }}
+          CGO_ENABLED: "1"
+        run: |
+          set -euo pipefail
+          just desktop-build
+
+      - name: Sign and notarize (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APPLE_TEAM_ID:-}" || -z "${MACOS_CERTIFICATE:-}" || -z "${APPLE_API_KEY:-}" ]]; then
+            echo "::warning::Apple signing secrets not set — packaging ad-hoc signed Desktop (Gatekeeper will warn)"
+            exit 0
+          fi
+          chmod +x scripts/sign-and-notarize-macos.sh
+          ./scripts/sign-and-notarize-macos.sh
+
       - name: Package Desktop release asset
         env:
           DESKTOP_VERSION: ${{ steps.ver.outputs.version }}
           CGO_ENABLED: "1"
+          # Skip rebuild — already built (+ notarized on macOS when secrets present)
+          PACKAGE_ONLY: "1"
         run: |
           set -euo pipefail
           chmod +x scripts/package-desktop-release.sh
