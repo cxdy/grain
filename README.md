@@ -23,7 +23,7 @@
   · QEMU · Firecracker · Desktop · MCP
 </p>
 
-grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Actions](https://grainvm.com/docs/main/guides/recipes/act/) (`grain act`), or for a [throwaway k3s](https://grainvm.com/docs/main/guides/recipes/k3s/) lab. **CLI, optional Desktop GUI, recipe library, and MCP** all talk to the same daemon. Ephemeral by default; persistent when you want it.
+grain runs small, disposable Linux VMs locally — for a shell, for [GitHub Actions](https://grainvm.com/docs/main/guides/recipes/act/) (`grain act`), or for a [throwaway k3s](https://grainvm.com/docs/main/guides/recipes/k3s/) lab. Ephemeral by default; persistent when you want it.
 
 
 ## Install
