@@ -332,6 +332,7 @@ func TestRename(t *testing.T) {
 		t.Fatal(err)
 	}
 	disk := filepath.Join(s.Dir("old"), "disk.qcow2")
+	qmp := filepath.Join(s.Dir("old"), "qmp.sock")
 	if err := os.MkdirAll(s.Dir("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -342,6 +343,7 @@ func TestRename(t *testing.T) {
 		Name:      "old",
 		Status:    vm.StatusStopped,
 		DiskPath:  disk,
+		QMPPath:   qmp,
 		CPUs:      1,
 		MemoryMB:  512,
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
@@ -357,8 +359,12 @@ func TestRename(t *testing.T) {
 		t.Fatalf("name %s", got.Name)
 	}
 	wantDisk := filepath.Join(s.Dir("new"), "disk.qcow2")
+	wantQMP := filepath.Join(s.Dir("new"), "qmp.sock")
 	if got.DiskPath != wantDisk {
 		t.Fatalf("disk %s want %s", got.DiskPath, wantDisk)
+	}
+	if got.QMPPath != wantQMP {
+		t.Fatalf("qmp %s want %s", got.QMPPath, wantQMP)
 	}
 	if _, err := s.Get("old"); err == nil {
 		t.Fatal("old should be gone")
@@ -372,5 +378,131 @@ func TestRename(t *testing.T) {
 	}
 	if _, err := s.Rename("new", "taken"); err == nil {
 		t.Fatal("expected conflict")
+	}
+}
+
+func TestRenameEdgeCases(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	s, err := store.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Rename("", "x"); err == nil {
+		t.Fatal("empty old")
+	}
+	if _, err := s.Rename("x", ""); err == nil {
+		t.Fatal("empty new")
+	}
+	if _, err := s.Rename("missing", "other"); err == nil {
+		t.Fatal("missing old")
+	}
+	// same name is identity
+	if err := s.Put(&vm.Instance{Name: "same", Status: vm.StatusStopped, CPUs: 1, MemoryMB: 256}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Rename("same", "same")
+	if err != nil || got.Name != "same" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	// same name missing
+	if _, err := s.Rename("nope", "nope"); err == nil {
+		t.Fatal("same name missing")
+	}
+	// rename with empty disk/qmp paths
+	if err := s.Put(&vm.Instance{Name: "plain", Status: vm.StatusStopped, CPUs: 1, MemoryMB: 128}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Rename("plain", "plain2")
+	if err != nil || got.Name != "plain2" {
+		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+func TestRenameCorruptMetaRollback(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	s, err := store.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create VM dir with corrupt meta (Rename moves dir then fails unmarshal → rollback)
+	d := s.Dir("broken")
+	if err := os.MkdirAll(d, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(d, "meta.json"), []byte("{not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Rename("broken", "moved"); err == nil {
+		t.Fatal("expected corrupt meta error")
+	}
+	// best-effort rollback should restore old dir
+	if _, err := os.Stat(s.Dir("broken")); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+}
+
+func TestStoreConcurrentPutGet(t *testing.T) {
+	t.Parallel()
+	s, err := store.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 50; i++ {
+			_ = s.Put(&vm.Instance{Name: "c", Status: vm.StatusRunning, CPUs: 1, MemoryMB: 256})
+			_, _ = s.Get("c")
+			_, _ = s.List()
+			_, _ = s.Names()
+		}
+	}()
+	for i := 0; i < 50; i++ {
+		_ = s.Put(&vm.Instance{Name: "c", Status: vm.StatusStopped, CPUs: 2, MemoryMB: 512})
+		_, _ = s.Get("c")
+		_, _ = s.List()
+	}
+	<-done
+	if _, err := s.Get("c"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRenameMissingMetaAfterMove(t *testing.T) {
+	t.Parallel()
+	// Dir exists but meta missing: rename moves dir, ReadFile fails, rollback.
+	root := t.TempDir()
+	s, err := store.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := s.Dir("nometa")
+	if err := os.MkdirAll(d, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// no meta.json
+	if _, err := s.Rename("nometa", "elsewhere"); err == nil {
+		t.Fatal("expected error")
+	}
+	if _, err := os.Stat(s.Dir("nometa")); err != nil {
+		t.Fatalf("should rollback: %v", err)
+	}
+}
+
+func TestListWhenVMsDirRemoved(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	s, err := store.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "vms")); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.List()
+	if err != nil || list != nil {
+		t.Fatalf("%v %v", list, err)
 	}
 }

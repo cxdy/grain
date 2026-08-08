@@ -26,6 +26,14 @@ jobs:
 
       - uses: extractions/setup-just@v3
 
+      # Xvfb/xclip: linux clipboard X11 unit tests (selection-owner paths).
+      # qemu-utils: desktop sandbox_meta disk resize paths (qemu-img).
+      - name: Install test system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            xvfb x11-utils xclip xauth qemu-utils
+
       - name: Unit tests
         run: just test
 

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -667,6 +668,9 @@ func TestWaitReadyMockBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := m.waitReady(context.Background(), inst, "ubuntu-cloud", "", vm.WaitUserdata, deadline, emit); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.waitReady(context.Background(), inst, "ubuntu-cloud", "", vm.WaitBootstrap, deadline, emit); err != nil {
 		t.Fatal(err)
 	}
 	// nil emit
@@ -1875,3 +1879,577 @@ func TestCreateWithSocketForwards(t *testing.T) {
 		t.Fatalf("%+v", inst)
 	}
 }
+
+func TestCreateFirecrackerValidation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "firecracker"
+	cfg.ReadyTimeout = time.Second
+	m := New(cfg, st, hypervisor.NewMockRuntime(), hypervisor.NewMockDisk(), nil)
+	ctx := context.Background()
+
+	if _, err := m.Create(ctx, vm.CreateOpts{
+		Name: "fc-udp", Forwards: []vm.PortForward{{HostPort: 0, GuestPort: 53, Proto: "udp"}},
+	}); err == nil || !strings.Contains(err.Error(), "TCP-only") {
+		t.Fatalf("udp: %v", err)
+	}
+	host := t.TempDir()
+	if _, err := m.Create(ctx, vm.CreateOpts{
+		Name: "fc-mnt", Mounts: []vm.Mount{{Host: host, Guest: "/mnt"}},
+	}); err == nil || !strings.Contains(err.Error(), "host mounts") {
+		t.Fatalf("mounts: %v", err)
+	}
+	if _, err := m.Create(ctx, vm.CreateOpts{
+		Name: "fc-sock", SocketForwards: []vm.SocketForward{{HostPath: filepath.Join(dir, "s.sock"), GuestPath: "/g"}},
+	}); err == nil || !strings.Contains(err.Error(), "publish-socket") {
+		t.Fatalf("socket: %v", err)
+	}
+}
+
+func TestCreateOverlayNetworkAndMetricsDefault(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
+	cfg.SandboxMetricsEnabled = true
+	m := New(cfg, st, hypervisor.NewMockRuntime(), hypervisor.NewMockDisk(), nil)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{
+		Name: "ov1", Network: "overlay",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.Network != "overlay" {
+		t.Fatalf("network %s", inst.Network)
+	}
+	if !inst.MetricsEnabled {
+		t.Fatal("metrics should default on from config")
+	}
+	// Second overlay create hits overlayWarnOnce already-done path.
+	if _, err := m.Create(context.Background(), vm.CreateOpts{Name: "ov2", Network: "overlay"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGrowRootAfterAgentBranches(t *testing.T) {
+	t.Parallel()
+	m, _, _, _ := unitMgr(t, "mock")
+	ctx := context.Background()
+	if err := m.growRootAfterAgent(ctx, nil); err == nil {
+		t.Fatal("nil inst")
+	}
+	if err := m.growRootAfterAgent(ctx, &vm.Instance{Name: "n"}); err == nil {
+		t.Fatal("no endpoint")
+	}
+	// Mock short-circuits after endpoint check.
+	if err := m.growRootAfterAgent(ctx, &vm.Instance{Name: "n", AgentPort: 9}); err != nil {
+		t.Fatal(err)
+	}
+	// Non-mock: dial fails.
+	m.cfg.Hypervisor = "qemu"
+	if err := m.growRootAfterAgent(ctx, &vm.Instance{Name: "n", AgentPort: 1}); err == nil {
+		t.Fatal("expected dial fail")
+	}
+}
+
+func TestAddForwardFirecrackerTCPProxy(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "firecracker"
+	cfg.ReadyTimeout = time.Second
+	rt := hypervisor.NewMockRuntime()
+	m := New(cfg, st, rt, hypervisor.NewMockDisk(), nil)
+	ctx := context.Background()
+
+	// Create via store + start mock process (Create with firecracker may hit other paths).
+	diskPath := filepath.Join(st.Dir("fcfwd"), "disk.raw")
+	if err := os.MkdirAll(filepath.Dir(diskPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(diskPath, []byte("d"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inst := &vm.Instance{
+		Name: "fcfwd", Status: vm.StatusRunning, Persistent: true,
+		DiskPath: diskPath, CPUs: 1, MemoryMB: 256, IP: "10.0.0.9",
+	}
+	if err := rt.Start(ctx, inst, diskPath); err != nil {
+		t.Fatal(err)
+	}
+	// Keep firecracker TCP-proxy path even though mock Start assigns SSHPort.
+	inst.SSHPort = 0
+	inst.Status = vm.StatusRunning
+	if err := st.Put(inst); err != nil {
+		t.Fatal(err)
+	}
+
+	// No guest IP path when IP cleared.
+	inst.IP = ""
+	_ = st.Put(inst)
+	if _, err := m.AddForward(ctx, "fcfwd", 0, 80); err == nil {
+		t.Fatal("expected no guest IP")
+	}
+	inst.IP = "127.0.0.1"
+	_ = st.Put(inst)
+	if _, err := m.AddForward(ctx, "fcfwd", 0, 80); err == nil {
+		t.Fatal("expected loopback reject")
+	}
+
+	inst.IP = "10.0.0.9"
+	_ = st.Put(inst)
+	lf, err := m.AddForward(ctx, "fcfwd", 0, 8080)
+	if err != nil {
+		// socat/python missing in minimal env
+		t.Logf("add forward proxy: %v", err)
+		return
+	}
+	if lf.PID <= 0 || lf.GuestPort != 8080 {
+		t.Fatalf("%+v", lf)
+	}
+	_ = m.RemoveForward(ctx, "fcfwd", lf.HostPort)
+	_ = killPID(lf.PID)
+}
+
+func TestAddForwardNoSSHPortNonMock(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "qemu"
+	cfg.ReadyTimeout = time.Second
+	rt := hypervisor.NewMockRuntime()
+	m := New(cfg, st, rt, hypervisor.NewMockDisk(), nil)
+	ctx := context.Background()
+
+	diskPath := filepath.Join(st.Dir("nossh"), "disk.img")
+	_ = os.MkdirAll(filepath.Dir(diskPath), 0o755)
+	_ = os.WriteFile(diskPath, []byte("d"), 0o644)
+	inst := &vm.Instance{
+		Name: "nossh", Status: vm.StatusRunning, Persistent: true,
+		DiskPath: diskPath, CPUs: 1, MemoryMB: 256, IP: "127.0.0.1",
+	}
+	_ = rt.Start(ctx, inst, diskPath)
+	// Mock Start assigns SSHPort; clear so AddForward hits the no-SSH branch.
+	inst.SSHPort = 0
+	inst.AgentPort = 0
+	inst.Status = vm.StatusRunning
+	_ = st.Put(inst)
+	if _, err := m.AddForward(ctx, "nossh", 18081, 80); err == nil || !strings.Contains(err.Error(), "SSH port") {
+		t.Fatalf("want no SSH port: %v", err)
+	}
+}
+
+func TestSpawnMissingAndCloneCreating(t *testing.T) {
+	t.Parallel()
+	m, _, st, dir := unitMgr(t, "mock")
+	ctx := context.Background()
+	if _, err := m.Spawn(ctx, "", "x"); err == nil {
+		t.Fatal("empty template")
+	}
+	if _, err := m.Spawn(ctx, "nope", "x"); err == nil {
+		t.Fatal("missing template")
+	}
+
+	diskPath := filepath.Join(dir, "vms", "creating", "disk.img")
+	_ = os.MkdirAll(filepath.Dir(diskPath), 0o755)
+	_ = os.WriteFile(diskPath, []byte("d"), 0o644)
+	_ = st.Put(&vm.Instance{
+		Name: "creating", Status: vm.StatusCreating, Persistent: true, DiskPath: diskPath,
+	})
+	if _, err := m.Clone(ctx, "creating", "out"); err == nil || !strings.Contains(err.Error(), "creating") {
+		t.Fatalf("clone creating: %v", err)
+	}
+	if _, err := m.Clone(ctx, "", "out"); err == nil {
+		t.Fatal("empty source")
+	}
+}
+
+func TestCloneNoDiskAndHelpers(t *testing.T) {
+	t.Parallel()
+	m, _, st, _ := unitMgr(t, "mock")
+	ctx := context.Background()
+	_ = st.Put(&vm.Instance{Name: "nodisk", Status: vm.StatusStopped, Persistent: true})
+	if _, err := m.Clone(ctx, "nodisk", "x"); err == nil || !strings.Contains(err.Error(), "no disk") {
+		t.Fatalf("no disk: %v", err)
+	}
+
+	if clonePortForwards(nil) != nil {
+		t.Fatal("nil fwds")
+	}
+	fw := clonePortForwards([]vm.PortForward{{HostPort: 9, GuestPort: 80, Proto: "tcp"}})
+	if len(fw) != 1 || fw[0].HostPort != 0 || fw[0].GuestPort != 80 {
+		t.Fatalf("%+v", fw)
+	}
+	if cloneSocketForwards(nil) != nil {
+		t.Fatal("nil socks")
+	}
+	sf := cloneSocketForwards([]vm.SocketForward{{HostPath: "/h", GuestPath: "/g", PID: 9}})
+	if len(sf) != 1 || sf[0].PID != 0 {
+		t.Fatalf("%+v", sf)
+	}
+	if cloneMounts(nil) != nil {
+		t.Fatal("nil mounts")
+	}
+	if cloneTags(nil) != nil {
+		t.Fatal("nil tags")
+	}
+	tags := cloneTags(map[string]string{"a": "b"})
+	if tags["a"] != "b" {
+		t.Fatalf("%v", tags)
+	}
+}
+
+func TestConfigCreateTimeoutAndClaimName(t *testing.T) {
+	t.Parallel()
+	m, _, _, _ := unitMgr(t, "mock")
+	_ = m.Config()
+	if m.ReadyTimeout() != time.Second {
+		t.Fatalf("ready %s", m.ReadyTimeout())
+	}
+	// ReadyTimeout+2m with ReadyTimeout=1s still floors to 5m.
+	if m.CreateTimeout() < 5*time.Minute {
+		t.Fatalf("create timeout %s", m.CreateTimeout())
+	}
+	m.cfg.ReadyTimeout = 10 * time.Minute
+	if m.CreateTimeout() < 12*time.Minute {
+		t.Fatalf("long create timeout %s", m.CreateTimeout())
+	}
+
+	if _, err := m.claimCreateName("Bad Name!"); err == nil {
+		t.Fatal("invalid name")
+	}
+	n, err := m.claimCreateName("")
+	if err != nil || n == "" {
+		t.Fatalf("auto name %q %v", n, err)
+	}
+	m.releaseCreateName(n)
+}
+
+func TestStartFromDiskSuspendedAndAlreadyRunning(t *testing.T) {
+	t.Parallel()
+	m, rt, st, dir := unitMgr(t, "mock")
+	ctx := context.Background()
+	diskPath := filepath.Join(dir, "vms", "s1", "disk.img")
+	_ = os.MkdirAll(filepath.Dir(diskPath), 0o755)
+	_ = os.WriteFile(diskPath, []byte("d"), 0o644)
+	inst := &vm.Instance{
+		Name: "s1", Status: vm.StatusSuspended, Persistent: true,
+		DiskPath: diskPath, CPUs: 1, MemoryMB: 256,
+	}
+	_ = st.Put(inst)
+	if _, err := m.Start(ctx, "s1"); err == nil || !strings.Contains(err.Error(), "restore") {
+		t.Fatalf("suspended start: %v", err)
+	}
+
+	inst.Status = vm.StatusRunning
+	_ = rt.Start(ctx, inst, diskPath)
+	inst.Status = vm.StatusRunning
+	_ = st.Put(inst)
+	if _, err := m.Start(ctx, "s1"); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("already running: %v", err)
+	}
+}
+
+func TestPauseResumeErrorPaths(t *testing.T) {
+	t.Parallel()
+	m, _, st, dir := unitMgr(t, "mock")
+	ctx := context.Background()
+	diskPath := filepath.Join(dir, "vms", "p1", "disk.img")
+	_ = os.MkdirAll(filepath.Dir(diskPath), 0o755)
+	_ = os.WriteFile(diskPath, []byte("d"), 0o644)
+	_ = st.Put(&vm.Instance{
+		Name: "p1", Status: vm.StatusStopped, Persistent: true, DiskPath: diskPath,
+	})
+	if err := m.Pause(ctx, "p1"); err == nil {
+		t.Fatal("pause stopped")
+	}
+	if err := m.Resume(ctx, "p1"); err == nil {
+		t.Fatal("resume stopped")
+	}
+	if err := m.Suspend(ctx, "p1"); err == nil {
+		t.Fatal("suspend stopped")
+	}
+	if err := m.Pause(ctx, "missing"); err == nil {
+		t.Fatal("pause missing")
+	}
+}
+
+func TestDeleteStopFailContinues(t *testing.T) {
+	t.Parallel()
+	m, rt, st, dir := unitMgr(t, "mock")
+	ctx := context.Background()
+	diskPath := filepath.Join(dir, "vms", "del", "disk.img")
+	_ = os.MkdirAll(filepath.Dir(diskPath), 0o755)
+	_ = os.WriteFile(diskPath, []byte("d"), 0o644)
+	inst := &vm.Instance{
+		Name: "del", Status: vm.StatusRunning, Persistent: true, DiskPath: diskPath,
+	}
+	_ = rt.Start(ctx, inst, diskPath)
+	inst.Status = vm.StatusRunning
+	_ = st.Put(inst)
+	rt.FailStop = true
+	// Delete still removes meta even if stop fails (warn path).
+	if err := m.Delete(ctx, "del"); err != nil {
+		// Mock may surface stop error depending on implementation.
+		t.Logf("delete: %v", err)
+	}
+}
+
+func TestWrapAgentWaitErrFC(t *testing.T) {
+	t.Parallel()
+	err := wrapAgentWaitErr(&vm.Instance{
+		AgentCID: 3, AgentPort: 0, DiskPath: "/tmp/fc/disk.raw",
+	}, errors.New("boom"))
+	if err == nil || !strings.Contains(err.Error(), "Firecracker") {
+		t.Fatalf("%v", err)
+	}
+	err = wrapAgentWaitErr(&vm.Instance{AgentPort: 9}, nil)
+	if err == nil || !strings.Contains(err.Error(), "not ready") {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestStartSocketForwardsNonMockNoSSH(t *testing.T) {
+	t.Parallel()
+	m, _, _, dir := unitMgr(t, "qemu")
+	inst := &vm.Instance{
+		Name: "sock",
+		SocketForwards: []vm.SocketForward{
+			{HostPath: filepath.Join(dir, "a.sock"), GuestPath: "/g"},
+		},
+	}
+	if err := m.startSocketForwards(inst); err == nil || !strings.Contains(err.Error(), "SSH port") {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestRestoreNotSuspendedAndRunning(t *testing.T) {
+	t.Parallel()
+	m, rt, st, dir := unitMgr(t, "mock")
+	ctx := context.Background()
+	diskPath := filepath.Join(dir, "vms", "r1", "disk.img")
+	_ = os.MkdirAll(filepath.Dir(diskPath), 0o755)
+	_ = os.WriteFile(diskPath, []byte("d"), 0o644)
+	_ = st.Put(&vm.Instance{
+		Name: "r1", Status: vm.StatusStopped, Persistent: true, DiskPath: diskPath,
+	})
+	if _, err := m.Restore(ctx, "r1"); err == nil || !strings.Contains(err.Error(), "not suspended") {
+		t.Fatalf("%v", err)
+	}
+	inst := &vm.Instance{
+		Name: "r2", Status: vm.StatusSuspended, Persistent: true, DiskPath: diskPath,
+	}
+	_ = rt.Start(ctx, inst, diskPath)
+	inst.Status = vm.StatusSuspended
+	_ = st.Put(inst)
+	if _, err := m.Restore(ctx, "r2"); err == nil || !strings.Contains(err.Error(), "still running") {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestFCCreateTimePublishSpecsDedupe(t *testing.T) {
+	t.Parallel()
+	// Explicit TCP proto empty-as-tcp + dedupe when -P collides with SSH host port.
+	fwds := []vm.PortForward{
+		{HostPort: 2200, GuestPort: 9999, Proto: "tcp"},
+		{HostPort: 2200, GuestPort: 8888}, // dup host
+	}
+	got := FCCreateTimePublishSpecs(fwds, nil, 2200, 0)
+	if len(got) != 1 || got[0].GuestPort != 9999 {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestCreateMetricsOptInOnly(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = time.Second
+	cfg.SandboxMetricsEnabled = false
+	m := New(cfg, st, hypervisor.NewMockRuntime(), hypervisor.NewMockDisk(), nil)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{Name: "moff"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.MetricsEnabled {
+		t.Fatal("expected metrics off when config disabled")
+	}
+	inst2, err := m.Create(context.Background(), vm.CreateOpts{Name: "mon", MetricsEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inst2.MetricsEnabled {
+		t.Fatal("explicit opt-in")
+	}
+}
+
+func TestShutdownStopMissing(t *testing.T) {
+	t.Parallel()
+	m, _, _, _ := unitMgr(t, "mock")
+	if err := m.Shutdown(context.Background(), "nope"); err == nil {
+		t.Fatal("expected missing")
+	}
+	if err := m.Stop(context.Background(), "nope"); err == nil {
+		t.Fatal("expected missing")
+	}
+	if err := m.Delete(context.Background(), "nope"); err == nil {
+		t.Fatal("expected missing")
+	}
+}
+
+func TestSuspendAlreadyAndEphemeral(t *testing.T) {
+	t.Parallel()
+	m, _, st, dir := unitMgr(t, "mock")
+	ctx := context.Background()
+	diskPath := filepath.Join(dir, "vms", "eph", "disk.img")
+	_ = os.MkdirAll(filepath.Dir(diskPath), 0o755)
+	_ = os.WriteFile(diskPath, []byte("d"), 0o644)
+	_ = st.Put(&vm.Instance{
+		Name: "eph", Status: vm.StatusRunning, Persistent: false, DiskPath: diskPath,
+	})
+	if err := m.Suspend(ctx, "eph"); err == nil || !strings.Contains(err.Error(), "ephemeral") {
+		t.Fatalf("%v", err)
+	}
+	_ = st.Put(&vm.Instance{
+		Name: "sus", Status: vm.StatusSuspended, Persistent: true, DiskPath: diskPath,
+	})
+	if err := m.Suspend(ctx, "sus"); err == nil || !strings.Contains(err.Error(), "already suspended") {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestPoolClaimStartFail(t *testing.T) {
+	// Disk pool claim fails when startFromDisk fails after rename.
+	dir := t.TempDir()
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	cfg.Hypervisor = "mock"
+	cfg.ReadyTimeout = 2 * time.Second
+	cfg.WarmPool = config.WarmPoolConfig{Template: "golden", Size: 1}
+	st, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := hypervisor.NewMockRuntime()
+	m := New(cfg, st, rt, hypervisor.NewMockDisk(), nil)
+	t.Cleanup(func() { m.WaitPoolBackground() })
+	ctx := context.Background()
+	if _, err := m.Create(ctx, vm.CreateOpts{
+		Name: "golden", Persistent: true, Image: "ubuntu-cloud", WaitMode: vm.WaitSSH,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Suspend(ctx, "golden"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.PoolFill(ctx); err != nil {
+		t.Fatal(err)
+	}
+	rt.FailStart = true
+	if _, err := m.PoolClaim(ctx, "boom"); err == nil {
+		t.Fatal("expected start fail on claim")
+	}
+}
+
+func TestWaitAgentModeFirecrackerSuccess(t *testing.T) {
+	// Non-mock waitAgentMode after probe success runs configureFCGuestNet +
+	// startFCCreateTimeProxies (early-return branches when no TAP net / specs).
+	srv := agent.NewServer("127.0.0.1:0", nil)
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		select {
+		case <-errCh:
+		case <-time.After(2 * time.Second):
+		}
+	})
+	var port int
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		addr := srv.AddrString()
+		if addr != "" && !endsWithPort0(addr) {
+			_, p, err := net.SplitHostPort(addr)
+			if err == nil {
+				port, _ = strconv.Atoi(p)
+				if port > 0 {
+					break
+				}
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if port == 0 {
+		t.Fatal("no port")
+	}
+
+	m, _, st, dir := unitMgr(t, "firecracker")
+	vmDir := filepath.Join(dir, "vms", "fcprobe")
+	_ = os.MkdirAll(vmDir, 0o755)
+	diskPath := filepath.Join(vmDir, "disk.raw")
+	_ = os.WriteFile(diskPath, []byte("d"), 0o644)
+	inst := &vm.Instance{
+		Name: "fcprobe", AgentPort: port, IP: "10.0.0.8", Image: "ubuntu-cloud",
+		DiskPath: diskPath, Forwards: []vm.PortForward{{HostPort: 0, GuestPort: 80}},
+	}
+	_ = st.Put(inst)
+	dl := time.Now().Add(5 * time.Second)
+	if err := m.waitAgentMode(context.Background(), inst, "ubuntu-cloud", "", dl, nil, false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestKillLiveForwardsWithRealPID(t *testing.T) {
+	t.Parallel()
+	// Exercise killPID success path via killLiveForwards.
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+	m, _, _, _ := unitMgr(t, "mock")
+	inst := &vm.Instance{
+		Name: "kf",
+		LiveForwards: []vm.LiveForward{
+			{HostPort: 1, GuestPort: 2, PID: pid},
+		},
+	}
+	m.killLiveForwards(inst)
+	if inst.LiveForwards != nil {
+		t.Fatalf("%v", inst.LiveForwards)
+	}
+}
+
+

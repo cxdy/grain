@@ -40,43 +40,49 @@ func clipboardDisplayEnv() string {
 // serves GET /clipboard (host paste) on SelectionRequest. Safe to call often.
 func ensureClipboardX11(log *slog.Logger, fetch func(context.Context) ([]byte, error)) {
 	x11ClipOnce.Do(func() {
-		if log == nil {
-			log = slog.Default()
-		}
-		// Respect an existing display (user-provided desktop).
-		if d := strings.TrimSpace(os.Getenv("DISPLAY")); d != "" && d != grainClipboardDisplay {
-			log.Debug("clipboard x11: using existing DISPLAY", "display", d)
-			// Still try to own CLIPBOARD on that display.
-			if err := startX11ClipboardOwner(d, fetch, log); err != nil {
-				log.Debug("clipboard x11 owner failed", "display", d, "err", err)
-				return
-			}
-			x11ClipDisp = d
-			return
-		}
-		if _, err := exec.LookPath("Xvfb"); err != nil {
-			log.Debug("clipboard x11: Xvfb not installed; native X11 paste unavailable (CLI pbpaste/xclip shims still work)")
-			return
-		}
-		if err := startXvfb(grainClipboardDisplay, log); err != nil {
-			log.Debug("clipboard x11: Xvfb start failed", "err", err)
-			return
-		}
-		// Xvfb needs a moment to accept connections.
-		deadline := time.Now().Add(3 * time.Second)
-		var last error
-		for time.Now().Before(deadline) {
-			if err := startX11ClipboardOwner(grainClipboardDisplay, fetch, log); err == nil {
-				x11ClipDisp = grainClipboardDisplay
-				log.Info("clipboard x11 ready", "display", grainClipboardDisplay)
-				return
-			} else {
-				last = err
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		log.Debug("clipboard x11 owner failed", "err", last)
+		startClipboardX11(log, fetch)
 	})
+}
+
+// startClipboardX11 is the body of ensureClipboardX11 (split so tests can
+// exercise branches without sync.Once / re-exec coverage loss).
+func startClipboardX11(log *slog.Logger, fetch func(context.Context) ([]byte, error)) {
+	if log == nil {
+		log = slog.Default()
+	}
+	// Respect an existing display (user-provided desktop).
+	if d := strings.TrimSpace(os.Getenv("DISPLAY")); d != "" && d != grainClipboardDisplay {
+		log.Debug("clipboard x11: using existing DISPLAY", "display", d)
+		// Still try to own CLIPBOARD on that display.
+		if err := startX11ClipboardOwner(d, fetch, log); err != nil {
+			log.Debug("clipboard x11 owner failed", "display", d, "err", err)
+			return
+		}
+		x11ClipDisp = d
+		return
+	}
+	if _, err := exec.LookPath("Xvfb"); err != nil {
+		log.Debug("clipboard x11: Xvfb not installed; native X11 paste unavailable (CLI pbpaste/xclip shims still work)")
+		return
+	}
+	if err := startXvfb(grainClipboardDisplay, log); err != nil {
+		log.Debug("clipboard x11: Xvfb start failed", "err", err)
+		return
+	}
+	// Xvfb needs a moment to accept connections.
+	deadline := time.Now().Add(3 * time.Second)
+	var last error
+	for time.Now().Before(deadline) {
+		if err := startX11ClipboardOwner(grainClipboardDisplay, fetch, log); err == nil {
+			x11ClipDisp = grainClipboardDisplay
+			log.Info("clipboard x11 ready", "display", grainClipboardDisplay)
+			return
+		} else {
+			last = err
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	log.Debug("clipboard x11 owner failed", "err", last)
 }
 
 func startXvfb(display string, log *slog.Logger) error {

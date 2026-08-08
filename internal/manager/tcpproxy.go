@@ -64,11 +64,17 @@ func startDetached(bin string, args ...string) (int, error) {
 	if err := cmd.Start(); err != nil {
 		return 0, err
 	}
-	time.Sleep(120 * time.Millisecond)
-	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
-		_ = cmd.Wait()
+	// Wait briefly for early exit. Zombies still accept Signal(0), so do not
+	// use kill(0) alone — prefer Wait with a short timeout.
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		if err == nil {
+			err = fmt.Errorf("exit 0")
+		}
 		return 0, fmt.Errorf("proxy died: %w", err)
+	case <-time.After(120 * time.Millisecond):
+		return cmd.Process.Pid, nil
 	}
-	go func() { _ = cmd.Wait() }()
-	return cmd.Process.Pid, nil
 }

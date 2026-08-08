@@ -66,3 +66,78 @@ func TestProbeConnectionsLocalDial(t *testing.T) {
 		}
 	}
 }
+
+func TestProbeConnectionsReachable(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /info", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"version": "9.0.0"}) // no v prefix
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cfg := Defaults()
+	cfg.Connections = []Connection{{Name: "lab", API: srv.URL}}
+	// skip local by only using lab — ActiveConnections prepends local; dial local fails health
+	probes := ProbeConnections(context.Background(), cfg, nil)
+	if len(probes) < 1 {
+		t.Fatal("want probes")
+	}
+	found := false
+	for _, p := range probes {
+		if p.Name == "lab" {
+			found = true
+			if !p.Reachable || p.Version != "v9.0.0" {
+				t.Fatalf("%+v", p)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("lab missing: %+v", probes)
+	}
+}
+
+func TestProbeConnectionsHealthFailAfterDial(t *testing.T) {
+	// dial succeeds but health fails
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "no", 503)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	cfg := Defaults()
+	cfg.Connections = EnsureLocalConnection([]Connection{{Name: "lab", API: srv.URL}}, cfg.Socket, cfg.DataDir)
+	probes := ProbeConnections(context.Background(), cfg, DialConnection)
+	for _, p := range probes {
+		if p.Name == "lab" && p.Reachable {
+			t.Fatalf("want unreachable: %+v", p)
+		}
+	}
+}
+
+func TestTestConnectionEmptyAndToken(t *testing.T) {
+	if _, err := TestConnection(context.Background(), "", ""); err == nil {
+		t.Fatal("want api required")
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer secret" {
+			http.Error(w, "auth", 401)
+			return
+		}
+		w.WriteHeader(200)
+	})
+	mux.HandleFunc("GET /info", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"version": "v1"})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	p, err := TestConnection(context.Background(), srv.URL, "secret")
+	if err != nil || !p.Reachable || p.Version != "v1" {
+		t.Fatalf("%+v %v", p, err)
+	}
+	// health fail returns error
+	if _, err := TestConnection(context.Background(), srv.URL, "wrong"); err == nil {
+		t.Fatal("want auth error")
+	}
+}
