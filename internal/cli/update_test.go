@@ -138,9 +138,17 @@ func TestDisplayVer(t *testing.T) {
 }
 
 func TestRunInstallScript(t *testing.T) {
+	// Script must receive --desktop (grain update upgrades CLI + Desktop).
 	scriptSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		_, _ = w.Write([]byte("#!/bin/sh\necho installed-ok\n"))
+		_, _ = w.Write([]byte(`#!/bin/sh
+echo installed-ok
+for a in "$@"; do
+  if [ "$a" = "--desktop" ]; then exit 0; fi
+done
+echo "missing --desktop (args: $*)" >&2
+exit 1
+`))
 	}))
 	t.Cleanup(scriptSrv.Close)
 	t.Setenv("GRAIN_INSTALL_SCRIPT", scriptSrv.URL)

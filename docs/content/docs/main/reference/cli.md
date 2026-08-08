@@ -37,12 +37,14 @@ See [Remote lab](../../guides/remote-lab/) for the host + laptop workflow, and [
 | `grain up [--fg] [--mcp]` | Start daemon (background by default; `--mcp` also serves MCP Streamable HTTP) |
 | `grain down` | Stop daemon via pidfile (cleans stale pid/socket) |
 | `grain mcp [--http] [--listen addr]` | MCP tool server (stdio default; `--http` uses `mcp.listen`) |
-| `grain update [--check] [--force]` | Check GitHub Releases and install the latest CLI (re-runs the install script) |
+| `grain update [--check] [--force]` | Check GitHub Releases and install the latest CLI + Desktop (install.sh --desktop) |
 | `grain uninstall [--purge] [-y]` | Remove CLI binary; `--purge` also deletes the data directory |
 | `grain doctor` | Dependency checks |
 | `grain version` | Print version |
 
 ### `grain update`
+
+Upgrades the **CLI** and **Grain Desktop** via the public install script (`bash -s -- --desktop`). Desktop is skipped gracefully when no release asset or GUI deps are available.
 
 | Flag | Meaning |
 |------|---------|

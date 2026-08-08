@@ -96,7 +96,7 @@ Upgrade notices (not `grain update` itself) can also be disabled with env:
 | `GRAIN_CHECK_UPDATES=1` / `true` / `on` | Force-enable notices |
 | `GRAIN_NO_UPDATE_CHECK=1` | Disable notices |
 
-Use `grain update --check` anytime; `grain update` installs the latest release via the public install script.
+Use `grain update --check` anytime; `grain update` installs the latest CLI and Desktop via the public install script (`--desktop`).
 
 ### Daemon listen vs CLI remote URL
 
