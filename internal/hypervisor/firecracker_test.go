@@ -682,7 +682,7 @@ func TestFCAPIRequestSuccessAndErrors(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	if err := fcAPIAction(ctx, sock, "SendCtrlAltDel"); err != nil {
+	if err := fcAPIAction(ctx, sock); err != nil {
 		t.Fatal(err)
 	}
 	if err := fcAPIPatchVM(ctx, sock, "Paused"); err != nil {
@@ -707,7 +707,7 @@ func TestFCAPIRequestStatusErrorBody(t *testing.T) {
 	defer cleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	err := fcAPIAction(ctx, sock, "SendCtrlAltDel")
+	err := fcAPIAction(ctx, sock)
 	if err == nil || !strings.Contains(err.Error(), "500") {
 		t.Fatalf("%v", err)
 	}

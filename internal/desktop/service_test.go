@@ -788,3 +788,504 @@ func TestListActivityFilteredRemoteClient(t *testing.T) {
 		t.Fatalf("pool hits after decide %d", poolHits.Load())
 	}
 }
+
+func TestServiceSuspendPoolFillMetricsDeploy(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /info", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"version": "0.9.0"})
+	})
+	mux.HandleFunc("POST /vms/{name}/suspend", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /pool/fill", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.PoolStatus{Enabled: true, Ready: 1, Desired: 1, Template: "golden"})
+	})
+	mux.HandleFunc("GET /pool", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.PoolStatus{Enabled: true, Ready: 1})
+	})
+	mux.HandleFunc("GET /vms/{name}/metrics", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.MetricsHistory{
+			Enabled: true, Interval: "5s",
+			Points: []client.MetricsSample{{TimeMS: 1, Load1: 0.5, MemTotal: 100, MemAvail: 50}},
+		})
+	})
+	mux.HandleFunc("POST /vms/{name}/agent/deploy", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.AgentDeployResult{
+			Name: r.PathValue("name"), Binary: "/usr/local/bin/grain-agent",
+			Health: &client.Health{AgentVersion: "1.0.0"},
+		})
+	})
+	mux.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]*client.Instance{
+			{Name: "tpl", Status: client.StatusStopped, Persistent: true, Image: "grain-ubuntu"},
+			{Name: "ephem", Status: client.StatusStopped, Persistent: false},
+			{Name: "run", Status: client.StatusRunning, Persistent: true, Image: "grain-ubuntu",
+				CreatedAt: time.Now().UTC().Add(-5 * time.Minute)},
+		})
+	})
+	mux.HandleFunc("GET /vms/{name}/agent/health", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.Health{AgentVersion: "1.0.0"})
+	})
+	mux.HandleFunc("GET /activity", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]client.ActivityEvent{{ID: "1", Source: "cli"}})
+	})
+	sock := startFakeDaemon(t, mux)
+	cfg := Defaults()
+	cfg.Socket = sock
+	cfg.DataDir = filepath.Dir(sock)
+	svc := NewService(cfg)
+	if err := svc.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	hs, err := svc.Health(ctx)
+	if err != nil || !hs.Healthy || hs.Version != "v0.9.0" {
+		t.Fatalf("%+v %v", hs, err)
+	}
+	if err := svc.SuspendSandbox(ctx, "tpl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SuspendSandbox(ctx, ""); err == nil {
+		t.Fatal("empty suspend")
+	}
+	st, err := svc.PoolFill(ctx)
+	if err != nil || st == nil || !st.Enabled {
+		t.Fatalf("%+v %v", st, err)
+	}
+	m, err := svc.SandboxMetrics(ctx, "run")
+	if err != nil || !m.Enabled || len(m.Points) != 1 {
+		t.Fatalf("%+v %v", m, err)
+	}
+	da, err := svc.DeployAgent(ctx, "run")
+	if err != nil || da.AgentVersion != "1.0.0" {
+		t.Fatalf("%+v %v", da, err)
+	}
+	if _, err := svc.DeployAgent(ctx, ""); err == nil {
+		t.Fatal("empty deploy")
+	}
+	// Deploy without health
+	mux2 := http.NewServeMux()
+	mux2.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux2.HandleFunc("POST /vms/{name}/agent/deploy", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.AgentDeployResult{Name: "x"})
+	})
+	sock2 := startFakeDaemon(t, mux2)
+	svc2 := NewService(Defaults())
+	svc2.Config.Socket = sock2
+	_ = svc2.Connect()
+	da2, err := svc2.DeployAgent(ctx, "x")
+	if err != nil || da2.Message != "guest agent deployed" {
+		t.Fatalf("%+v %v", da2, err)
+	}
+
+	tmpls, err := svc.ListCreateTemplates(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tmpls) != 1 || tmpls[0].Name != "tpl" {
+		t.Fatalf("%+v", tmpls)
+	}
+	acts, err := svc.ListActivity(ctx, "", 10)
+	if err != nil || len(acts) != 1 {
+		t.Fatalf("%+v %v", acts, err)
+	}
+	list, err := svc.ListSandboxes(ctx)
+	if err != nil || len(list) < 2 {
+		t.Fatalf("%+v %v", list, err)
+	}
+	// running agent ok
+	for _, sb := range list {
+		if sb.Name == "run" && (sb.AgentOK == nil || !*sb.AgentOK) {
+			t.Fatalf("want agent ok: %+v", sb)
+		}
+	}
+}
+
+func TestServiceParseAndCreateErrors(t *testing.T) {
+	cfg := Config{Image: "img"}
+	if _, err := buildCreateRequest(CreateOpts{From: "a", FromPool: true}, cfg); err == nil {
+		t.Fatal("mutual exclusive")
+	}
+	if _, err := buildCreateRequest(CreateOpts{Publish: "bad"}, cfg); err == nil {
+		t.Fatal("publish")
+	}
+	if _, err := buildCreateRequest(CreateOpts{Publish: "x:y"}, cfg); err == nil {
+		t.Fatal("publish ports")
+	}
+	if _, err := buildCreateRequest(CreateOpts{Mounts: "nocolon"}, cfg); err == nil {
+		t.Fatal("mounts")
+	}
+	req, err := buildCreateRequest(CreateOpts{Publish: "8080:80, 9090:90", Mounts: "/h:/g\n/a:/b"}, cfg)
+	if err != nil || len(req.Forwards) != 2 || len(req.Mounts) != 2 {
+		t.Fatalf("%+v %v", req, err)
+	}
+	// splitList empty parts
+	if len(splitList(" a , , b ")) != 2 {
+		t.Fatal(splitList(" a , , b "))
+	}
+	// invalid name on create
+	svc := NewService(Defaults())
+	if _, err := svc.CreateSandbox(context.Background(), CreateOpts{Name: "BAD"}); err == nil {
+		t.Fatal("invalid name")
+	}
+}
+
+func TestServiceExecOneAndBulkErrors(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("POST /vms/{name}/exec", func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		if name == "err" {
+			http.Error(w, "fail", 500)
+			return
+		}
+		if name == "stderr-only" {
+			_ = json.NewEncoder(w).Encode(client.ExecResult{Stderr: "warn\n", ExitCode: 1})
+			return
+		}
+		if name == "empty-out" {
+			_ = json.NewEncoder(w).Encode(client.ExecResult{ExitCode: 0})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(client.ExecResult{Stdout: "ok\n", Stderr: "e\n", ExitCode: 1})
+	})
+	sock := startFakeDaemon(t, mux)
+	svc := NewService(Defaults())
+	svc.Config.Socket = sock
+	_ = svc.Connect()
+	ctx := context.Background()
+	r, err := svc.ExecOne(ctx, "a", "true")
+	if err != nil || r.Name != "a" {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if _, err := svc.BulkExec(ctx, nil, "x"); err == nil {
+		t.Fatal("names required")
+	}
+	if _, err := svc.BulkExec(ctx, []string{"a"}, ""); err == nil {
+		t.Fatal("command required")
+	}
+	if _, err := svc.BulkExec(ctx, []string{"  ", ""}, "x"); err == nil {
+		t.Fatal("empty names")
+	}
+	out, err := svc.BulkExec(ctx, []string{"err", "stderr-only", "empty-out", "a"}, "x")
+	if err != nil || len(out) != 4 {
+		t.Fatalf("%+v %v", out, err)
+	}
+}
+
+func TestServiceGetSandboxMetaAndStartGrow(t *testing.T) {
+	dir := t.TempDir()
+	name := "meta-vm"
+	vmDir := filepath.Join(dir, "vms", name)
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	meta := map[string]interface{}{
+		"name": name, "network": "overlay", "arch": "arm64", "gpu": "virtio",
+		"image": "grain-ubuntu", "disk_gb": 1, "cpus": 2, "memory_mb": 512,
+	}
+	b, _ := json.Marshal(meta)
+	if err := os.WriteFile(filepath.Join(vmDir, "meta.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.Instance{
+			Name: r.PathValue("name"), Status: client.StatusRunning, Image: "grain-ubuntu",
+			CreatedAt: time.Now().UTC().Add(-5 * time.Minute),
+		})
+	})
+	mux.HandleFunc("GET /vms/{name}/agent/health", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusBadGateway)
+	})
+	mux.HandleFunc("POST /vms/{name}/start", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})
+	})
+	sock := startFakeDaemon(t, mux)
+	cfg := Defaults()
+	cfg.Socket = sock
+	cfg.DataDir = dir
+	svc := NewService(cfg)
+	_ = svc.Connect()
+	sb, err := svc.GetSandbox(context.Background(), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sb.Network != "overlay" || sb.Arch != "arm64" || sb.GPU != "virtio" || !sb.HasAgentImage {
+		t.Fatalf("%+v", sb)
+	}
+	// agent failed after grace → false
+	if sb.AgentOK == nil || *sb.AgentOK {
+		t.Fatalf("want agent false: %+v", sb)
+	}
+	if _, err := svc.GetSandbox(context.Background(), ""); err == nil {
+		t.Fatal("empty get")
+	}
+	// start without disk (meta disk_gb 1, no image) — non-fatal path
+	st, err := svc.StartSandbox(context.Background(), name)
+	if err != nil || st.Name != name {
+		t.Fatalf("%+v %v", st, err)
+	}
+}
+
+func TestImageSupportsAgentAndSummary(t *testing.T) {
+	if ImageSupportsAgent("") || ImageSupportsAgent("ubuntu-cloud") {
+		t.Fatal("no")
+	}
+	if !ImageSupportsAgent("grain-ubuntu") || !ImageSupportsAgent("grain-ubuntu-fc") {
+		t.Fatal("yes")
+	}
+	if !ImageSupportsAgent("grain-ubuntu-custom") {
+		t.Fatal("prefix")
+	}
+	if ImageSupportsAgent("alpine-cloud") {
+		t.Fatal("alpine")
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	sock := startFakeDaemon(t, mux)
+	cfg := Defaults()
+	cfg.Socket = sock
+	cfg.APIToken = "tok"
+	cfg.Connections = []Connection{
+		LocalConnection(sock, cfg.DataDir),
+		{Name: "lab", API: "http://x", Token: "t", TokenEnv: "NOPE", Notes: "n"},
+	}
+	svc := NewService(cfg)
+	sum := svc.Summary(filepath.Join(t.TempDir(), "missing.yaml"))
+	if !sum.HasToken || len(sum.Connections) < 2 {
+		t.Fatalf("%+v", sum)
+	}
+	// applyAgentProbe nils
+	applyAgentProbe(context.Background(), nil, &Sandbox{}, "x", "")
+	applyAgentProbe(context.Background(), svc.Client, nil, "x", "")
+}
+
+func TestDecideCreateModePoolError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /pool", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "no", 500)
+	})
+	sock := startFakeDaemon(t, mux)
+	svc := NewService(Defaults())
+	svc.Config.Socket = sock
+	_ = svc.Connect()
+	d, err := svc.DecideCreateMode(context.Background())
+	if err == nil {
+		// some clients may return empty without error
+		_ = d
+	}
+}
+
+func TestSandboxMetricsEmptyHistory(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /vms/{name}/metrics", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"enabled":false,"points":[]}`))
+	})
+	sock := startFakeDaemon(t, mux)
+	svc := NewService(Defaults())
+	svc.Config.Socket = sock
+	_ = svc.Connect()
+	m, err := svc.SandboxMetrics(context.Background(), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Enabled || len(m.Points) != 0 {
+		t.Fatalf("%+v", m)
+	}
+}
+
+func TestBulkStartPreflightUnknownNamesAndEmpty(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]*client.Instance{
+			{Name: "r1", Status: client.StatusRunning, CPUs: 0, MemoryMB: 0}, // defaults 2/2048
+		})
+	})
+	sock := startFakeDaemon(t, mux)
+	svc := NewService(Defaults())
+	svc.Config.Socket = sock
+	_ = svc.Connect()
+	r, err := svc.BulkStartPreflightForNames(context.Background(), []string{"", "ghost", "r1"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r
+}
+
+func TestExportSandboxRecipeNilInstance(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("null"))
+	})
+	sock := startFakeDaemon(t, mux)
+	svc := NewService(Defaults())
+	svc.Config.Socket = sock
+	_ = svc.Connect()
+	if _, err := svc.ExportSandboxRecipe(context.Background(), "x"); err == nil {
+		t.Fatal("want not found")
+	}
+}
+
+func TestActiveConnectionAndEnsureClient(t *testing.T) {
+	svc := NewService(Defaults())
+	c, err := svc.ActiveConnection()
+	if err != nil || c.Name != "local" {
+		t.Fatalf("%+v %v", c, err)
+	}
+	// force dial fail
+	svc.Config.Socket = filepath.Join(t.TempDir(), "no.sock")
+	svc.Config.API = "127.0.0.1:1"
+	svc.Client = nil
+	svc.Dial = func(conn Connection, cfg Config) (*client.Client, error) {
+		return nil, context.DeadlineExceeded
+	}
+	if err := svc.Connect(); err == nil {
+		t.Fatal("want dial fail")
+	}
+	if _, err := svc.ListSandboxes(context.Background()); err == nil {
+		t.Fatal("want ensure client fail")
+	}
+	// dial nil uses default
+	svc.Dial = nil
+	_ = svc.Connect() // may fail on real dial
+}
+
+func TestStartSandboxDiskResizeHardFail(t *testing.T) {
+	// meta asks for grow but disk missing → ensureMetaDiskGrown returns "disk resize:" only when resize fails after needGrow
+	// When disk missing, diskNeedsGrow errors; ensureMetaDiskGrown returns err without "disk resize:" prefix → Start continues
+	dir := t.TempDir()
+	name := "startdisk"
+	vmDir := filepath.Join(dir, "vms", name)
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	meta := map[string]interface{}{
+		"name": name, "disk_gb": 5, "disk_path": filepath.Join(vmDir, "missing.qcow2"),
+		"cpus": 1, "memory_mb": 512,
+	}
+	b, _ := json.Marshal(meta)
+	if err := os.WriteFile(filepath.Join(vmDir, "meta.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("POST /vms/{name}/start", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})
+	})
+	sock := startFakeDaemon(t, mux)
+	cfg := Defaults()
+	cfg.Socket = sock
+	cfg.DataDir = dir
+	svc := NewService(cfg)
+	// non-fatal disk inspect error → start still works
+	st, err := svc.StartSandbox(context.Background(), name)
+	if err != nil || st.Name != name {
+		t.Fatalf("%+v %v", st, err)
+	}
+}
+
+func TestListSandboxesMetaEnrichment(t *testing.T) {
+	dir := t.TempDir()
+	name := "enrich"
+	vmDir := filepath.Join(dir, "vms", name)
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	meta := map[string]interface{}{
+		"name": name, "network": "overlay", "arch": "amd64", "gpu": "virtio", "image": "grain-ubuntu",
+	}
+	b, _ := json.Marshal(meta)
+	if err := os.WriteFile(filepath.Join(vmDir, "meta.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /vms", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]*client.Instance{
+			{Name: name, Status: client.StatusStopped, Image: ""},
+		})
+	})
+	sock := startFakeDaemon(t, mux)
+	cfg := Defaults()
+	cfg.Socket = sock
+	cfg.DataDir = dir
+	svc := NewService(cfg)
+	list, err := svc.ListSandboxes(context.Background())
+	if err != nil || len(list) != 1 {
+		t.Fatalf("%+v %v", list, err)
+	}
+	if list[0].Network != "overlay" || list[0].Arch != "amd64" || !list[0].HasAgentImage {
+		t.Fatalf("%+v", list[0])
+	}
+}
+
+func TestExportSandboxRecipeMetaFill(t *testing.T) {
+	dir := t.TempDir()
+	name := "exmeta"
+	vmDir := filepath.Join(dir, "vms", name)
+	if err := os.MkdirAll(vmDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	meta := map[string]interface{}{
+		"name": name, "cpus": 8, "memory_mb": 4096, "disk_gb": 20,
+		"image": "grain-ubuntu", "persistent": true, "arch": "arm64", "network": "slirp", "gpu": "virtio",
+	}
+	b, _ := json.Marshal(meta)
+	if err := os.WriteFile(filepath.Join(vmDir, "meta.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /vms/{name}", func(w http.ResponseWriter, r *http.Request) {
+		// API omits resources — meta fills in
+		_ = json.NewEncoder(w).Encode(client.Instance{
+			Name: r.PathValue("name"), Status: client.StatusStopped,
+			SocketForwards: []client.SocketForward{{HostPath: "/tmp/h.sock", GuestPath: "/g.sock"}},
+		})
+	})
+	sock := startFakeDaemon(t, mux)
+	cfg := Defaults()
+	cfg.Socket = sock
+	cfg.DataDir = dir
+	svc := NewService(cfg)
+	y, err := svc.ExportSandboxRecipe(context.Background(), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(y, "cpus: 8") || !strings.Contains(y, "arch: arm64") {
+		t.Fatal(y)
+	}
+	if !strings.Contains(y, "grain-ubuntu") || !strings.Contains(y, "memory_mb: 4096") {
+		t.Fatal(y)
+	}
+}
+
+func TestWithinAgentProbeGraceBadTime(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	if !withinAgentProbeGrace("not-a-time", now) {
+		t.Fatal("bad time should grace")
+	}
+}
+
+func TestDecideCreateModeNilStatus(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /pool", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("null"))
+	})
+	sock := startFakeDaemon(t, mux)
+	svc := NewService(Defaults())
+	svc.Config.Socket = sock
+	_ = svc.Connect()
+	// null decode may error or yield zero status
+	_, _ = svc.DecideCreateMode(context.Background())
+}

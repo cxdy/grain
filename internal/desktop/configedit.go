@@ -148,7 +148,8 @@ func randomToken(n int) (string, error) {
 	return string(b), nil
 }
 
-func randRead(b []byte) (int, error) {
+// randRead is crypto/rand.Read; overridable in tests.
+var randRead = func(b []byte) (int, error) {
 	return rand.Read(b)
 }
 
