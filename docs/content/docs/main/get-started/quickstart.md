@@ -1,5 +1,5 @@
 ---
-title: "Quick start (install → shell)"
+title: "Quick start"
 description: "Install grain and QEMU, optional starter config, create a microVM, open a shell, tear down."
 section: get-started
 keywords:
@@ -9,19 +9,13 @@ keywords:
   - shell
 ---
 
-From zero to a working sandbox in a few minutes. When you finish this page you will have:
+Install grain, start a microVM, open a shell, then tear it down. Platforms: macOS and Linux (amd64 / arm64) with hardware virtualization. Native Windows is not a host — use a remote grain daemon. WSL reports as Linux and has the same virt requirements as other Linux hosts.
 
-1. The **grain** CLI and **QEMU** installed  
-2. An optional **starter config** at `~/.grain/config.yaml`  
-3. A running microVM you can shell into and tear down  
-
-**Platforms:** macOS and Linux (amd64 / arm64) with hardware virtualization. Native Windows is not a host — use a remote grain daemon. WSL reports as Linux; same virt requirements as other Linux hosts.
-
-Deep dives: [Install](../install/) · [First sandbox + demo](../first-sandbox/) · [Bootstrap until ready](../bootstrap/) · [Config](../../reference/config/) · [Desktop GUI](../../guides/desktop/) · [Fast create / warm pool](../../guides/lifecycle/#fast-create-spawn-and-warm-pool).
+Also useful: [Install](../install/) · [First sandbox + demo](../first-sandbox/) · [Bootstrap until ready](../bootstrap/) · [Config](../../reference/config/) · [Desktop GUI](../../guides/desktop/) · [Fast create / warm pool](../../guides/lifecycle/#fast-create-spawn-and-warm-pool).
 
 ---
 
-## 1. Install
+## Install
 
 ### macOS
 
@@ -48,15 +42,15 @@ sudo dnf install -y qemu-system-x86 qemu-img
 grain doctor
 ```
 
-`grain doctor` checks QEMU, data dirs, and soft-warns if the guest agent binary is missing (OK for first pull of the golden image).
+`grain doctor` checks QEMU, data dirs, and soft-warns if the guest agent binary is missing (fine until the first golden image pull).
 
 Other install paths (release binary, `go install`, from source): [Install grain](../install/).
 
 ---
 
-## 2. Starter config (optional)
+## Starter config (optional)
 
-Defaults work with **no** config file. A starter file is still useful for size defaults and a named **profile**.
+Defaults work with no config file. A starter file is useful for size defaults and a named profile.
 
 ```bash
 mkdir -p ~/.grain
@@ -105,7 +99,7 @@ All fields: [Configuration reference](../../reference/config/). Remote / team ho
 
 ---
 
-## 3. First sandbox
+## First sandbox
 
 ```bash
 # Start the local daemon (once per session)
@@ -130,7 +124,7 @@ grain rm
 grain down
 ```
 
-You should see create progress (image → disk → seed → boot → agent), then something like:
+Create progress looks like image → disk → seed → boot → agent, then:
 
 ```text
 created sbox-1  status=running  image=grain-ubuntu  persist=false  ssh=:PORT
@@ -149,7 +143,7 @@ next:  grain sh sbox-1
 
 Ephemeral is the default: `rm`, `stop`, or daemon restart removes the VM. Use `grain new -p` for a persistent disk (`stop` / `start` later).
 
-### Optional: Desktop GUI
+### Desktop GUI (optional)
 
 ```bash
 # With release asset or from a checkout that can build Wails:
@@ -159,9 +153,9 @@ curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh 
 
 Same daemon as the CLI — sandboxes, shell, recipes, warm pool Settings, activity feed. Guide: [Grain Desktop](../../guides/desktop/).
 
-### Optional: faster second sandboxes
+### Faster second sandboxes (optional)
 
-Cold boots are guest-bound (~seconds). After one golden is agent-ready:
+Cold boots are guest-bound (seconds). After one golden is agent-ready:
 
 ```bash
 grain new -i grain-ubuntu -n golden -p --wait agent
@@ -174,9 +168,7 @@ Details: [lifecycle — create path and latency](../../guides/lifecycle/#create-
 
 ---
 
-## 4. Real workloads (act & k3s)
-
-These are the two features most people try after a plain shell.
+## Real workloads (act & k3s)
 
 ### GitHub Actions — `grain act`
 
@@ -187,7 +179,7 @@ grain act -- -l              # list workflows / jobs
 grain act -- -j test         # run a job in an ephemeral microVM
 ```
 
-Docker + [act](https://github.com/nektos/act) run **inside** the guest so host Docker stays clean. Full guide: [GitHub Actions with act](../../guides/recipes/act/).
+Docker + [act](https://github.com/nektos/act) run inside the guest so host Docker stays clean. Full guide: [GitHub Actions with act](../../guides/recipes/act/).
 
 ### Throwaway k3s lab
 
@@ -200,7 +192,7 @@ Pull kubeconfig and use host `kubectl` — see [k3s recipe](../../guides/recipes
 
 ---
 
-## 5. Useful next commands
+## Useful next commands
 
 Once `grain up` is running and an image is local:
 
@@ -234,15 +226,13 @@ More: [Profiles & presets](../../guides/profiles/) · [Mounts](../../guides/moun
 
 ---
 
-## 6. If something fails
+## If something fails
 
 ```bash
 grain doctor
 grain logs <name>          # guest serial
 grain logs --qemu <name>   # hypervisor log
 ```
-
-Common fixes:
 
 | Symptom | Try |
 |---------|-----|
@@ -253,7 +243,7 @@ Common fixes:
 
 ---
 
-## 7. Automation (optional)
+## Automation (optional)
 
 The daemon exposes HTTP on the unix socket and optional TCP (`api: 127.0.0.1:7474`). Spec: [OpenAPI](https://github.com/cxdy/grain/blob/main/api/openapi.yaml).
 
@@ -272,9 +262,8 @@ curl --unix-socket ~/.grain/grain.sock http://grain/vms
 
 ## Next steps
 
-- [GitHub Actions (act)](../../guides/recipes/act/) · [k3s lab](../../guides/recipes/k3s/)  
-- [First sandbox](../first-sandbox/) — interactive demo + deeper walkthrough  
-- [Core concepts](../concepts/) — daemon, images, agent, ephemeral vs persistent  
-- [Guides](../../guides/) — images, agent, mounts, proxy, remote host  
-- [CLI reference](../../reference/cli/) · [HTTP API](../../reference/api/)  
-
+- [GitHub Actions (act)](../../guides/recipes/act/) · [k3s lab](../../guides/recipes/k3s/)
+- [First sandbox](../first-sandbox/) — interactive demo + walkthrough
+- [Core concepts](../concepts/) — daemon, images, agent, ephemeral vs persistent
+- [Guides](../../guides/) — images, agent, mounts, proxy, remote host
+- [CLI reference](../../reference/cli/) · [HTTP API](../../reference/api/)

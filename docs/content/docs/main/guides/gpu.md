@@ -14,9 +14,9 @@ keywords:
 Headless is the default — skip this unless you need a virtio display device.
 {{< /only-need >}}
 
-grain runs headless by default (`-display none`). For guests that want a virtio display device (Wayland/X in the guest, GPU-aware tools, etc.), enable **virtio-gpu**.
+grain runs headless by default (`-display none`). Enable **virtio-gpu** when the guest needs a virtio display device (Wayland/X, GPU-aware tools, and similar).
 
-This is **not** full GPU passthrough (VFIO / Metal). It exposes a **virtio-gpu-pci** device suitable for many desktop-in-VM workflows without binding a physical GPU.
+This is **not** full GPU passthrough (VFIO / Metal). It attaches a **virtio-gpu-pci** device that covers many desktop-in-VM cases without binding a physical GPU.
 
 ## Enable
 
@@ -32,9 +32,9 @@ gpu: virtio
 
 ## Notes
 
-- Host remains headless; no local window is opened
-- Requires the QEMU binary to support `virtio-gpu-pci`
-- Combine with mounts and port forwards as usual
+- Host stays headless; no local window opens
+- QEMU must support `virtio-gpu-pci`
+- Mounts and port forwards work as usual
 
 ## See also
 

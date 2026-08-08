@@ -42,7 +42,7 @@ Grain is **one operator (or one cooperating team) per `data_dir` / daemon**. Tha
 | **Unix socket `0600`** | `grain.sock` is owner-only. Any local process running as that user can drive the full control plane without a Bearer token. |
 | **`api_token` is a shared secret** | One Bearer value authenticates the whole daemon. It is **not** per-user identity, roles, or multi-token RBAC. Put SSO/mTLS at a reverse proxy if you need user identity in front. |
 | **Shared physical host** | For untrusted co-tenants: run **separate OS users** (each with its own `data_dir` and daemon) **or separate hosts**. Do not share one grain control plane across hostile tenants. |
-| **Trusted team lab** | One daemon + one token for peers who already trust each other is fine — everyone with the token is equivalent. Ops: [Remote sandbox host](../guides/remote-host/); happy path: [Remote lab](../guides/remote-lab/). |
+| **Trusted team lab** | One daemon + one token for peers who already trust each other is fine — everyone with the token is equivalent. Ops: [Remote sandbox host](../guides/remote-host/); lab setup: [Remote lab](../guides/remote-lab/). |
 
 Anyone who holds the token (or the socket) can create VMs, exec in guests, and read host-injected secrets. Treat the API like **root on that lab**.
 
@@ -114,7 +114,7 @@ Running grain on a team machine so developers create sandboxes remotely is a sup
 - Avoid `network: overlay` across different users’ sandboxes on a shared host  
 - Keep **MCP** on loopback (or behind the same token/firewall story) — MCP tools inherit control-plane power  
 
-Happy path: [Remote lab](../guides/remote-lab/). Ops: [Remote sandbox host](../guides/remote-host/).
+Lab setup: [Remote lab](../guides/remote-lab/). Ops: [Remote sandbox host](../guides/remote-host/).
 
 ## Images
 

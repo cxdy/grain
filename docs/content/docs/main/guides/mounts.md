@@ -15,7 +15,7 @@ keywords:
 Mount a repo with `-v $PWD:/work` on create; details here if mounts misbehave.
 {{< /only-need >}}
 
-Share a host directory into a guest with virtio-9p (default) or virtiofs (Linux) at create time:
+Pass `-v` at create time to share a host directory into the guest. Default driver is virtio-9p; on Linux you can switch to virtiofs.
 
 ```bash
 grain new -v /Users/me/src:/mnt/src

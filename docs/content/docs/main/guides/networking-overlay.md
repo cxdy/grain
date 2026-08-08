@@ -15,9 +15,9 @@ keywords:
 Host→guest ports and SLIRP only — no guest↔guest fabric needed.
 {{< /only-need >}}
 
-By default each grain VM uses **SLIRP** (`user` networking): isolated from other VMs, with host→guest port forwards.
+Default networking is **SLIRP** (`user`): each VM is isolated from peers; host→guest traffic uses port forwards only.
 
-For multi-VM labs that need guest-to-guest connectivity, set **`network: overlay`**. grain attaches a second NIC using QEMU’s multicast socket backend so VMs on the same host join a shared L2 segment (`230.0.0.1:4242`) while keeping SLIRP for SSH and published ports.
+Set **`network: overlay`** when guests must talk to each other. grain adds a second NIC via QEMU’s multicast socket backend so VMs on the same host join L2 segment `230.0.0.1:4242`. SLIRP stays for SSH and published ports.
 
 ## Enable
 

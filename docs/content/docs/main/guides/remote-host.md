@@ -18,7 +18,7 @@ Run everything on your laptop first — remote host is optional.
 Day-to-day host + laptop coding lab (token, tunnel, `remote-coding`, sync, port tunnels).
 {{< /only-need >}}
 
-grain is local-first, but a single **beefy host** can serve a team: one daemon, many sandboxes, developers connect over **SSH**, the **remote CLI** (`GRAIN_API` / `--api`), or **SDKs**. This guide is the **ops** companion (systemd, firewall, reverse proxy, SDK patterns). For the shortest coding-lab path, start with [Remote lab happy path](../remote-lab/).
+grain is local-first, but a single **beefy host** can serve a team: one daemon, many sandboxes, developers connect over **SSH**, the **remote CLI** (`GRAIN_API` / `--api`), or **SDKs**. This page is the **ops** companion (systemd, firewall, reverse proxy, SDK patterns). For the shortest coding-lab path, start with [Remote lab happy path](../remote-lab/).
 
 ## What this is (and is not)
 
@@ -55,7 +55,7 @@ Developer laptop                         Shared host (Linux + KVM recommended)
 
 ## Security model (read this first)
 
-### Control plane is powerful
+### Control plane authority
 
 Whoever can call authenticated `POST /vms` can create VMs, exec as root in guests (depending on image), and read secrets the host injects. Treat the API like **root on a shared lab**.
 

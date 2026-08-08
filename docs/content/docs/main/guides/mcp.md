@@ -70,6 +70,7 @@ Each agent has its **own** config file and schema. Pick a host, choose **stdio**
 {{< mcp-hosts >}}
 
 **Before connecting:** `grain up` for stdio tools, or `grain up --mcp` for Streamable HTTP (`http://127.0.0.1:7476/mcp`). Prefer **stdio** when the host can spawn a local process.
+
 ## Connection to the daemon
 
 | Variable / config | Meaning |
@@ -143,7 +144,7 @@ Sandbox **recipe library** tools are listed under Lifecycle above (`grain_recipe
 
 Import/add **never** creates a VM. Create is always an explicit second step.
 
-### Create parameters (high level)
+### Create parameters
 
 | Field | Notes |
 |-------|--------|

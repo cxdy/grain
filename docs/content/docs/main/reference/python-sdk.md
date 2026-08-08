@@ -1,5 +1,5 @@
 ---
-title: "Python SDK (grainvm)"
+title: "Python SDK"
 description: Stdlib Python client for the grain daemon — TCP or Unix socket, create, exec, lifecycle, and more.
 section: reference
 keywords:
@@ -22,7 +22,7 @@ Requires **Python 3.9+**. **Zero runtime dependencies** (stdlib `http.client` on
 
 ## Quick start (TCP)
 
-Ensure the daemon is up with TCP API enabled (`api: 127.0.0.1:7474` is the default config).
+Daemon must be up with the TCP API enabled (`api: 127.0.0.1:7474` by default).
 
 ```python
 from grain import GrainClient, CreateRequest, WAIT_AGENT

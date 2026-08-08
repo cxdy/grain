@@ -24,7 +24,7 @@ Portable YAML file for create + bootstrap (`grain new --recipe`) — better for 
 
 ## Named profiles
 
-Define reusable create defaults in `~/.grain/config.yaml`. **Built-in** profiles are available without config; the same name in config **overrides** the builtin.
+Put reusable create defaults in `~/.grain/config.yaml`. **Built-in** profiles work with no config; a same-named entry in config **overrides** the builtin.
 
 ### Builtin: `remote-coding`
 

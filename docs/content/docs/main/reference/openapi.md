@@ -9,3 +9,5 @@ keywords:
   - Swagger
   - API explorer
 ---
+
+Interactive Swagger UI for the daemon HTTP API. For narrative route notes, see [HTTP API](../api/). The live daemon also serves `GET /openapi.yaml` and `GET /openapi.json`.

@@ -4,10 +4,7 @@ description: How maintainers cut semver tags with svu and GoReleaser.
 section: developer
 ---
 
-grain uses [semantic versioning](https://semver.org/) driven by
-[Conventional Commits](https://www.conventionalcommits.org/). Maintainers cut
-releases by pushing a version tag; [GoReleaser](https://goreleaser.com/) builds
-CLI and guest-agent archives from that tag.
+Releases follow [semantic versioning](https://semver.org/) and [Conventional Commits](https://www.conventionalcommits.org/). Maintainers push a version tag; [GoReleaser](https://goreleaser.com/) builds CLI and guest-agent archives from that tag.
 
 ## Prerequisites
 
@@ -21,7 +18,7 @@ CLI and guest-agent archives from that tag.
   go install github.com/caarlos0/svu/v3@latest
   ```
 
-## How the version is chosen
+## Version selection
 
 [`svu next`](https://github.com/caarlos0/svu) inspects git history since the
 latest tag:
@@ -42,7 +39,7 @@ svu current
 svu next
 ```
 
-## Cut a release
+## Tag a release
 
 1. Ensure the commit you want is on `main` (or checkout that SHA).
 2. Confirm the next tag:

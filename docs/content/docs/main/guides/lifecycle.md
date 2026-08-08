@@ -25,9 +25,9 @@ Create, shell, and `grain rm` — no pause/suspend for disposable sandboxes.
 | `grain suspend` | QEMU stopped | Freed | `suspended` | `grain restore` |
 | `grain stop` | Stopped | Freed | ephemeral deleted / persistent `stopped` | `grain start` |
 
-**Pause** freezes vCPUs via QMP (`stop` / `cont`). Use it for a short break without tearing down networking.
+**Pause** freezes vCPUs via QMP (`stop` / `cont`). Good for a short break without tearing down networking.
 
-**Suspend** is for **persistent** VMs only. grain attempts a qcow2 `savevm` snapshot when possible, then stops the process. Restore loads the snapshot if present, otherwise cold-boots the disk.
+**Suspend** applies to **persistent** VMs only. grain tries a qcow2 `savevm` snapshot when it can, then stops the process. Restore loads that snapshot if present; otherwise it cold-boots the disk.
 
 ```bash
 grain new -p -n lab

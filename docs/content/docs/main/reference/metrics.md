@@ -1,5 +1,5 @@
 ---
-title: "Metrics (Prometheus + guest history)"
+title: "Metrics"
 description: Daemon Prometheus scrape endpoint and per-sandbox guest stats history on the host.
 section: reference
 keywords:
@@ -10,7 +10,7 @@ keywords:
   - guest stats
 ---
 
-grain exposes two related surfaces:
+Two related surfaces:
 
 1. **Prometheus text** at `GET /metrics` (daemon-wide counters/gauges)
 2. **Per-sandbox guest history** on the host (`metrics.ring` under each VM dir), sampled in the background and shown in Desktop
@@ -31,7 +31,7 @@ curl -s --unix-socket ~/.grain/grain.sock http://grain/metrics
 
 ### Series
 
-Exact names may grow; common series include:
+Names may grow; common series:
 
 | Metric | Meaning |
 |--------|---------|

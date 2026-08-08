@@ -16,7 +16,7 @@ keywords:
 Native arch is the default — only read this for cross-arch guests.
 {{< /only-need >}}
 
-By default grain matches the **host** architecture (Apple Silicon → arm64 guests, Intel/AMD → amd64).
+Default guest arch matches the **host** (Apple Silicon → arm64, Intel/AMD → amd64).
 
 ## Select guest arch
 
@@ -36,11 +36,11 @@ guest_arch: amd64   # or arm64 / empty for host
 
 ## Images
 
-Use an image built for the guest ISA. The golden `grain-ubuntu` pull matches the **host** arch. For cross-arch boots, pull or import a matching cloud image (for example Ubuntu cloud amd64 on an arm64 Mac).
+Use an image built for the guest ISA. Pulling golden `grain-ubuntu` matches the **host** arch. For cross-arch boots, pull or import a matching cloud image (for example Ubuntu cloud amd64 on an arm64 Mac).
 
 ## Rosetta note
 
-Apple’s **Rosetta for Linux** is a Virtualization.framework feature, not QEMU HVF. grain’s multi-arch path on Apple Silicon uses **QEMU TCG** for amd64 guests. That is correct for many CI/debug cases but is not Rosetta translation inside a VZF VM.
+Apple’s **Rosetta for Linux** is a Virtualization.framework feature, not QEMU HVF. On Apple Silicon, grain runs amd64 guests with **QEMU TCG**. That works for many CI and debug cases; it is not Rosetta translation inside a VZF VM.
 
 ## See also
 

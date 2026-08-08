@@ -1,5 +1,5 @@
 ---
-title: "Bootstrap until ready (custom setup)"
+title: "Bootstrap until ready"
 description: "Run packages or a setup script before grain says the sandbox is ready — with status you can watch."
 section: get-started
 keywords:
@@ -12,26 +12,26 @@ keywords:
   - custom image
 ---
 
-**Goal:** create a VM, run your install/setup steps, and only get a shell (or next command) when those steps finished **with zero failures**.
+Create a VM, run your install/setup steps, and only get a shell (or next command) when those steps finished **with zero failures**.
 
-Stock `grain-ubuntu` is already “ready” when the agent is up. This page is for **custom** first-boot work (apt, scripts, image authors).
+Stock `grain-ubuntu` is already ready when the agent is up. This page is for **custom** first-boot work (apt, scripts, image authors).
 
-Deep reference: [Readiness protocol](../explain/readiness/).
+Full readiness protocol: [Readiness protocol](../explain/readiness/).
 
 ---
 
-## 1. What “ready” means here
+## What “ready” means here
 
 A sandbox is ready when:
 
-1. The **VM is up** and the **guest agent** is healthy, and  
+1. The **VM is up** and the **guest agent** is healthy, and
 2. Your **bootstrap** finished successfully (`state=ready`), with **no failed steps**.
 
 If bootstrap fails, create errors and the VM is **left running** so you can inspect logs and fix.
 
 ---
 
-## 2. Minimal path (cloud-init)
+## Minimal path (cloud-init)
 
 Save this as `bootstrap.yaml` on the **host**:
 
@@ -65,7 +65,7 @@ grain image pull grain-ubuntu   # or your custom image
 grain new --userdata-file ./bootstrap.yaml --wait bootstrap -n lab
 ```
 
-While it runs you should see create progress mention bootstrap / your `message`. When it returns successfully, bootstrap completed with no failures.
+While it runs, create progress should mention bootstrap / your `message`. When the command returns successfully, bootstrap completed with no failures.
 
 ```bash
 grain status lab
@@ -75,7 +75,7 @@ grain sh lab
 
 ---
 
-## 3. Report progress from a script
+## Report progress from a script
 
 Inside the guest (or in runcmd), use the same files — or copy [scripts/grain-ready-report.sh](https://github.com/cxdy/grain/blob/main/scripts/grain-ready-report.sh) into the image:
 
@@ -91,7 +91,7 @@ Files live under `/var/lib/grain/readiness/` (`state`, `phase`, `message`, `erro
 
 ---
 
-## 4. Watch status
+## Watch status
 
 ```bash
 grain status lab
@@ -102,19 +102,19 @@ grain health lab   # full JSON including readiness
 
 ---
 
-## 5. Common failures
+## Common failures
 
 | Symptom | Check |
 |---------|--------|
 | Create hangs on bootstrap | Guest never wrote `state=ready` — look at `grain logs -f lab` |
 | Create errors, VM still there | Bootstrap wrote `state=failed` or timed out — `grain status` / logs, then `grain rm lab` |
-| Stock image, no custom setup | Use default wait (`agent` for goldens); you don’t need this guide |
+| Stock image, no custom setup | Use default wait (`agent` for goldens); you don’t need this page |
 
 ---
 
 ## Next
 
-- Prefer a checked-in YAML file? [Sandbox recipes](../recipe/) (`grain new --recipe`)  
-- Full contract (states, wait modes, agent API): [Readiness protocol](../explain/readiness/)  
-- Named create defaults: [Profiles & presets](../guides/profiles/)  
-- Baking faster images later: [Images](../guides/images/)  
+- Prefer a checked-in YAML file? [Sandbox recipes](../recipe/) (`grain new --recipe`)
+- States, wait modes, agent API: [Readiness protocol](../explain/readiness/)
+- Named create defaults: [Profiles & presets](../guides/profiles/)
+- Baking faster images later: [Images](../guides/images/)

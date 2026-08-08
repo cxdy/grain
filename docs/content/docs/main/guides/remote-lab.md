@@ -20,7 +20,7 @@ Run a durable coding sandbox on a **Linux/macOS host**, drive it from your **lap
 
 For systemd, caps, reverse proxy, and team ops, see [Remote sandbox host](../remote-host/).
 
-## What you will have
+## Roles
 
 | Machine | Role |
 |---------|------|

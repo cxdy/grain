@@ -16,14 +16,13 @@ keywords:
 
 ## Supported platforms
 
-grain supports **macOS** and **Linux** hosts (amd64 / arm64) with hardware virtualization. Native **Windows** is not a host OS — use the remote API/SDK against a macOS or Linux machine. **WSL** reports as Linux and follows the same virt requirements as other Linux hosts (see [Install → Supported platforms](../../get-started/install/)). Nested virtualization only matters when grain itself runs *inside* another VM without hardware virt exposed to that guest.
+Hosts: **macOS** and **Linux** (amd64 / arm64) with hardware virtualization. Native **Windows** is not supported as a host — point the remote API/SDK at a macOS or Linux machine. **WSL** reports as Linux and has the same virt requirements (see [Install → Supported platforms](../../get-started/install/)). Nested virt only matters when grain runs *inside* another VM that does not expose hardware virt to that guest.
 
 ## `grain doctor`
 
 ```bash
 grain doctor
 ```
-
 
 Checks:
 

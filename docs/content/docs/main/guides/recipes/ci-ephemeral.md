@@ -14,7 +14,7 @@ keywords:
 Manual create/shell/rm first — this page is a scripted CI pattern.
 {{< /only-need >}}
 
-Use grain as a disposable Linux runner: one VM per job, no leftover state.
+Treat grain as a disposable Linux runner: one VM per job, then destroy it so nothing lingers.
 
 ## Prerequisites
 

@@ -1,5 +1,5 @@
 ---
-title: "TypeScript SDK (@cxdy/grain)"
+title: "TypeScript SDK"
 description: Node-friendly fetch client for the grain daemon (@cxdy/grain under sdk/ts).
 section: reference
 keywords:
@@ -23,7 +23,7 @@ Requires **Node 18+** (global `fetch`). Optional **`undici`** for Unix socket tr
 
 ## Quick start (TCP)
 
-Ensure the daemon is up with TCP API enabled (`api: 127.0.0.1:7474` is the default config).
+Daemon must be up with the TCP API enabled (`api: 127.0.0.1:7474` by default).
 
 ```ts
 import { GrainClient } from "@cxdy/grain";

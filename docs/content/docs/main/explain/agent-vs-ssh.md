@@ -1,5 +1,5 @@
 ---
-title: "Agent vs SSH (when each path is used)"
+title: "Agent vs SSH"
 description: When grain uses the guest agent, when it falls back to SSH, and why both exist.
 section: explain
 keywords:
@@ -12,7 +12,7 @@ keywords:
 ---
 
 {{< only-need href="guides/agent/" >}}
-Practical agent CLI/API how-to — this page is the decision model.
+CLI and API how-to for the agent; this page is when to prefer agent vs SSH.
 {{< /only-need >}}
 
 ## Roles
@@ -48,9 +48,9 @@ Host → agent:
 1. **TCP hostfwd** to guest `:7475` (always available with QEMU user net)  
 2. **virtio-vsock** when `agent_transport` allows and `/dev/vhost-vsock` exists (typically Linux)  
 
-## Practical guidance
+## When to use which
 
-- **Day-to-day automation:** agent (`x`, `cp`, `fs`, API exec)  
-- **Debugging a broken agent:** `grain sh --ssh` and `grain logs`  
-- **Images:** prefer `grain-ubuntu` so agent is already present  
-- **Security-sensitive tokens:** prefer [egress proxy](../guides/proxy/) over writing secrets into the guest when possible  
+- **Day-to-day automation:** agent (`x`, `cp`, `fs`, API exec)
+- **Broken agent:** `grain sh --ssh` and `grain logs`
+- **Images:** prefer `grain-ubuntu` so the agent is already present
+- **Secrets:** prefer the [egress proxy](../guides/proxy/) over writing tokens into the guest when you can

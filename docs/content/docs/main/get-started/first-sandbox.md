@@ -1,5 +1,5 @@
 ---
-title: "First sandbox (demo + real shell)"
+title: "First sandbox"
 description: Start the grain daemon, pull a base image, create a VM, and open a shell — with an interactive demo.
 sandbox_demo: true
 section: get-started
@@ -17,9 +17,9 @@ keywords:
 Install → starter config → create → shell in one short page.
 {{< /only-need >}}
 
-By the end of this lesson you will understand the real commands to run a Linux microVM and open a shell. Prefer the **interactive demo** first, then run the same steps on your machine.
+Run a Linux microVM and open a shell. Prefer the **interactive demo** first, then run the same steps on your machine.
 
-For the shortest path (install + starter config + cleanup), use [Quick start](../quickstart/). Custom first-boot setup (packages, scripts) before ready: [Bootstrap until ready](../bootstrap/).
+Shortest path (install + starter config + cleanup): [Quick start](../quickstart/). Custom first-boot setup (packages, scripts) before ready: [Bootstrap until ready](../bootstrap/).
 
 ## Interactive demo
 
@@ -31,7 +31,7 @@ Simulated terminal — nothing runs on your computer. Type the suggested command
 
 ---
 
-## Do it for real
+## On your machine
 
 ### 1. Start the daemon
 
@@ -74,7 +74,7 @@ grain image ls
 grain new
 ```
 
-With a golden image ready, grain defaults to **agent wait**. You will see progress phases (image → disk → seed → boot → waiting agent) and a final line similar to:
+With a golden image ready, grain defaults to **agent wait**. Progress phases: image → disk → seed → boot → waiting agent. Final line similar to:
 
 ```text
 created sbox-1  status=running  image=grain-ubuntu  persist=false  ssh=:PORT
@@ -112,11 +112,11 @@ grain rm          # or: grain stop  (ephemeral VMs are deleted on stop)
 grain down        # stop the daemon when you are done for the day
 ```
 
-## What you learned
+## What happened
 
-- The daemon must be running for VM commands  
-- Images are pulled once, then cloned per VM  
-- `sh` / `x` talk to the guest agent when possible  
-- Ephemeral VMs are disposable by design  
+- The daemon must be running for VM commands
+- Images are pulled once, then cloned per VM
+- `sh` / `x` talk to the guest agent when possible
+- Ephemeral VMs are disposable by design
 
 **Next:** [Quick start](../quickstart/) (config + common flags), [Core concepts](../concepts/), [Bootstrap until ready](../bootstrap/) for custom setup, then a [guide](../../guides/) for mounts, proxy, or k3s.

@@ -50,4 +50,4 @@ grain secret inject sbox-1 db-pass --path /etc/app/secret
 | Where secret lives | File **inside** the guest | Only on the **host**; injected on matching HTTP(S) requests |
 | Best for | Config files, certs, app secrets the process must read | API tokens you do not want in the sandbox filesystem |
 
-Use inject for material the guest software must open as a file. Use the proxy when the guest should never see the raw credential.
+Inject when guest software must open the material as a file. Use the proxy when the guest must never see the raw credential.

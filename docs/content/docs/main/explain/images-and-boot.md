@@ -36,7 +36,7 @@ End-to-end create latency is usually:
 4. cloud-init (heavy on first cloud boot)  
 5. Agent healthy **or** SSH accept  
 
-Golden images target step 4–5 by baking the agent and using a **minimal** cloud-init seed for clones.
+Golden images cut step 4–5 by baking the agent and using a **minimal** cloud-init seed for clones.
 
 ## Measuring
 
@@ -46,7 +46,7 @@ grain image pull grain-ubuntu   # or ubuntu-cloud
 ./scripts/bench-create.sh
 ```
 
-Report p50/p95 on your hardware; do not assume marketing numbers from other tools.
+Report p50/p95 on your hardware; do not assume numbers from other tools.
 
 ## Baking your own golden
 

@@ -18,7 +18,7 @@ keywords:
 Operator setup for the Firecracker backend (kernel, doctor, catalog pull, vsock agent).
 {{< /only-need >}}
 
-This page is the **capability snapshot** for grain’s two real hypervisors: **QEMU** (default product path) and **Firecracker** (Linux + KVM backend).
+Capability snapshot for grain’s two real hypervisors: **QEMU** (default product path) and **Firecracker** (Linux + KVM backend).
 
 ## Support policy (read this first)
 

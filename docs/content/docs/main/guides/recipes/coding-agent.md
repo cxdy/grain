@@ -142,7 +142,7 @@ Guests use `HTTPS_PROXY=http://TOKEN@10.0.2.2:3128` (SLIRP gateway). See
 
 ## Tips
 
-- **9p mounts** are great for source; heavy I/O (node_modules, caches) is happier on the guest disk under `/home/ubuntu` or `/var/tmp`.
+- **9p mounts** are fine for source; heavy I/O (node_modules, caches) is happier on the guest disk under `/home/ubuntu` or `/var/tmp`.
 - First boot with package installs can take a few minutes — `grain logs -f agent`.
 - Golden image with agent baked in skips SSH deploy: see [images.md](../images.md) and `scripts/bake-golden.sh`.
 - For CI-style one-shot create/exec/rm, see [ci-ephemeral.md](ci-ephemeral.md).

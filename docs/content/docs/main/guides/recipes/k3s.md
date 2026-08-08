@@ -14,7 +14,7 @@ keywords:
 Plain sandbox first — this page is for the k3s preset and kubeconfig pull.
 {{< /only-need >}}
 
-Spin up a disposable (or persistent) k3s node with grain’s embedded `k3s` preset, forward the API port, and pull `kubeconfig` onto the host.
+Create a disposable or persistent k3s node with the embedded `k3s` preset, forward the API port, and copy `kubeconfig` to the host.
 
 ## Prerequisites
 
