@@ -25,11 +25,15 @@ func cmdUpdate(cfgPath *string, version string) *cobra.Command {
 		Use:   "update",
 		Short: "Check for and install the latest grain release",
 		Long: `Check GitHub Releases for a newer grain CLI, then re-run the install
-script to upgrade (same path as first-time install).
+script to upgrade the CLI and Grain Desktop (same as install.sh --desktop).
 
   grain update           # check; install if a newer release exists
   grain update --check   # report only (exit 1 if an update is available)
   grain update --force   # re-run the installer even when already current
+
+Desktop is upgraded when a release asset is available (or built from a
+checkout). If Desktop cannot be installed (missing GUI deps, no asset),
+the CLI update still succeeds.
 
 Upgrade notices on other commands can be disabled:
 
@@ -125,11 +129,13 @@ func displayVer(v string) string {
 func runInstallScript() error {
 	url := installScriptURL()
 	// Prefer curl (same as public install docs); fall back to wget.
+	// Pass --desktop so CLI + Desktop release assets are both refreshed.
+	// install.sh treats Desktop failure as non-fatal when CLI is installed.
 	var shellCmd string
 	if _, err := exec.LookPath("curl"); err == nil {
-		shellCmd = fmt.Sprintf("curl -fsSL %q | bash", url)
+		shellCmd = fmt.Sprintf("curl -fsSL %q | bash -s -- --desktop", url)
 	} else if _, err := exec.LookPath("wget"); err == nil {
-		shellCmd = fmt.Sprintf("wget -qO- %q | bash", url)
+		shellCmd = fmt.Sprintf("wget -qO- %q | bash -s -- --desktop", url)
 	} else {
 		return fmt.Errorf("need curl or wget to download the install script")
 	}
