@@ -1,5 +1,5 @@
 ---
-title: "Core concepts (daemon, images, agent)"
+title: "Core concepts"
 description: A short glossary of daemon, images, sandboxes, the guest agent, and how they fit together.
 section: get-started
 keywords:
@@ -32,17 +32,17 @@ Pull or import a base image once. Each `grain new` clones it (qcow2 overlay or C
 
 ## Ephemeral vs persistent
 
-- **Ephemeral (default):** stop or daemon restart removes the VM  
-- **Persistent (`-p`):** disk kept; use `stop` / `start` or `suspend` / `restore`  
+- **Ephemeral (default):** stop or daemon restart removes the VM
+- **Persistent (`-p`):** disk kept; use `stop` / `start` or `suspend` / `restore`
 
 ## Guest agent
 
 A small HTTP service inside the Linux guest (`grain-agent`). The host reaches it via SLIRP hostfwd (and optionally vsock). It powers:
 
-- `grain x` (exec)  
-- `grain sh` (PTY shell)  
-- `grain cp` / `grain fs`  
-- health, stats, secret materialize  
+- `grain x` (exec)
+- `grain sh` (PTY shell)
+- `grain cp` / `grain fs`
+- health, stats, secret materialize
 
 SSH still works as a fallback and for bootstrap when the agent is not baked into the image.
 
@@ -50,10 +50,10 @@ SSH still works as a fallback and for bootstrap when the agent is not baked into
 
 Automation can use:
 
-- Unix socket: `~/.grain/grain.sock`  
-- TCP: `http://127.0.0.1:7474` (default config)  
-- OpenAPI: `GET /openapi.yaml`  
-- SDKs: [Go](../../reference/go-sdk/) · [TypeScript](../../reference/typescript-sdk/) · [Python](../../reference/python-sdk/)  
+- Unix socket: `~/.grain/grain.sock`
+- TCP: `http://127.0.0.1:7474` (default config)
+- OpenAPI: `GET /openapi.yaml`
+- SDKs: [Go](../../reference/go-sdk/) · [TypeScript](../../reference/typescript-sdk/) · [Python](../../reference/python-sdk/)
 
 Optional Bearer auth: set `api_token` in config and `GRAIN_TOKEN` in the environment.
 

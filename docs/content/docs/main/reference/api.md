@@ -147,4 +147,3 @@ Prefer typed clients when embedding:
 - [Go SDK](../go-sdk/) — [`github.com/cxdy/grain/client`](https://pkg.go.dev/github.com/cxdy/grain/client)
 - [TypeScript SDK](../typescript-sdk/) — [`@cxdy/grain`](https://www.npmjs.com/package/@cxdy/grain)
 - [Python SDK](../python-sdk/) — [`grainvm`](https://pypi.org/project/grainvm/)
-

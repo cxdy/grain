@@ -116,7 +116,7 @@ grain’s QEMU catalog images (`ubuntu-cloud`, `grain-ubuntu`, `alpine-cloud`) a
 | **`grain-ubuntu-fc`** | Raw rootfs with **grain-agent** baked in (`format: raw`, `HasAgent`) | **Pullable** from `fc-latest` for **amd64 and arm64** → `images/grain-ubuntu-fc/disk.raw` (or BYO `import`) |
 | **`fc-kernel`** | Guest **vmlinux** artifact | **Pullable** from `fc-latest` for **amd64 and arm64** → `~/.grain/kernels/vmlinux` (or BYO `import` / `kernel_path`) |
 
-These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. **Pull is the happy path**; BYO import remains first-class.
+These IDs are **explicit** (not dual-use of `grain-ubuntu` qcow2) so operators and tooling never confuse QEMU cloud images with FC raw + kernel. **Pull is the usual path**; BYO import is fully supported.
 
 ### Pull (published `fc-latest`)
 
@@ -257,7 +257,7 @@ grain new -i grain-ubuntu-fc --wait agent
 |------------|----------------|--------------------------------------|
 | Host OS | macOS + Linux | **Linux only** |
 | Acceleration | HVF / KVM (TCG fallback on Linux) | **KVM required** (no TCG) |
-| Catalog images | QEMU cloud qcow2 first-class | **`fc-kernel` + `grain-ubuntu-fc` pullable** (`fc-latest`, **amd64 + arm64**); QEMU cloud images not drop-in |
+| Catalog images | QEMU cloud qcow2 fully supported | **`fc-kernel` + `grain-ubuntu-fc` pullable** (`fc-latest`, **amd64 + arm64**); QEMU cloud images not drop-in |
 | Guest kernel | QEMU/UEFI path | Catalog **`fc-kernel`** → `vmlinux` (or `kernel_path` / BYO import) |
 | SSH + hostfwd / `-P` | Yes (SLIRP; TCP+UDP) | **Yes (TCP)** — TAP + host TCP proxy (CAP_NET_ADMIN; socat/python3). UDP → use QEMU |
 | Guest agent reachability | TCP hostfwd and/or vhost-vsock | **Supported** — FC vsock UDS + `CONNECT` (primary); optional TCP proxy to `:7475` |

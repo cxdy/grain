@@ -10,7 +10,7 @@ keywords:
   - grain-desktop
 ---
 
-**Grain Desktop** is an optional GUI for managing local (and remote) grain sandboxes. It is a **thin client** of the same control-plane API as the CLI and SDKs — not a second engine, and **not Electron**.
+**Grain Desktop** is an optional GUI for local (and remote) grain sandboxes. It is a **thin client** of the same control-plane API as the CLI and SDKs — not a second engine, and **not Electron**.
 
 {{< only-need href="get-started/quickstart/" >}}
 CLI-first path: install → `grain up` → `grain new` → `grain sh`.
@@ -82,7 +82,7 @@ grain up                    # daemon must be up for list/create
 
 `just desktop-build` on Linux skips macOS codesign/`ditto`/`sips` and builds with `-tags webkit2_41 -nopackage`.
 
-If the window paints but **nothing is clickable**: ensure you rebuilt after the Linux fixes (splash no longer blocks the UI; Wails bindings resolve lazily). Also run from a terminal and check for JS/console errors; start the daemon with `grain up` first.
+If the window paints but **nothing is clickable**: rebuild after the Linux fixes (splash no longer blocks the UI; Wails bindings resolve lazily). Run from a terminal and check for JS/console errors; start the daemon with `grain up` first.
 
 ## UI map
 

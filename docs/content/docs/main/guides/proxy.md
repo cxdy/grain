@@ -15,11 +15,11 @@ keywords:
 Need a secret **file inside** the guest? Use secrets inject instead.
 {{< /only-need >}}
 
-grain can run a **host-side HTTP(S) forward proxy** that guest VMs use via
-`HTTPS_PROXY` / `HTTP_PROXY`. Outbound traffic is **default-deny**: only
-explicit allow rules (host, optional method, optional path prefix) pass.
-Rules may also **inject** an `Authorization` header from the host secrets
-store so the guest never holds the real token.
+Run a **host-side HTTP(S) forward proxy** and point guests at it with
+`HTTPS_PROXY` / `HTTP_PROXY`. Egress is **default-deny**: only matching
+allow rules (host, optional method, optional path prefix) pass. Rules can
+**inject** an `Authorization` header from the host secrets store so the
+guest never holds the real token.
 
 ```text
 guest ──HTTPS_PROXY──► grain-proxy (host) ──► internet

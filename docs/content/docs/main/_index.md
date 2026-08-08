@@ -1,12 +1,10 @@
 ---
 title: Documentation (main)
-description: Bleeding-edge docs from the main branch.
+description: Docs from the main branch (may include unreleased features).
 version: "main"
 ---
 
-These docs track **git main** and may describe unreleased features. Prefer the latest release unless you are developing grain itself.
-
-## Find features fast
+These pages track **git main** and may describe unreleased features. Prefer the latest release unless you are developing grain itself.
 
 | Want… | Go here |
 |-------|---------|

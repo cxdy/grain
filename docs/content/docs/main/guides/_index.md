@@ -8,9 +8,9 @@ keywords:
   - recipes
 ---
 
-How-to guides assume you already installed grain and created at least one sandbox. Each page solves a specific job.
+How-to guides assume grain is installed and you have created at least one sandbox. Each page covers one job.
 
-If you are brand new, start with the [quick start](../get-started/quickstart/).
+New to grain? Start with the [quick start](../get-started/quickstart/).
 
 ## Highlights
 

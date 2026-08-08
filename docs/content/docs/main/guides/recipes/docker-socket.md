@@ -14,7 +14,7 @@ keywords:
 Need GitHub Actions with act? That recipe boots Docker + act for you.
 {{< /only-need >}}
 
-Install Docker inside a grain VM (via the `docker` preset), then either use Docker only from the guest or expose the daemon socket to the host for local clients.
+Install Docker in a grain VM with the `docker` preset. Use it only inside the guest, or expose the daemon socket so host Docker clients can reach it.
 
 ## Prerequisites
 

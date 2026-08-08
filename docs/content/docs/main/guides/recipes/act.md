@@ -69,7 +69,7 @@ grain seeds `~/.config/act/actrc` in the sandbox so act does not prompt for Larg
 | `--timeout` | 15m | Create + ready + act |
 | `--keep` | false | Do not delete VM after act |
 
-## What happens under the hood
+## Steps (what grain runs)
 
 1. `grain new` with preset **`act`** (Docker Engine + act install)  
 2. Mount project → `/work`  
@@ -77,7 +77,7 @@ grain seeds `~/.config/act/actrc` in the sandbox so act does not prompt for Larg
 4. `cd /work && act …` via guest agent  
 5. Delete sandbox (unless `--keep`)  
 
-First boot installs packages and act (needs network); later runs on a warm image are faster. Prefer a golden image with the agent baked in for snappier create.
+First boot installs packages and act (needs network); later runs on a warm image are faster. Prefer a golden image with the agent baked in for quicker create.
 
 **Guest agent:** `grain act` uses `--wait agent`. Without a golden image, the host deploys `grain-agent` over SSH — you need a linux agent binary on the host:
 

@@ -1,5 +1,5 @@
 ---
-title: "Sandbox recipes (YAML create + bootstrap)"
+title: "Sandbox recipes"
 description: "Portable recipe files for create options and bootstrap steps that stamp readiness before grain says ready."
 section: get-started
 keywords:
@@ -10,13 +10,13 @@ keywords:
   - sandbox recipe
 ---
 
-**Goal:** check in a YAML file that creates a sandbox, runs install steps, and only reports **ready** when those steps finish with zero failures.
+Check in a YAML file that creates a sandbox, runs install steps, and only reports **ready** when those steps finish with zero failures.
 
-Deep contract: [Readiness protocol](../explain/readiness/). Manual cloud-init path: [Bootstrap until ready](../bootstrap/).
+Readiness details: [Readiness protocol](../explain/readiness/). Hand-written cloud-init: [Bootstrap until ready](../bootstrap/).
 
 ---
 
-## 1. Minimal recipe
+## Minimal recipe
 
 Save as `git-lab.recipe.yaml`:
 
@@ -53,7 +53,7 @@ When `bootstrap.steps` is set, create defaults to **`--wait bootstrap`**. Ready 
 
 ---
 
-## 2. What a recipe can set
+## What a recipe can set
 
 | Field | Role |
 |-------|------|
@@ -108,7 +108,7 @@ In-repo under [`recipes/`](https://github.com/cxdy/grain/tree/main/recipes) (ind
 
 **Contributing official recipes:** open a PR that adds `recipes/<id>.yaml` and updates `catalog.json` (sha256 of the file). No accounts or marketplace backend — GitHub PRs only.
 
-**Download counts (no extra infra):** when recipe or image bundles ship as GitHub Release assets, use the public Releases API `download_count` per asset (`gh api repos/cxdy/grain/releases` / release page). Library code can call `internal/recipe.FetchReleaseAssetDownloads` for the same numbers. The official catalog index itself is git-sourced (`recipes/catalog.json`) until a release pin is published.
+**Download counts:** when recipe or image bundles ship as GitHub Release assets, use the public Releases API `download_count` per asset (`gh api repos/cxdy/grain/releases` / release page). Library code can call `internal/recipe.FetchReleaseAssetDownloads` for the same numbers. The official catalog index itself is git-sourced (`recipes/catalog.json`) until a release pin is published.
 
 ### Fast sandboxes (snapshot spawn + warm pool)
 
@@ -151,7 +151,7 @@ Env overrides: `GRAIN_HOME` (library under `$GRAIN_HOME/recipes`), `GRAIN_RECIPE
 
 ---
 
-## 3. Inspect without creating
+## Inspect without creating
 
 ```bash
 grain recipe validate ./git-lab.recipe.yaml
@@ -162,7 +162,7 @@ grain recipe show ./git-lab.recipe.yaml --userdata   # compiled cloud-init
 
 ---
 
-## 4. vs profiles and presets
+## Recipes vs profiles and presets
 
 | Mechanism | Portable file? | Bootstrap readiness? |
 |-----------|----------------|----------------------|
@@ -174,6 +174,6 @@ grain recipe show ./git-lab.recipe.yaml --userdata   # compiled cloud-init
 
 ## Next
 
-- [Bootstrap until ready](../bootstrap/) — hand-written cloud-init  
-- [Readiness protocol](../explain/readiness/) — guest files + agent API  
-- [Profiles & presets](../../guides/profiles/) — named host defaults  
+- [Bootstrap until ready](../bootstrap/) — hand-written cloud-init
+- [Readiness protocol](../explain/readiness/) — guest files + agent API
+- [Profiles & presets](../../guides/profiles/) — named host defaults

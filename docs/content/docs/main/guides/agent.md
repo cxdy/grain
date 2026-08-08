@@ -19,7 +19,7 @@ Open a shell and run commands — agent is used automatically when healthy.
 Block create until custom setup finishes (readiness / `--wait bootstrap`).
 {{< /only-need >}}
 
-The guest agent is a small HTTP server that runs **inside** each Linux VM. The host CLI and daemon talk to it over either **virtio-vsock** (when the host supports it) or a QEMU SLIRP hostfwd to guest port **7475**, so common operations work without opening an interactive SSH session.
+The guest agent is a small HTTP server **inside** each Linux VM. Host CLI and daemon reach it over **virtio-vsock** (when available) or QEMU SLIRP hostfwd to guest port **7475**. Exec, shell, copy, and fs work without an interactive SSH session.
 
 On **Firecracker** there is no SLIRP hostfwd: the guest still listens on AF_VSOCK port **7475**, and the host side is Firecracker’s vsock UDS (`fc-vsock.sock` + `CONNECT`). Optional host TCP proxy can expose guest ports (including agent `:7475`) after TAP is up. See [Firecracker on Linux](../firecracker/#networking-and-agent).
 
@@ -96,11 +96,11 @@ grain agent health sbox-1
 
 ### Stats
 
-Guest resource basics (`GET /stats` on the agent): uptime, memory total/available, load average, optional disk totals. Collected from `/proc` on Linux. Useful for agents and CI to decide whether the sandbox is healthy under load. Host-level counters live on the daemon Prometheus endpoint (`GET /metrics`, `grain_vms_*`).
+Guest resource basics (`GET /stats` on the agent): uptime, memory total/available, load average, optional disk totals. Collected from `/proc` on Linux. Agents and CI can use this to judge load. Host-level counters live on the daemon Prometheus endpoint (`GET /metrics`, `grain_vms_*`).
 
 ### Secrets
 
-The guest agent can materialize a secret file (`POST /secrets/materialize`) with base64 payload, optional mode/uid/gid, default path `/run/grain/secrets/<name>`. The host keeps a file-backed store under `~/.grain/secrets/` (mode `0700`) for daemon-mediated inject workflows. Prefer short-lived lab credentials; do not treat this as a full KMS.
+The guest agent can materialize a secret file (`POST /secrets/materialize`) with base64 payload, optional mode/uid/gid, default path `/run/grain/secrets/<name>`. The host keeps a file-backed store under `~/.grain/secrets/` (mode `0700`) for daemon-mediated inject workflows. Prefer short-lived lab credentials; this is not a full KMS.
 
 ### Exec
 

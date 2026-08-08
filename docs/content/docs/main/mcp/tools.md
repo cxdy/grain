@@ -17,7 +17,7 @@ keywords:
 Wire your agent first — tool names only matter once the host is connected.
 {{< /only-need >}}
 
-The MCP server registers tools such as:
+The MCP server registers these tools:
 
 | Tool | Purpose |
 |------|---------|

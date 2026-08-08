@@ -1,5 +1,5 @@
 ---
-title: "Go SDK (client package)"
+title: "Go SDK"
 description: Public Go client for the grain daemon — DialUnix, create, exec, lifecycle, and more.
 section: reference
 keywords:
@@ -12,7 +12,7 @@ keywords:
 
 Package: [`github.com/cxdy/grain/client`](https://pkg.go.dev/github.com/cxdy/grain/client)
 
-This package talks HTTP to a running daemon. It does **not** import `internal/` packages. Types mirror the OpenAPI schema.
+HTTP client for a running grain daemon. It does **not** import `internal/` packages. Types mirror the OpenAPI schema.
 
 ## Install
 

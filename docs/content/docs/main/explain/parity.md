@@ -1,5 +1,5 @@
 ---
-title: "Product surface (what’s done / deferred)"
+title: "Product surface"
 description: "What grain implements for local Linux microVM sandboxes."
 section: explain
 keywords:
@@ -12,12 +12,12 @@ keywords:
 ---
 
 {{< only-need href="get-started/quickstart/" >}}
-Use the product first — this page is a capability checklist.
+Try the product first; this page is a capability checklist.
 {{< /only-need >}}
 
-grain’s local microVM product surface as of the v0.2 line.
+What the local microVM product implements as of the v0.2 line.
 
-## Complete for local sandboxes
+## Done for local sandboxes
 
 | Area | Status |
 |------|--------|
@@ -72,4 +72,4 @@ grain image pull grain-ubuntu
 ./scripts/bench-create.sh -n 5 --wait agent
 ```
 
-Use the reported p50/p95 when talking about boot speed — do not invent sub-300ms claims without a local run.
+Quote the reported p50/p95 for boot speed. Do not claim sub-300ms without a local run.

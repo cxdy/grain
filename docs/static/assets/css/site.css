@@ -58,6 +58,9 @@
 
 html {
   scroll-behavior: smooth;
+  /* Prevent horizontal page scroll from wide pre/tables on small screens */
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Themed scrollbars (Firefox + Chromium/WebKit) */
@@ -95,6 +98,8 @@ body {
   color: var(--text);
   background: var(--bg);
   min-height: 100vh;
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 a {
@@ -244,6 +249,7 @@ pre code {
   display: flex;
   align-items: center;
   gap: 1rem;
+  min-width: 0;
 }
 
 .brand {
@@ -301,6 +307,8 @@ pre code {
   align-items: center;
   gap: 0.65rem;
   margin-left: auto;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 /* Bootstrap-style right chrome: icon · version · theme */
@@ -382,6 +390,8 @@ pre code {
 .version-switcher {
   display: flex;
   align-items: center;
+  min-width: 0;
+  flex-shrink: 1;
 }
 .version-select {
   appearance: none;
@@ -970,8 +980,9 @@ pre code {
   padding: 1.75rem 0 3rem;
   align-items: start;
 }
-/* Only reserve a TOC rail when it actually has entries */
-.docs-layout:has(#docs-toc:not(:empty)) {
+/* Only reserve a TOC rail when it actually has entries.
+ * Prefer class over #id inside :has() so media-query overrides stay winnable. */
+.docs-layout:has(.docs-toc:not(:empty)) {
   grid-template-columns: 15.5rem minmax(0, 1fr) 11rem;
 }
 .docs-article {
@@ -1039,24 +1050,30 @@ pre code {
 }
 .docs-header h1 {
   margin: 0 0 0.5rem;
-  font-size: clamp(1.75rem, 3vw, 2.15rem);
+  font-size: clamp(1.45rem, 4.5vw, 2.15rem);
   letter-spacing: -0.02em;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
 }
 .docs-lead {
   color: var(--muted);
   font-size: 1.05rem;
   margin: 0;
   max-width: 52rem;
+  overflow-wrap: break-word;
 }
 
 /* Standalone pages may keep a measure; docs articles use full content column */
 .prose {
   max-width: 46rem;
+  overflow-wrap: break-word;
 }
 .docs-article .prose,
 .docs-content.prose {
   max-width: none;
   width: 100%;
+  min-width: 0;
 }
 .prose h2 {
   margin-top: 2rem;
@@ -1084,6 +1101,11 @@ pre code {
   border: 1px solid var(--border);
   padding: 0.5rem 0.65rem;
   text-align: left;
+  vertical-align: top;
+}
+.prose :not(pre) > code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .prose th {
   background: var(--bg-soft);
@@ -2148,8 +2170,12 @@ pre code {
 
 /* Responsive */
 @media (max-width: 1100px) {
+  /*
+   * Must restate :has(.docs-toc…) — its specificity beats a bare .docs-layout
+   * rule, so omitting it leaves a 3-column grid on tablet.
+   */
   .docs-layout,
-  .docs-layout:has(#docs-toc:not(:empty)),
+  .docs-layout:has(.docs-toc:not(:empty)),
   .layout-openapi .docs-layout {
     grid-template-columns: 14rem minmax(0, 1fr);
   }
@@ -2170,9 +2196,15 @@ pre code {
 }
 
 @media (max-width: 800px) {
+  .wrap {
+    width: min(100% - 1.5rem, var(--max));
+  }
+
   .nav-toggle {
     display: inline-flex;
-    margin-left: auto;
+    flex-shrink: 0;
+    /* Sit beside the brand; header-actions keeps margin-left:auto */
+    margin-left: 0;
   }
   .nav-main {
     display: none;
@@ -2186,13 +2218,36 @@ pre code {
     align-items: stretch;
     padding: 0.75rem;
     margin: 0;
+    z-index: 60;
   }
   .nav-main.is-open {
     display: flex;
   }
+  .header-inner {
+    gap: 0.5rem;
+  }
+  .header-actions {
+    gap: 0.35rem;
+  }
   .header-actions .site-search {
     display: none;
   }
+  /* Commit SHA is desktop chrome; reclaim space on narrow headers */
+  .version-commit {
+    display: none;
+  }
+  .version-select {
+    max-width: 7.5rem;
+    font-size: 0.78rem;
+    padding-inline: 0.35rem 1.25rem;
+  }
+  .header-toolbar-sep {
+    margin: 0 0.15rem;
+  }
+  .header-actions > .btn {
+    flex-shrink: 0;
+  }
+
   .paths,
   .feature-grid,
   .doc-map {
@@ -2213,14 +2268,33 @@ pre code {
   .demo-sidebar {
     min-height: 0;
   }
-  .docs-layout {
-    grid-template-columns: 1fr;
+
+  /*
+   * Single-column docs layout. The :has(.docs-toc) form MUST be included —
+   * its specificity outranks `.docs-layout` alone. Without it, pages with an
+   * on-this-page TOC kept a 14rem empty sidebar rail on phones and crushed
+   * the article to ~one word per line.
+   */
+  .docs-layout,
+  .docs-layout:has(.docs-toc:not(:empty)),
+  .layout-openapi .docs-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    padding: 1.25rem 0 2.5rem;
+  }
+  .docs-toc {
+    display: none;
+  }
+  .docs-article {
+    min-width: 0;
+    max-width: 100%;
   }
   .docs-nav-toggle {
     display: flex;
     width: 100%;
     justify-content: space-between;
     align-items: center;
+    gap: 0.75rem;
     font: inherit;
     font-weight: 600;
     padding: 0.65rem 0.85rem;
@@ -2230,9 +2304,30 @@ pre code {
     color: var(--text);
     cursor: pointer;
     margin-bottom: 0.75rem;
+    text-align: left;
+  }
+  .docs-nav-toggle > span:first-child {
+    flex-shrink: 0;
+  }
+  .docs-nav-toggle-meta {
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    max-width: 60%;
   }
   .docs-sidebar-inner {
     display: none;
+    margin-bottom: 1rem;
+    padding: 0.5rem 0.35rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    max-height: min(70vh, 28rem);
+    overflow: auto;
   }
   .docs-sidebar-inner.is-open {
     display: block;
@@ -2241,12 +2336,79 @@ pre code {
     position: static;
     max-height: none;
     overflow: visible;
+    width: 100%;
+    min-width: 0;
   }
+  .docs-header {
+    margin-bottom: 1.15rem;
+  }
+  .docs-lead {
+    font-size: 1rem;
+  }
+
+  /* Wide Markdown tables scroll inside the article column */
+  .prose table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.86rem;
+  }
+  .prose th,
+  .prose td {
+    padding: 0.4rem 0.55rem;
+  }
+
+  .code-window .highlight > pre,
+  .code-window pre.chroma,
+  pre {
+    font-size: 0.8rem;
+  }
+
   .cta-band {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .hero h1 {
+    font-size: clamp(1.85rem, 8vw, 2.75rem);
+  }
+  .hero-lead {
+    font-size: 1.05rem;
+  }
+  .install-card {
+    padding: 1rem 1rem 1.15rem;
+  }
+  .section {
+    padding-block: 2.5rem;
+  }
+}
+
+/* Narrow phones — reclaim more header chrome */
+@media (max-width: 420px) {
+  .brand-name {
+    /* Logo alone; full name is redundant next to Install/docs */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+  }
+  .header-actions > .btn {
+    display: none;
+  }
   .version-select {
-    max-width: 8.5rem;
+    max-width: 6.5rem;
+  }
+  .header-toolbar-sep {
+    display: none;
+  }
+  .header-icon-btn {
+    width: 2rem;
+    height: 2rem;
   }
 }

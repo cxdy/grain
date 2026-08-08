@@ -4,7 +4,7 @@ description: How to build, test, and send changes to grain — full guide on Git
 section: get-started
 ---
 
-grain welcomes patches. Day-to-day contributor setup lives in the repo so it stays next to `justfile` and CI.
+Patches are welcome. Day-to-day contributor setup lives in the repo so it stays next to `justfile` and CI.
 
 ## Full guide
 

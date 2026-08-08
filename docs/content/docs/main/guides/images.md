@@ -118,9 +118,9 @@ When the base image is agent-ready (`HasAgent` / local `has_agent` meta), create
 | Default package behaviour | `package_update` / `package_upgrade` false |
 | runcmd: SSH inject + grain-ready | Single runcmd: SSH inject + `userdata-ran` + grain-ready |
 
-The seed ISO is still attached for per-clone **hostname**, **SSH keys**, and **9p mount** runcmds. Heavy package installs and long cloud-init stages are avoided because the golden already has the agent and base tooling.
+The seed ISO is still attached for per-clone **hostname**, **SSH keys**, and **9p mount** runcmds. Heavy package installs and long cloud-init stages are skipped because the golden already has the agent and base tooling.
 
-Bake prepares the disk for this path (`cloud-init clean`, `userdata-ran` stamp, enabled `grain-agent`, cleared `machine-id`). Clones are expected to finish cloud-init and report agent-ready sooner than a cold `ubuntu-cloud` first boot; measure locally if you need hard p50 numbers.
+Bake prepares the disk for this path (`cloud-init clean`, `userdata-ran` stamp, enabled `grain-agent`, cleared `machine-id`). Clones usually finish cloud-init and report agent-ready sooner than a cold `ubuntu-cloud` first boot; measure locally if you need hard p50 numbers.
 
 ### Lean golden for warm pool / fast claim
 

@@ -70,6 +70,7 @@ Each agent has its **own** config file and schema. Pick a host, choose **stdio**
 {{< mcp-hosts >}}
 
 **Before connecting:** `grain up` for stdio tools, or `grain up --mcp` for Streamable HTTP (`http://127.0.0.1:7476/mcp`). Prefer **stdio** when the host can spawn a local process.
+
 ## Connection to the daemon
 
 | Variable / config | Meaning |
@@ -125,7 +126,7 @@ Each agent has its **own** config file and schema. Pick a host, choose **stdio**
 | `grain_act` | GitHub Actions via **nektos/act** in an ephemeral act-preset sandbox (mounts project at `/work`) |
 | `grain_k3s` | **k3s** lab (k3s preset, port 6443, waits for `kubectl get nodes` unless `skip_wait`). Kind is not a separate preset—use k3s. |
 
-### Create parameters (high level)
+### Create parameters
 
 | Field | Notes |
 |-------|--------|

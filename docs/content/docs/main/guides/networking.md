@@ -18,7 +18,7 @@ Publish a port on create with `-P` and open a shell — no deep networking yet.
 
 grain VMs use QEMU **user networking (SLIRP)**. Each VM gets a private guest network; the host reaches guest services only through **hostfwd** port mappings bound to `127.0.0.1`.
 
-This page describes the **QEMU** path (SLIRP hostfwd). **Firecracker** uses vsock for the agent and TAP + host TCP proxy for publish/fwd — see [Firecracker on Linux](../firecracker/).
+This page covers the **QEMU** path (SLIRP hostfwd). **Firecracker** uses vsock for the agent and TAP + host TCP proxy for publish/fwd — see [Firecracker on Linux](../firecracker/).
 
 ## Built-in SSH forward
 

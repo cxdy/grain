@@ -24,7 +24,7 @@ This page is the full contract. Stock goldens already satisfy a compatible subse
 
 1. **Guest-authoritative** — The guest declares progress and done; the host polls and surfaces it.
 2. **Compatible by default** — `grain-ubuntu` and current cloud-init keep working with `--wait agent` / `userdata`.
-3. **Progress is first-class** — Create progress and status show human-readable bootstrap text.
+3. **Progress is visible** — Create progress and status show human-readable bootstrap text.
 4. **Fail closed for explicit waits** — `--wait bootstrap` does not return success until the guest says `ready` (or fails hard on `failed` / timeout).
 
 ## Guest files

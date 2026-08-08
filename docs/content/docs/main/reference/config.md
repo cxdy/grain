@@ -1,5 +1,5 @@
 ---
-title: "Configuration reference (config.yaml)"
+title: "Configuration reference"
 description: All knobs in ~/.grain/config.yaml for daemon and CLI defaults.
 section: reference
 keywords:
@@ -10,7 +10,7 @@ keywords:
   - defaults
 ---
 
-Default path: `~/.grain/config.yaml`. Override with `grain --config path …`.
+Config file path: `~/.grain/config.yaml`. Override with `grain --config path …`.
 
 ## Core
 

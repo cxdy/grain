@@ -1,5 +1,5 @@
 ---
-title: "Agent protocol (guest HTTP API)"
+title: "Agent protocol"
 description: HTTP endpoints exposed by grain-agent inside each guest.
 section: reference
 keywords:
@@ -10,9 +10,9 @@ keywords:
   - vsock
 ---
 
-The guest agent listens on **TCP `:7475`** (and optionally **vsock port 7475**). The host reaches it via SLIRP hostfwd (`Instance.agent_port`) or AF_VSOCK when configured.
+The guest agent listens on **TCP `:7475`** (and optionally **vsock port 7475**). The host dials it through SLIRP hostfwd (`Instance.agent_port`) or AF_VSOCK when configured.
 
-**No authentication.** Endpoints accept any caller that can open the port. Host-side isolation is loopback-only hostfwd (and authenticated daemon proxy for remote CLI). On `network: overlay`, peer VMs on the shared L2 can dial each other’s agents — see [Security model](../../explain/security/#guest-agent-trust-model) and [Overlay network](../../guides/networking-overlay/#security-note).
+**No authentication.** Any caller that can open the port is accepted. Host isolation is loopback-only hostfwd (plus authenticated daemon proxy for remote CLI). On `network: overlay`, peer VMs on the shared L2 can dial each other’s agents — see [Security model](../../explain/security/#guest-agent-trust-model) and [Overlay network](../../guides/networking-overlay/#security-note).
 
 Default version string: see agent package `Version`.
 
