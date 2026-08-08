@@ -68,11 +68,11 @@ Desktop developer builds: [Grain Desktop](../../guides/desktop/) and `desktop/RE
 ## Upgrade
 
 ```bash
-grain update              # install latest if newer than current
+grain update              # install latest CLI + Desktop if newer than current
 grain update --check      # report only (exit 1 when an update is available)
 ```
 
-`grain update` re-runs the same install script as first-time install (GitHub Release binary preferred). Occasional upgrade notices on other commands can be turned off with `check_updates: false` or `GRAIN_CHECK_UPDATES=0`.
+`grain update` re-runs the install script with `--desktop` (CLI and Grain Desktop release assets when available). Desktop install failure is non-fatal if the CLI updates. Occasional upgrade notices on other commands can be turned off with `check_updates: false` or `GRAIN_CHECK_UPDATES=0`.
 
 ### Install QEMU
 
