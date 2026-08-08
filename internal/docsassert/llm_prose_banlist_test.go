@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -56,7 +57,7 @@ var llmBanlist = []string{
 }
 
 var (
-	fenceRE      = regexp.MustCompile("(?s)```.*?```")
+	fenceRE       = regexp.MustCompile("(?s)```.*?```")
 	frontMatterRE = regexp.MustCompile(`(?s)^---\n.*?\n---\n?`)
 )
 
@@ -68,57 +69,67 @@ func stripDocProse(raw string) string {
 	return s
 }
 
+// listMarkdownFiles returns .md paths under dir (recursive) using ReadDir only —
+// avoids filepath.WalkDir + ReadFile (gosec G122 TOCTOU on walk callbacks).
+func listMarkdownFiles(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		path := filepath.Join(dir, name)
+		if e.IsDir() {
+			sub, err := listMarkdownFiles(path)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, sub...)
+			continue
+		}
+		if strings.HasSuffix(name, ".md") {
+			out = append(out, path)
+		}
+	}
+	return out, nil
+}
+
 // TestMainDocsLLMProseBanlist walks shipped product docs and fails if banned
 // LLM scaffolding phrases appear in body prose.
 func TestMainDocsLLMProseBanlist(t *testing.T) {
 	t.Parallel()
-	root := filepath.Join(repoRoot(t), "docs", "content", "docs", "main")
+	modRoot := repoRoot(t)
+	docsRoot := filepath.Join(modRoot, "docs", "content", "docs", "main")
+	files, err := listMarkdownFiles(docsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no markdown under docs/content/docs/main")
+	}
 	var hits []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	for _, path := range files {
+		b, err := os.ReadFile(path) //nolint:gosec // G304: path is under module docs tree from listMarkdownFiles
 		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".md") {
-			return nil
-		}
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return err
+			t.Fatal(err)
 		}
 		prose := strings.ToLower(stripDocProse(string(b)))
-		rel, _ := filepath.Rel(repoRoot(t), path)
+		rel, _ := filepath.Rel(modRoot, path)
 		for _, phrase := range llmBanlist {
-			if strings.Contains(prose, phrase) {
-				// Find a line for the failure message
-				for i, line := range strings.Split(prose, "\n") {
-					if strings.Contains(line, phrase) {
-						hits = append(hits, rel+": prose line ~"+itoa(i+1)+" contains "+phrase)
-						break
-					}
+			if !strings.Contains(prose, phrase) {
+				continue
+			}
+			for i, line := range strings.Split(prose, "\n") {
+				if strings.Contains(line, phrase) {
+					hits = append(hits, rel+": prose line ~"+strconv.Itoa(i+1)+" contains "+phrase)
+					break
 				}
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 	if len(hits) > 0 {
 		t.Fatalf("LLM prose banlist hits in docs/content/docs/main (strip fences/front matter):\n  %s",
 			strings.Join(hits, "\n  "))
 	}
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [16]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
 }
