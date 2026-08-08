@@ -8,8 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 	"testing"
+	"time"
 )
 
 func TestX11SysProcAttr(t *testing.T) {

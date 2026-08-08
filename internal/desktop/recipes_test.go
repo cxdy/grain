@@ -352,11 +352,7 @@ func TestPreviewOfficialRecipeOfflineAndErrors(t *testing.T) {
 		t.Fatalf("want id as name: %+v", prevNT)
 	}
 
-	// Unknown id with catalog up but no library
-	if _, err := svc.PreviewOfficialRecipe("does-not-exist"); err == nil {
-		// PreviewOfficialRecipe returns index-only with empty name when entry missing
-		// Actually LookupCatalogEntry fails, PreviewFromCatalog fails, library fails, then index-only with empty name
-	}
+	// Unknown id with catalog up but no library → index-only preview with suggested id.
 	prev3, err := svc.PreviewOfficialRecipe("does-not-exist")
 	if err != nil {
 		t.Fatal(err)

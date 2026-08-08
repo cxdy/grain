@@ -376,7 +376,7 @@ func TestSandboxMetaHelpersAndEdges(t *testing.T) {
 	if need || err != nil {
 		t.Fatal(need, err)
 	}
-	need, _, err = diskNeedsGrow(filepath.Join(dir, "nope"), 5)
+	_, _, err = diskNeedsGrow(filepath.Join(dir, "nope"), 5)
 	if err == nil {
 		t.Fatal("missing disk")
 	}

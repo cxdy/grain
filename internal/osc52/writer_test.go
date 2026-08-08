@@ -3,10 +3,6 @@ package osc52
 import (
 	"bytes"
 	"encoding/base64"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -450,12 +446,12 @@ func TestParseOSC52Direct(t *testing.T) {
 	_ = payload
 
 	// incomplete plain OSC
-	end, payload, ok = parseOSC52([]byte("\x1b]52;c;YW"))
+	_, _, ok = parseOSC52([]byte("\x1b]52;c;YW"))
 	if ok {
 		t.Fatal("incomplete should not ok")
 	}
 	// incomplete tmux DCS
-	end, payload, ok = parseOSC52([]byte("\x1bPtmux;inner"))
+	_, _, ok = parseOSC52([]byte("\x1bPtmux;inner"))
 	if ok {
 		t.Fatal("incomplete tmux")
 	}
@@ -525,62 +521,6 @@ func TestWriteClipboardOSBranches(t *testing.T) {
 	if looksLikeImage([]byte("GIF")) { // < 6 for GIF check path after len>=4
 		t.Fatal("short gif")
 	}
-}
-
-
-// pngDimensions reads width/height from a PNG IHDR chunk.
-func pngDimensions(b []byte) (w, h int, ok bool) {
-	if len(b) < 24 || b[0] != 0x89 || b[1] != 'P' {
-		return 0, 0, false
-	}
-	// bytes 16..23 are width/height big-endian after 8-byte sig + 8-byte chunk header
-	w = int(b[16])<<24 | int(b[17])<<16 | int(b[18])<<8 | int(b[19])
-	h = int(b[20])<<24 | int(b[21])<<16 | int(b[22])<<8 | int(b[23])
-	if w <= 0 || h <= 0 {
-		return 0, 0, false
-	}
-	return w, h, true
-}
-
-// mustLargePNG returns a PNG with enough pixels that a botched icon-sized
-// TIFF conversion fails the IHDR dimension check.
-func mustLargePNG(t *testing.T) []byte {
-	t.Helper()
-	return mustPNG(t, 320, 240)
-}
-
-func mustPNG(t *testing.T, w, h int) []byte {
-	t.Helper()
-	py := `
-import struct,zlib,sys
-w,h=int(sys.argv[1]),int(sys.argv[2])
-rows=b""
-for y in range(h):
-    rows += b"\x00"
-    for x in range(w):
-        rows += bytes([(x*3+y)%256,(x*5)%256,(y*7)%256])
-c=zlib.compress(rows,6)
-def ch(t,d):
- return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)&0xffffffff)
-sys.stdout.buffer.write(b"\x89PNG\r\n\x1a\n"+ch(b"IHDR",struct.pack(">IIBBBBB",w,h,8,2,0,0,0))+ch(b"IDAT",c)+ch(b"IEND",b""))
-`
-	cmd := exec.Command("python3", "-c", py, fmt.Sprintf("%d", w), fmt.Sprintf("%d", h))
-	outb, err := cmd.Output()
-	if err != nil || !looksLikeImage(outb) {
-		// sips fallback for small sizes only
-		if w <= 16 && h <= 16 {
-			out := filepath.Join(t.TempDir(), "gen.png")
-			cmd = exec.Command("sips", "-s", "format", "png", "-z", fmt.Sprintf("%d", h), fmt.Sprintf("%d", w),
-				"/System/Library/Desktop Pictures/Solid Colors/Black.png", "--out", out)
-			if err := cmd.Run(); err == nil {
-				if b, err := os.ReadFile(out); err == nil && looksLikeImage(b) {
-					return b
-				}
-			}
-		}
-		t.Skipf("could not generate test PNG %dx%d: %v", w, h, err)
-	}
-	return outb
 }
 
 func TestWriteClipboardEmptyAndRead(t *testing.T) {

@@ -177,4 +177,3 @@ func darwinClipboardHelper() (string, error) {
 	}
 	return darwinClipHelperPath, nil
 }
-

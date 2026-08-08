@@ -2451,5 +2451,3 @@ func TestKillLiveForwardsWithRealPID(t *testing.T) {
 		t.Fatalf("%v", inst.LiveForwards)
 	}
 }
-
-

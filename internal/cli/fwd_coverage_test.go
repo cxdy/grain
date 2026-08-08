@@ -119,10 +119,10 @@ func TestCmdFwdTunnelJSONAndText(t *testing.T) {
 func TestCmdFwdTunnelEmptyAndNoPorts(t *testing.T) {
 	// no VMs
 	srv := mockDaemon(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/healthz":
+		switch r.URL.Path {
+		case "/healthz":
 			w.WriteHeader(200)
-		case r.URL.Path == "/vms":
+		case "/vms":
 			_ = json.NewEncoder(w).Encode([]*vm.Instance{})
 		default:
 			http.NotFound(w, r)
@@ -136,10 +136,10 @@ func TestCmdFwdTunnelEmptyAndNoPorts(t *testing.T) {
 
 	// VMs but no host ports
 	srv2 := mockDaemon(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/healthz":
+		switch r.URL.Path {
+		case "/healthz":
 			w.WriteHeader(200)
-		case r.URL.Path == "/vms":
+		case "/vms":
 			_ = json.NewEncoder(w).Encode([]*vm.Instance{{
 				Name: "empty",
 				Forwards: []vm.PortForward{
@@ -249,10 +249,10 @@ func TestCmdFwdLsBranches(t *testing.T) {
 
 func TestCmdFwdLsEmptyAndNone(t *testing.T) {
 	srv := mockDaemon(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/healthz":
+		switch r.URL.Path {
+		case "/healthz":
 			w.WriteHeader(200)
-		case r.URL.Path == "/vms":
+		case "/vms":
 			_ = json.NewEncoder(w).Encode([]*vm.Instance{})
 		default:
 			http.NotFound(w, r)

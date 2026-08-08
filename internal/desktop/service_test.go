@@ -999,7 +999,7 @@ func TestServiceGetSandboxMetaAndStartGrow(t *testing.T) {
 		})
 	})
 	mux.HandleFunc("GET /vms/{name}/agent/health", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "down", 502)
+		http.Error(w, "down", http.StatusBadGateway)
 	})
 	mux.HandleFunc("POST /vms/{name}/start", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(client.Instance{Name: r.PathValue("name"), Status: client.StatusRunning})

@@ -101,7 +101,7 @@ func TestProbeConnectionsHealthFailAfterDial(t *testing.T) {
 	// dial succeeds but health fails
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "no", 503)
+		http.Error(w, "no", http.StatusServiceUnavailable)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -122,7 +122,7 @@ func TestTestConnectionEmptyAndToken(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer secret" {
-			http.Error(w, "auth", 401)
+			http.Error(w, "auth", http.StatusUnauthorized)
 			return
 		}
 		w.WriteHeader(200)

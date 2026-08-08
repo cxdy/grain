@@ -120,7 +120,7 @@ func TestFCAPIRequestAndActions(t *testing.T) {
 	if err := fcAPIRequest(ctx, "", http.MethodPut, "/actions", nil); err == nil {
 		t.Fatal("empty sock")
 	}
-	if err := fcAPIAction(ctx, sock, "SendCtrlAltDel"); err != nil {
+	if err := fcAPIAction(ctx, sock); err != nil {
 		t.Fatal(err)
 	}
 	if err := fcAPIPatchVM(ctx, sock, "Paused"); err != nil {

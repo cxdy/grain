@@ -472,7 +472,7 @@ func (f *FirecrackerRuntime) Stop(ctx context.Context, inst *vm.Instance) error 
 
 	// Prefer graceful CtrlAltDel via Firecracker API (x86; may no-op on arm).
 	if apiSock != "" {
-		_ = fcAPIAction(ctx, apiSock, "SendCtrlAltDel")
+		_ = fcAPIAction(ctx, apiSock)
 		deadline := time.Now().Add(powerdownWait)
 		for time.Now().Before(deadline) {
 			if !anyPIDAlive(pids) {
@@ -669,9 +669,9 @@ func cleanupFCFiles(inst *vm.Instance) {
 	}
 }
 
-// fcAPIAction sends PUT /actions with the given action_type.
-func fcAPIAction(ctx context.Context, apiSock, actionType string) error {
-	body := fmt.Sprintf(`{"action_type":%q}`, actionType)
+// fcAPIAction sends PUT /actions SendCtrlAltDel (graceful guest reboot path).
+func fcAPIAction(ctx context.Context, apiSock string) error {
+	body := `{"action_type":"SendCtrlAltDel"}`
 	return fcAPIRequest(ctx, apiSock, http.MethodPut, "/actions", []byte(body))
 }
 

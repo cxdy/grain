@@ -80,7 +80,7 @@ func TestRunDoctorChecksEmptyDataDirAndSocket(t *testing.T) {
 	cfg.Socket = filepath.Join(t.TempDir(), "missing.sock")
 	cfg.Image = "grain-ubuntu"
 	// empty data dir branch
-	checks := RunDoctorChecks(nil, cfg, nil) // nil ctx → Background
+	checks := RunDoctorChecks(context.TODO(), cfg, nil)
 	var foundEmpty, foundSock bool
 	for _, c := range checks {
 		if c.Name == "data dir" && !c.OK {
