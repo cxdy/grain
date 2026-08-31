@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Two-way `grain sync`** — `grain sync <HOST_DIR> <NAME:GUEST_DIR>` copies host-ahead paths to the guest and guest-ahead paths to the host in one run (same argument order as `push`). `grain sync pull` accepts that host-first order too. `--watch` works on two-way. `--force` on two-way uses newer mtime (push/pull remain source-wins). MCP: `grain_sync`.
+
 ### Fixed
 
 - **Sync/cp include hidden directories** — built-in ignore of `.git/` meant a pushed git working tree was not a repository in the guest, and pull could conflict with the host repo. Hidden directories (including `.git`) are now transferred by default for `grain sync`, directory `grain cp` (tar put/get), and the guest-agent tar path. Omit git metadata with `--exclude '.git/'`. `--no-defaults` remains (currently a no-op for ignores).

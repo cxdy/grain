@@ -41,7 +41,7 @@ Durable remote lab defaults (no host mounts — laptop paths are not on the daem
 ```bash
 grain profile ls
 grain new --profile remote-coding --wait agent -n alice-dev
-grain sync push ~/proj alice-dev:/work/proj
+grain sync ~/proj alice-dev:/work/proj
 ```
 
 Full host + laptop flow: [Remote lab happy path](../remote-lab/).

@@ -120,14 +120,14 @@ Install the same `grain` CLI on the laptop (no QEMU required for remote-only use
 ## 5. Move code with sync (not `-v` from the laptop)
 
 ```bash
-grain sync push ~/proj alice-dev:/work/proj
+grain sync ~/proj alice-dev:/work/proj
 grain x alice-dev -- bash -lc 'cd /work/proj && make test'
-grain sync pull alice-dev:/work/proj ~/proj
+grain sync ~/proj alice-dev:/work/proj --watch
 ```
 
 | Do | Don't |
 |----|--------|
-| `grain sync push` / `pull` for laptop ↔ guest trees | Assume `-v /Users/you/...` works from the laptop |
+| `grain sync` (two-way) or `push` / `pull` for laptop ↔ guest trees | Assume `-v /Users/you/...` works from the laptop |
 | `grain cp file alice-dev:/path` for single files | Expect mounts of laptop paths on the remote host |
 
 **`-v` / mounts are paths on the sandbox host**, not the laptop. A host-side share looks like `-v /var/lib/grain/workspaces/alice:/work` **on the machine running the daemon**. For laptop edit loops, use **`grain sync`**.
@@ -198,7 +198,7 @@ export GRAIN_TOKEN=…
 
 grain ls
 grain new --profile remote-coding --wait agent -n alice-dev   # once
-grain sync push ~/proj alice-dev:/work/proj
+grain sync ~/proj alice-dev:/work/proj
 grain sh alice-dev
 grain stop alice-dev    # free RAM; disk kept (persistent profile)
 grain start alice-dev

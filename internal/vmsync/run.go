@@ -19,6 +19,8 @@ const (
 	Push = syncPush
 	// Pull copies guest → host.
 	Pull = syncPull
+	// Both copies host-ahead paths to the guest and guest-ahead paths to the host.
+	Both = syncBoth
 )
 
 // ProgressEvent is emitted during apply (and optionally inventory) for CLI UIs.
@@ -98,9 +100,9 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		res.ExitCode = ExitUsage
 		return res, fmt.Errorf("sync: VM name required")
 	}
-	if opts.Verb != Push && opts.Verb != Pull {
+	if opts.Verb != Push && opts.Verb != Pull && opts.Verb != Both {
 		res.ExitCode = ExitUsage
-		return res, fmt.Errorf("sync: verb must be push or pull")
+		return res, fmt.Errorf("sync: verb must be push, pull, or both")
 	}
 
 	hostRoot, err := filepath.Abs(opts.HostRoot)
@@ -122,6 +124,12 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	if err := validateGuestRoot(ctx, opts.FS, guestRoot, opts.Verb); err != nil {
 		res.ExitCode = ExitUsage
 		return res, err
+	}
+	if opts.Verb == Both {
+		if err := validateBothRoots(ctx, opts.FS, hostRoot, guestRoot); err != nil {
+			res.ExitCode = ExitUsage
+			return res, err
+		}
 	}
 
 	// Ensure dest root exists (or will be created).
@@ -243,7 +251,7 @@ func validateHostRoot(hostRoot string, verb Verb) error {
 		}
 		return nil
 	}
-	// Pull: host is dest — may be missing (created) or must be directory.
+	// Pull / both: host may be missing (created) or must be a directory.
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -268,7 +276,7 @@ func validateGuestRoot(ctx context.Context, gfs FS, guestRoot string, verb Verb)
 		}
 		return nil
 	}
-	// Push: guest is dest — may be missing or directory.
+	// Push / both: guest may be missing or must be a directory.
 	if err != nil {
 		return nil
 	}
@@ -295,24 +303,50 @@ func ensureDestRoot(ctx context.Context, opts Options, hostRoot, guestRoot strin
 			}
 			return err
 		}
+	case Both:
+		if _, err := os.Lstat(hostRoot); err != nil && os.IsNotExist(err) {
+			if err := os.MkdirAll(hostRoot, 0o755); err != nil {
+				return err
+			}
+		}
+		if _, err := opts.FS.Stat(ctx, guestRoot); err != nil {
+			return opts.FS.Mkdir(ctx, guestRoot, true, "0755")
+		}
+	}
+	return nil
+}
+
+func validateBothRoots(ctx context.Context, gfs FS, hostRoot, guestRoot string) error {
+	_, hostErr := os.Lstat(hostRoot)
+	hostOK := hostErr == nil
+	_, guestErr := gfs.Stat(ctx, guestRoot)
+	guestOK := guestErr == nil
+	if !hostOK && !guestOK {
+		return fmt.Errorf("sync: host or guest directory must exist (%s or %s)", hostRoot, guestRoot)
 	}
 	return nil
 }
 
 func filterMaxSize(host, guest map[string]*syncInvEntry, opts Options, errOut io.Writer) {
-	// Only filter source-side files that would transfer.
-	src := host
-	if opts.Verb == Pull {
-		src = guest
+	filter := func(inv map[string]*syncInvEntry) {
+		for rel, e := range inv {
+			if e == nil || e.Type != "file" {
+				continue
+			}
+			if e.Size > opts.MaxFileSize {
+				fmt.Fprintf(errOut, "sync: skip %s: size %d exceeds --max-file-size %d\n", rel, e.Size, opts.MaxFileSize)
+				delete(inv, rel)
+			}
+		}
 	}
-	for rel, e := range src {
-		if e == nil || e.Type != "file" {
-			continue
-		}
-		if e.Size > opts.MaxFileSize {
-			fmt.Fprintf(errOut, "sync: skip %s: size %d exceeds --max-file-size %d\n", rel, e.Size, opts.MaxFileSize)
-			delete(src, rel)
-		}
+	switch opts.Verb {
+	case Pull:
+		filter(guest)
+	case Both:
+		filter(host)
+		filter(guest)
+	default:
+		filter(host)
 	}
 }
 
@@ -348,9 +382,12 @@ func printPlanSummary(out, errOut io.Writer, plan *syncPlan, opts Options) {
 	}
 }
 
-// ParseArgs validates push/pull argument shapes.
-// push: hostDir, name:guestDir
-// pull: name:guestDir, hostDir
+// ParseArgs validates push/pull/both argument shapes.
+//
+//	push: hostDir, NAME:guestDir
+//	pull: NAME:guestDir, hostDir  OR  hostDir, NAME:guestDir
+//	both: either order (one host path, one NAME:guestDir)
+//
 // parseGuest reports whether s is NAME:path form.
 func ParseArgs(verb Verb, arg0, arg1 string, parseGuest func(string) (guest bool, name, path string)) (hostPath, vm, guestPath string, err error) {
 	g0, n0, p0 := parseGuest(arg0)
@@ -367,18 +404,32 @@ func ParseArgs(verb Verb, arg0, arg1 string, parseGuest func(string) (guest bool
 			return "", "", "", fmt.Errorf("sync push: guest path required (NAME:/path)")
 		}
 		return arg0, n1, p1, nil
-	case Pull:
-		if !g0 {
-			return "", "", "", fmt.Errorf("sync pull: first arg must be NAME:GUEST_DIR (got %s)", arg0)
+	case Pull, Both:
+		label := "sync pull"
+		if verb == Both {
+			label = "sync"
 		}
-		if g1 {
-			return "", "", "", fmt.Errorf("sync pull: second arg must be a host directory (got guest %s)", arg1)
-		}
-		if strings.TrimSpace(p0) == "" || p0 == "." {
-			return "", "", "", fmt.Errorf("sync pull: guest path required (NAME:/path)")
-		}
-		return arg1, n0, p0, nil
+		return parseSyncPair(label, arg0, arg1, g0, n0, p0, g1, n1, p1)
 	default:
 		return "", "", "", fmt.Errorf("unknown sync verb %q", verb)
+	}
+}
+
+func parseSyncPair(label, arg0, arg1 string, g0 bool, n0, p0 string, g1 bool, n1, p1 string) (hostPath, vm, guestPath string, err error) {
+	switch {
+	case !g0 && g1:
+		if strings.TrimSpace(p1) == "" || p1 == "." {
+			return "", "", "", fmt.Errorf("%s: guest path required (NAME:/path)", label)
+		}
+		return arg0, n1, p1, nil
+	case g0 && !g1:
+		if strings.TrimSpace(p0) == "" || p0 == "." {
+			return "", "", "", fmt.Errorf("%s: guest path required (NAME:/path)", label)
+		}
+		return arg1, n0, p0, nil
+	case g0 && g1:
+		return "", "", "", fmt.Errorf("%s: one arg must be a host directory (got two guest paths)", label)
+	default:
+		return "", "", "", fmt.Errorf("%s: one arg must be NAME:GUEST_DIR (got %s %s)", label, arg0, arg1)
 	}
 }

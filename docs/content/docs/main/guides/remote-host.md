@@ -256,8 +256,8 @@ grain cp ./script.sh alice-1:/tmp/script.sh
 # reverse cp (guest → laptop) also uses the agent proxy:
 grain cp alice-1:/tmp/out.json ./out.json
 # incremental sync (agent required; same local/remote path):
-grain sync push ~/proj alice-1:/work/proj
-grain sync pull alice-1:/work/proj ~/proj
+grain sync ~/proj alice-1:/work/proj
+grain sync ~/proj alice-1:/work/proj --watch
 grain fs ls alice-1 /tmp
 grain rm alice-1
 ```
@@ -324,11 +324,11 @@ Ephemeral sandboxes (`grain new` without `-p`) are removed when the daemon resta
 
 ```bash
 grain new --profile remote-coding --wait agent -n alice-dev
-grain sync push ~/dev/proj alice-dev:/work/proj
+grain sync ~/dev/proj alice-dev:/work/proj
 # … edit over days …
 grain stop alice-dev    # free RAM; disk kept
 grain start alice-dev
-grain sync pull alice-dev:/work/proj ~/dev/proj
+grain sync ~/dev/proj alice-dev:/work/proj
 ```
 
 Use `grain sync` (or reverse `grain cp`) to move trees between **laptop** and guest — mounts only expose **host** paths on the sandbox machine.

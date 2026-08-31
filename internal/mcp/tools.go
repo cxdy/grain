@@ -57,6 +57,7 @@ const (
 	ToolK3s            = "grain_k3s"
 	ToolSyncPush       = "grain_sync_push"
 	ToolSyncPull       = "grain_sync_pull"
+	ToolSync           = "grain_sync"
 	ToolRecipeList     = "grain_recipe_list"
 	ToolRecipeAdd      = "grain_recipe_add"
 	ToolRecipeSearch   = "grain_recipe_search"
@@ -103,6 +104,7 @@ func ToolNames() []string {
 		ToolK3s,
 		ToolSyncPush,
 		ToolSyncPull,
+		ToolSync,
 		ToolRecipeList,
 		ToolRecipeAdd,
 		ToolRecipeSearch,
@@ -354,6 +356,13 @@ func (s *Server) register(srv *mcp.Server) {
 		Description: "Unidirectional sync guest directory → host directory (same as grain sync pull). " +
 			"Requires guest agent. Directory roots only. Conflicts exit without applying unless force=true.",
 	}, s.toolSyncPull)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: ToolSync,
+		Description: "Two-way host↔guest directory sync (same as grain sync HOST NAME:GUEST). " +
+			"Host-ahead paths go to the guest; guest-ahead paths come to the host. " +
+			"Requires guest agent. Directory roots only. Conflicts exit without applying unless force=true (newer mtime wins).",
+	}, s.toolSyncBoth)
 }
 
 // --- input types ---
@@ -496,7 +505,7 @@ type syncIn struct {
 	GuestDir      string   `json:"guest_dir" jsonschema:"absolute guest directory root e.g. /work/proj"`
 	Delete        bool     `json:"delete,omitempty" jsonschema:"remove dest paths missing on source"`
 	DryRun        bool     `json:"dry_run,omitempty" jsonschema:"plan only; no writes"`
-	Force         bool     `json:"force,omitempty" jsonschema:"source-wins for conflicts and dest-ahead"`
+	Force         bool     `json:"force,omitempty" jsonschema:"push/pull: source-wins; two-way: newer mtime wins"`
 	Checksum      bool     `json:"checksum,omitempty" jsonschema:"SHA-256 content refine for paths size/mtime would skip"`
 	Exclude       []string `json:"exclude,omitempty" jsonschema:"extra gitignore-style patterns"`
 	NoDefaults    bool     `json:"no_defaults,omitempty" jsonschema:"skip built-in ignore patterns (none currently; .git is included)"`
@@ -1513,6 +1522,10 @@ func (s *Server) toolSyncPush(ctx context.Context, _ *mcp.CallToolRequest, in sy
 
 func (s *Server) toolSyncPull(ctx context.Context, _ *mcp.CallToolRequest, in syncIn) (*mcp.CallToolResult, any, error) {
 	return s.runSyncTool(ctx, vmsync.Pull, in)
+}
+
+func (s *Server) toolSyncBoth(ctx context.Context, _ *mcp.CallToolRequest, in syncIn) (*mcp.CallToolResult, any, error) {
+	return s.runSyncTool(ctx, vmsync.Both, in)
 }
 
 func (s *Server) runSyncTool(ctx context.Context, verb vmsync.Verb, in syncIn) (*mcp.CallToolResult, any, error) {

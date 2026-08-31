@@ -69,7 +69,7 @@ func Root(version string) *cobra.Command {
   grain pause / resume  QMP freeze/unfreeze guest vCPUs
   grain suspend / restore  stop process (free RAM); restore from disk/snapshot
   grain ls / rm / sh / x / cp / sync
-  grain sync push|pull  host↔guest directory sync (agent required)
+  grain sync HOST NAME:GUEST   two-way host↔guest dir sync (or push|pull)
   grain agent health|deploy  guest agent health; redeploy over SSH (local or remote API)
   grain fs              guest readdir/stat/mkdir/rm via agent
   grain profile ls      list named + builtin profiles
@@ -90,7 +90,7 @@ Remote team host (CLI dials HTTP instead of local socket):
   export GRAIN_TOKEN=…                     # required when API is not loopback
   grain --api http://sandbox:7474 ls       # or flag instead of env
   grain new --profile remote-coding --wait agent
-  grain sync push ~/proj NAME:/work/proj
+  grain sync ~/proj NAME:/work/proj
   # see https://grainvm.com/guides/remote-host/`,
 		// SilenceUsage/Errors: main prints a single "error: …" line (issue #93).
 		// Without SilenceErrors, cobra also prints "Error: …" and messages duplicate.

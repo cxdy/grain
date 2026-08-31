@@ -50,6 +50,36 @@ func refinePlanChecksum(ctx context.Context, plan *syncPlan, opts Options, hostR
 			}
 			continue
 		}
+		if opts.Verb == Both {
+			hostE, guestE := it.Source, it.Dest
+			if !opts.Force {
+				it.Action = syncActConflict
+				it.Reason = "checksum differ"
+				it.BaselineDirty = false
+				changed = true
+				continue
+			}
+			hostWins, tie := twoWayMtimePreferHost(hostE, guestE)
+			if tie {
+				it.Action = syncActConflict
+				it.Reason = "checksum differ (equal mtime)"
+				it.BaselineDirty = false
+				changed = true
+				continue
+			}
+			it.Action = syncActUpdate
+			it.Reason = "checksum differ (--force)"
+			it.BaselineDirty = false
+			if hostWins {
+				it.Xfer = syncPush
+				it.Source, it.Dest = hostE, guestE
+			} else {
+				it.Xfer = syncPull
+				it.Source, it.Dest = guestE, hostE
+			}
+			changed = true
+			continue
+		}
 		// Content differs: transfer source → dest regardless of size/mtime equality.
 		it.Action = syncActUpdate
 		it.Reason = "checksum differ"

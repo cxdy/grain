@@ -164,7 +164,7 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 		case syncActSkip:
 			if it.BaselineDirty {
 				// Cold-start size match: record baseline without transfer.
-				markColdStartBaseline(opts, it)
+				markColdStartBaseline(applyOptsFor(opts, it), it)
 				res.Dirty = true
 			}
 		case syncActKeptDest, syncActConflict:
@@ -198,7 +198,7 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 		}
 		opIndex++
 		report("delete", it)
-		if err := applyDelete(ctx, opts, it); err != nil {
+		if err := applyDelete(ctx, applyOptsFor(opts, it), it); err != nil {
 			res.ExitCode = syncExitApply
 			return res, err
 		}
@@ -218,11 +218,11 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 		}
 		opIndex++
 		report("mkdir", it)
-		if err := applyDirCreate(ctx, opts, it); err != nil {
+		if err := applyDirCreate(ctx, applyOptsFor(opts, it), it); err != nil {
 			res.ExitCode = syncExitApply
 			return res, err
 		}
-		if err := refreshBaselineBoth(ctx, opts, it.RelPath, it); err != nil {
+		if err := refreshBaselineBoth(ctx, applyOptsFor(opts, it), it.RelPath, it); err != nil {
 			res.ExitCode = syncExitApply
 			return res, err
 		}
@@ -240,15 +240,16 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 			return res, err
 		}
 		opIndex++
+		itemOpts := applyOptsFor(opts, it)
 		phase := "put"
-		if opts.Verb == syncPull {
+		if itemOpts.Verb == syncPull {
 			phase = "get"
 		}
 		if it.Action == syncActUpdateMode {
 			phase = "chmod"
 		}
 		report(phase, it)
-		if err := applyFileOp(ctx, opts, it); err != nil {
+		if err := applyFileOp(ctx, itemOpts, it); err != nil {
 			res.ExitCode = syncExitApply
 			return res, err
 		}
@@ -266,6 +267,13 @@ func applySyncPlan(ctx context.Context, plan *syncPlan, opts syncApplyOpts) (*sy
 	return res, nil
 }
 
+func applyOptsFor(opts syncApplyOpts, it syncPlanItem) syncApplyOpts {
+	if it.Xfer == syncPush || it.Xfer == syncPull {
+		opts.Verb = it.Xfer
+	}
+	return opts
+}
+
 func depthKey(rel string) int {
 	rel = strings.Trim(filepath.ToSlash(rel), "/")
 	if rel == "" {
@@ -281,6 +289,7 @@ func markColdStartBaseline(opts syncApplyOpts, it syncPlanItem) {
 		// S=guest, D=host
 		guestE, hostE = it.Source, it.Dest
 	default:
+		// push and two-way skip: S=host, D=guest
 		hostE, guestE = it.Source, it.Dest
 	}
 	opts.State.setEntry(it.RelPath, invToFingerprint(hostE), invToFingerprint(guestE))
