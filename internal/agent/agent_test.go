@@ -1005,6 +1005,12 @@ func TestWriteTarFileAndDir(t *testing.T) {
 	if err := os.WriteFile(f, []byte("data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	link := filepath.Join(dir, "lnk")
 	if err := os.Symlink("one.txt", link); err != nil {
 		t.Fatal(err)
@@ -1027,6 +1033,16 @@ func TestWriteTarFileAndDir(t *testing.T) {
 	}
 	if len(names) < 2 {
 		t.Fatalf("names %v", names)
+	}
+	var sawGit bool
+	for _, n := range names {
+		if n == ".git" || n == ".git/" || n == ".git/HEAD" {
+			sawGit = true
+			break
+		}
+	}
+	if !sawGit {
+		t.Fatalf("tar missing .git entries: %v", names)
 	}
 	var one bytes.Buffer
 	if err := writeTar(&one, f); err != nil {

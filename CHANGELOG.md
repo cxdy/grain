@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sync/cp include hidden directories** — built-in ignore of `.git/` meant a pushed git working tree was not a repository in the guest, and pull could conflict with the host repo. Hidden directories (including `.git`) are now transferred by default for `grain sync`, directory `grain cp` (tar put/get), and the guest-agent tar path. Omit git metadata with `--exclude '.git/'`. `--no-defaults` remains (currently a no-op for ignores).
+
 ## [0.8.1] - 2026-08-07
 
 Patch release after **v0.8.0**: restore remote interactive shell, which broke when activity logging wrapped WebSocket responses.

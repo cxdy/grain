@@ -5,6 +5,10 @@
 coverage.out
 coverage.html
 coverage.xml
+coverage-*.out
+coverage-*.xml
+just-coverage.txt
+per-file-final.tsv
 .DS_Store
 .idea/
 .vscode/
