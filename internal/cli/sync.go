@@ -17,17 +17,24 @@ import (
 )
 
 func cmdSync(cfgPath *string) *cobra.Command {
+	var f syncFlags
 	root := &cobra.Command{
-		Use:   "sync",
-		Short: "Unidirectional host↔guest directory sync (agent required)",
+		Use:   "sync [HOST_DIR NAME:GUEST_DIR]",
+		Short: "Host↔guest directory sync (agent required)",
 		Long: `Incrementally sync a host directory with a guest directory via the guest agent.
 
-  grain sync push  <HOST_DIR>       <NAME:GUEST_DIR>  [flags]
-  grain sync pull  <NAME:GUEST_DIR> <HOST_DIR>        [flags]
+  grain sync       <HOST_DIR> <NAME:GUEST_DIR>  [flags]   # two-way
+  grain sync push  <HOST_DIR> <NAME:GUEST_DIR>  [flags]   # host → guest
+  grain sync pull  <HOST_DIR> <NAME:GUEST_DIR>  [flags]   # guest → host
+
+Two-way copies host-ahead paths to the guest and guest-ahead paths to the host
+in one run. Argument order is always host dir, then NAME:GUEST_DIR (pull also
+accepts the older NAME:GUEST_DIR host-dir order).
 
 Unlike grain cp (full snapshot replace), sync plans creates/updates/deletes,
 skips unchanged paths relative to a host-side baseline, and fails on conflicts
-(both sides diverged). Dest-ahead paths are kept (not overwritten) unless --force.
+(both sides diverged). One-way dest-ahead paths are kept unless --force.
+Two-way --force copies the side with the newer mtime.
 
 Hidden directories (including .git) are included so a git working tree stays a
 repository in the guest. Host .gitignore and .grainignore still apply; pass
@@ -46,7 +53,22 @@ via the daemon's agent proxy. Directory roots only — use grain cp for files.
 
 Exit codes: 0 ok, 1 usage, 2 conflicts (no apply), 3 apply error.
 With --watch, interrupt exits 0; only usage errors abort the loop.`,
+		Example: `  grain sync ~/proj lab:/work/proj
+  grain sync ~/proj lab:/work/proj --watch
+  grain sync push ~/proj lab:/work/proj
+  grain sync pull ~/proj lab:/work/proj --force`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			if len(args) != 2 {
+				return exitCodeError(vmsync.ExitUsage).with(fmt.Errorf("sync: HOST_DIR and NAME:GUEST_DIR required (or use push / pull)"))
+			}
+			return runSyncCmd(cfgPath, vmsync.Both, args[0], args[1], f)
+		},
 	}
+	bindSyncFlags(root, &f, true)
 	root.AddCommand(cmdSyncPush(cfgPath), cmdSyncPull(cfgPath))
 	return root
 }
@@ -66,10 +88,14 @@ type syncFlags struct {
 	interval      time.Duration
 }
 
-func bindSyncFlags(cmd *cobra.Command, f *syncFlags) {
+func bindSyncFlags(cmd *cobra.Command, f *syncFlags, twoWay bool) {
 	cmd.Flags().BoolVar(&f.delete, "delete", false, "remove dest paths missing on source (ignored paths never deleted)")
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "print plan only; no writes or state update")
-	cmd.Flags().BoolVar(&f.force, "force", false, "source-wins for conflicts and dest-ahead paths")
+	forceHelp := "source-wins for conflicts and dest-ahead paths"
+	if twoWay {
+		forceHelp = "on conflicts, copy the side with the newer mtime"
+	}
+	cmd.Flags().BoolVar(&f.force, "force", false, forceHelp)
 	cmd.Flags().BoolVar(&f.checksum, "checksum", false, "re-compare skipped files with SHA-256 content hashes (upgrade skip→update when content differs)")
 	cmd.Flags().StringArrayVar(&f.exclude, "exclude", nil, "extra gitignore-style patterns (repeatable)")
 	cmd.Flags().BoolVar(&f.noDefaults, "no-defaults", false, "do not apply built-in ignore patterns (none currently; .git is included)")
@@ -96,25 +122,26 @@ func cmdSyncPush(cfgPath *string) *cobra.Command {
 			return runSyncCmd(cfgPath, vmsync.Push, args[0], args[1], f)
 		},
 	}
-	bindSyncFlags(cmd, &f)
+	bindSyncFlags(cmd, &f, false)
 	return cmd
 }
 
 func cmdSyncPull(cfgPath *string) *cobra.Command {
 	var f syncFlags
 	cmd := &cobra.Command{
-		Use:   "pull <NAME:GUEST_DIR> <HOST_DIR>",
+		Use:   "pull <HOST_DIR> <NAME:GUEST_DIR>",
 		Short: "Sync guest directory → host directory",
-		Example: `  grain sync pull lab:/work/proj ~/proj
-  grain sync pull vm:/work/ ./out --dry-run
-  grain sync pull vm:/work/ ~/proj --force
-  grain sync pull lab:/work/proj ~/proj --watch --interval 3s`,
+		Example: `  grain sync pull ~/proj lab:/work/proj
+  grain sync pull lab:/work/proj ~/proj
+  grain sync pull ~/proj vm:/work/ --dry-run
+  grain sync pull ~/proj vm:/work/ --force
+  grain sync pull ~/proj lab:/work/proj --watch --interval 3s`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSyncCmd(cfgPath, vmsync.Pull, args[0], args[1], f)
 		},
 	}
-	bindSyncFlags(cmd, &f)
+	bindSyncFlags(cmd, &f, false)
 	return cmd
 }
 
@@ -152,8 +179,11 @@ func runSyncCmd(cfgPath *string, verb vmsync.Verb, arg0, arg1 string, f syncFlag
 	}
 
 	apiID := syncAPIIdentity(cfg)
-	label := "sync push"
-	if verb == vmsync.Pull {
+	label := "sync"
+	switch verb {
+	case vmsync.Push:
+		label = "sync push"
+	case vmsync.Pull:
 		label = "sync pull"
 	}
 

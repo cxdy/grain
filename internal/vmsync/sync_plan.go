@@ -12,6 +12,7 @@ type syncVerb string
 const (
 	syncPush syncVerb = "push"
 	syncPull syncVerb = "pull"
+	syncBoth syncVerb = "both"
 )
 
 // syncAction is the planned operation for one relative path.
@@ -52,8 +53,11 @@ type syncPlanItem struct {
 	RelPath string
 	Action  syncAction
 	Reason  string
-	Source  *syncInvEntry // S
-	Dest    *syncInvEntry // D
+	Source  *syncInvEntry // S (copy-from); for two-way skip, host
+	Dest    *syncInvEntry // D (copy-to); for two-way skip, guest
+	// Xfer is the apply direction for two-way items (push or pull). Empty means
+	// use Options.Verb.
+	Xfer syncVerb
 	// BaselineDirty when action is skip/create/... that should write baseline
 	// on cold-start skip (no transfer but new B entry).
 	BaselineDirty bool
@@ -146,6 +150,10 @@ func classifyPath(
 	opts syncClassifyOpts,
 ) syncPlanItem {
 	item := syncPlanItem{RelPath: relPath, Source: nil, Dest: nil}
+
+	if opts.Verb == syncBoth {
+		return classifyTwoWay(item, hostE, guestE, st, ign, opts)
+	}
 
 	// Map S/D by verb.
 	var s, d *syncInvEntry
@@ -343,6 +351,189 @@ func classifyThreeWay(item syncPlanItem, s, d *syncInvEntry, base syncEntry, opt
 		item.Reason = "dest ahead"
 	}
 	return item
+}
+
+// classifyTwoWay exchanges host-ahead and guest-ahead paths in one plan.
+// Skip items keep Source=host, Dest=guest so checksum refine can hash both sides.
+func classifyTwoWay(item syncPlanItem, hostE, guestE *syncInvEntry, st *syncState, ign *syncIgnore, opts syncClassifyOpts) syncPlanItem {
+	if ign != nil && ign.Match(item.RelPath) {
+		item.Source, item.Dest = hostE, guestE
+		item.Action = syncActSkip
+		item.Reason = "ignored"
+		return item
+	}
+	base, hasB := st.entry(item.RelPath)
+	if hasB && !base.complete() {
+		hasB = false
+	}
+	if !hasB {
+		return classifyTwoWayCold(item, hostE, guestE, opts)
+	}
+	return classifyTwoWayThree(item, hostE, guestE, base, opts)
+}
+
+func classifyTwoWayCold(item syncPlanItem, hostE, guestE *syncInvEntry, opts syncClassifyOpts) syncPlanItem {
+	switch {
+	case hostE != nil && guestE == nil:
+		return twoWayXfer(item, syncActCreate, "cold-start: guest missing", syncPush, hostE, guestE)
+	case hostE == nil && guestE != nil:
+		return twoWayXfer(item, syncActCreate, "cold-start: host missing", syncPull, guestE, hostE)
+	case hostE != nil && guestE != nil:
+		if hostE.Type != guestE.Type {
+			return twoWayConflictOrForce(item, hostE, guestE, opts, "cold-start: type mismatch")
+		}
+		if hostE.Type == "directory" || invContentEqual(hostE, guestE) {
+			item.Source, item.Dest = hostE, guestE
+			item.Action = syncActSkip
+			if hostE.Type == "symlink" {
+				item.Reason = "cold-start: target match"
+			} else {
+				item.Reason = "cold-start: size match"
+			}
+			item.BaselineDirty = true
+			return item
+		}
+		return twoWayConflictOrForce(item, hostE, guestE, opts, "cold-start: content differ")
+	default:
+		item.Action = syncActSkip
+		item.Reason = "empty"
+		return item
+	}
+}
+
+func classifyTwoWayThree(item syncPlanItem, hostE, guestE *syncInvEntry, base syncEntry, opts syncClassifyOpts) syncPlanItem {
+	hChanged := sideContentChanged(hostE, base.Host)
+	gChanged := sideContentChanged(guestE, base.Guest)
+
+	if hostE == nil && guestE == nil {
+		item.Action = syncActSkip
+		item.Reason = "empty"
+		return item
+	}
+
+	if hostE == nil && guestE != nil {
+		if !gChanged {
+			if opts.Delete {
+				return twoWayXfer(item, syncActDelete, "host deleted", syncPush, nil, guestE)
+			}
+			item.Source, item.Dest = nil, guestE
+			item.Action = syncActSkip
+			item.Reason = "host deleted (no --delete)"
+			return item
+		}
+		return twoWayConflictOrForce(item, nil, guestE, opts, "host deleted, guest changed")
+	}
+	if hostE != nil && guestE == nil {
+		if !hChanged {
+			if opts.Delete {
+				return twoWayXfer(item, syncActDelete, "guest deleted", syncPull, nil, hostE)
+			}
+			item.Source, item.Dest = hostE, nil
+			item.Action = syncActSkip
+			item.Reason = "guest deleted (no --delete)"
+			return item
+		}
+		return twoWayConflictOrForce(item, hostE, nil, opts, "guest deleted, host changed")
+	}
+
+	// Both present.
+	if hostE.Type != guestE.Type {
+		return twoWayConflictOrForce(item, hostE, guestE, opts, "type mismatch")
+	}
+	if !hChanged && !gChanged {
+		item.Source, item.Dest = hostE, guestE
+		item.Action = syncActSkip
+		item.Reason = "unchanged"
+		return item
+	}
+	if hChanged && !gChanged {
+		return twoWayXfer(item, syncActUpdate, "host changed", syncPush, hostE, guestE)
+	}
+	if !hChanged && gChanged {
+		return twoWayXfer(item, syncActUpdate, "guest changed", syncPull, guestE, hostE)
+	}
+	return twoWayConflictOrForce(item, hostE, guestE, opts, "both changed")
+}
+
+func twoWayXfer(item syncPlanItem, act syncAction, reason string, xfer syncVerb, src, dst *syncInvEntry) syncPlanItem {
+	if src != nil && src.Type == "symlink" && src.Target == "" {
+		item.Source, item.Dest = src, dst
+		item.Xfer = xfer
+		item.Action = syncActSkip
+		item.Reason = "symlink: empty target"
+		return item
+	}
+	item.Action = act
+	item.Reason = reason
+	item.Xfer = xfer
+	item.Source, item.Dest = src, dst
+	return item
+}
+
+func twoWayConflictOrForce(item syncPlanItem, hostE, guestE *syncInvEntry, opts syncClassifyOpts, reason string) syncPlanItem {
+	if !opts.Force {
+		item.Source, item.Dest = hostE, guestE
+		item.Action = syncActConflict
+		item.Reason = reason
+		return item
+	}
+	hostWins, tie := twoWayMtimePreferHost(hostE, guestE)
+	if tie {
+		item.Source, item.Dest = hostE, guestE
+		item.Action = syncActConflict
+		item.Reason = reason + " (equal mtime)"
+		return item
+	}
+	act := syncActUpdate
+	if hostE != nil && guestE != nil && hostE.Type != guestE.Type {
+		act = syncActReplace
+	}
+	if hostE == nil || guestE == nil {
+		act = syncActCreate
+	}
+	if hostWins {
+		if hostE == nil {
+			item.Source, item.Dest = hostE, guestE
+			item.Action = syncActConflict
+			item.Reason = reason + " (--force, no host)"
+			return item
+		}
+		if guestE == nil {
+			return twoWayXfer(item, syncActCreate, reason+" (--force host)", syncPush, hostE, nil)
+		}
+		return twoWayXfer(item, act, reason+" (--force host)", syncPush, hostE, guestE)
+	}
+	if guestE == nil {
+		item.Source, item.Dest = hostE, guestE
+		item.Action = syncActConflict
+		item.Reason = reason + " (--force, no guest)"
+		return item
+	}
+	if hostE == nil {
+		return twoWayXfer(item, syncActCreate, reason+" (--force guest)", syncPull, guestE, nil)
+	}
+	return twoWayXfer(item, act, reason+" (--force guest)", syncPull, guestE, hostE)
+}
+
+// twoWayMtimePreferHost reports whether host is strictly newer. tie is true when
+// mtimes are equal or both sides are missing.
+func twoWayMtimePreferHost(hostE, guestE *syncInvEntry) (hostWins, tie bool) {
+	if hostE == nil && guestE == nil {
+		return false, true
+	}
+	if hostE == nil {
+		return false, false
+	}
+	if guestE == nil {
+		return true, false
+	}
+	if hostE.Mtime > guestE.Mtime {
+		return true, false
+	}
+	if guestE.Mtime > hostE.Mtime {
+		return false, false
+	}
+	return false, true
 }
 
 // sideContentChanged reports whether live inventory diverged from baseline content fp.

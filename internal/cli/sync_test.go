@@ -59,6 +59,9 @@ func TestSyncHelpMentionsPushPull(t *testing.T) {
 	if !strings.Contains(s, "push") || !strings.Contains(s, "pull") {
 		t.Fatalf("help missing push/pull: %s", s)
 	}
+	if !strings.Contains(s, "two-way") && !strings.Contains(s, "HOST_DIR") {
+		t.Fatalf("help should mention two-way / HOST_DIR: %s", s)
+	}
 	if !strings.Contains(s, ".git") {
 		t.Fatalf("help should mention .git is included: %s", s)
 	}
@@ -368,6 +371,18 @@ func TestCmdSyncPushPullExecute(t *testing.T) {
 	pull.SetArgs([]string{"--dry-run", "lab:/work", out})
 	if err := pull.Execute(); err != nil {
 		t.Fatalf("pull: %v", err)
+	}
+
+	pullSame := cmdSyncPull(&cfgPath)
+	pullSame.SetArgs([]string{"--dry-run", out, "lab:/work"})
+	if err := pullSame.Execute(); err != nil {
+		t.Fatalf("pull same order: %v", err)
+	}
+
+	both := cmdSync(&cfgPath)
+	both.SetArgs([]string{"--dry-run", hostDir, "lab:/work"})
+	if err := both.Execute(); err != nil {
+		t.Fatalf("sync both: %v", err)
 	}
 }
 

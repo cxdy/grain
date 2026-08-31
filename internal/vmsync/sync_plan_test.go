@@ -32,6 +32,73 @@ func TestClassifyBaselineSkipDifferentMtimes(t *testing.T) {
 	}
 }
 
+func TestClassifyTwoWayHostAndGuestAhead(t *testing.T) {
+	t.Parallel()
+	st := baseState("a.go",
+		&syncFingerprint{Type: "file", Size: 10, Mtime: 100, Mode: "0644"},
+		&syncFingerprint{Type: "file", Size: 10, Mtime: 100, Mode: "0644"},
+	)
+	host := map[string]*syncInvEntry{"a.go": inv(11, 200, "0644")}
+	guest := map[string]*syncInvEntry{"a.go": inv(10, 100, "0644")}
+	plan := classifyAll(host, guest, st, nil, syncClassifyOpts{Verb: syncBoth})
+	if len(plan.Items) != 1 || plan.Items[0].Action != syncActUpdate || plan.Items[0].Xfer != syncPush {
+		t.Fatalf("host-ahead: %+v", plan.Items)
+	}
+
+	host = map[string]*syncInvEntry{"a.go": inv(10, 100, "0644")}
+	guest = map[string]*syncInvEntry{"a.go": inv(12, 300, "0644")}
+	plan = classifyAll(host, guest, st, nil, syncClassifyOpts{Verb: syncBoth})
+	if len(plan.Items) != 1 || plan.Items[0].Action != syncActUpdate || plan.Items[0].Xfer != syncPull {
+		t.Fatalf("guest-ahead: %+v", plan.Items)
+	}
+}
+
+func TestClassifyTwoWayBothChanged(t *testing.T) {
+	t.Parallel()
+	st := baseState("a.go",
+		&syncFingerprint{Type: "file", Size: 10, Mtime: 100, Mode: "0644"},
+		&syncFingerprint{Type: "file", Size: 10, Mtime: 100, Mode: "0644"},
+	)
+	host := map[string]*syncInvEntry{"a.go": inv(11, 200, "0644")}
+	guest := map[string]*syncInvEntry{"a.go": inv(12, 300, "0644")}
+	plan := classifyAll(host, guest, st, nil, syncClassifyOpts{Verb: syncBoth})
+	if plan.Conflicts != 1 {
+		t.Fatalf("want conflict, got %s", planSummaryLine(plan))
+	}
+	plan = classifyAll(host, guest, st, nil, syncClassifyOpts{Verb: syncBoth, Force: true})
+	if len(plan.Items) != 1 || plan.Items[0].Action != syncActUpdate || plan.Items[0].Xfer != syncPull {
+		t.Fatalf("force newer guest: %+v", plan.Items)
+	}
+}
+
+func TestClassifyTwoWayColdAndDelete(t *testing.T) {
+	t.Parallel()
+	host := map[string]*syncInvEntry{"new.go": inv(1, 1, "0644")}
+	plan := classifyAll(host, nil, nil, nil, syncClassifyOpts{Verb: syncBoth})
+	if plan.Created != 1 || plan.Items[0].Xfer != syncPush {
+		t.Fatalf("host-only: %s %+v", planSummaryLine(plan), plan.Items)
+	}
+	guest := map[string]*syncInvEntry{"g.go": inv(2, 2, "0644")}
+	plan = classifyAll(nil, guest, nil, nil, syncClassifyOpts{Verb: syncBoth})
+	if plan.Created != 1 || plan.Items[0].Xfer != syncPull {
+		t.Fatalf("guest-only: %s %+v", planSummaryLine(plan), plan.Items)
+	}
+
+	st := baseState("gone.go",
+		&syncFingerprint{Type: "file", Size: 1, Mtime: 1, Mode: "0644"},
+		&syncFingerprint{Type: "file", Size: 1, Mtime: 1, Mode: "0644"},
+	)
+	host = map[string]*syncInvEntry{"gone.go": inv(1, 1, "0644")}
+	plan = classifyAll(host, nil, st, nil, syncClassifyOpts{Verb: syncBoth})
+	if plan.Skipped != 1 {
+		t.Fatalf("guest deleted no --delete: %s", planSummaryLine(plan))
+	}
+	plan = classifyAll(host, nil, st, nil, syncClassifyOpts{Verb: syncBoth, Delete: true})
+	if plan.Deleted != 1 || plan.Items[0].Xfer != syncPull {
+		t.Fatalf("guest deleted --delete: %+v", plan.Items)
+	}
+}
+
 func TestClassifyPushThenPullNoEditsAllSkip(t *testing.T) {
 	t.Parallel()
 	st := baseState("f",

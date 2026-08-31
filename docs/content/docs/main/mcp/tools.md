@@ -28,16 +28,17 @@ The MCP server registers these tools:
 | `grain_write_file` / `grain_read_file` | Guest files |
 | `grain_put_tar` / `grain_get_tar` | Tar upload/download (base64) |
 | `grain_fs_*` | Guest filesystem ops |
-| `grain_sync_push` / `grain_sync_pull` | Unidirectional host↔guest directory sync (same as `grain sync push\|pull`; agent required) |
+| `grain_sync` | Two-way host↔guest directory sync (same as `grain sync HOST NAME:GUEST`) |
+| `grain_sync_push` / `grain_sync_pull` | One-way host→guest / guest→host (same as `grain sync push\|pull`) |
 | `grain_workspace_sandbox` | Repo-oriented sandbox helper |
 | `grain_forward_add` / `grain_forward_remove` | Port forwards |
 | `grain_image_list` / `grain_image_pull` | Images |
 | `grain_act` / `grain_k3s` | Recipe helpers |
 | `grain_agent_health` / `grain_logs` / `grain_stats` | Observe |
 
-### Directory sync (`grain_sync_push` / `grain_sync_pull`)
+### Directory sync (`grain_sync` / `grain_sync_push` / `grain_sync_pull`)
 
-Same core engine as the CLI (`internal/vmsync`). Requires a healthy guest agent; directory roots only. Hidden directories (including `.git`) are transferred so a git working tree stays a repository in the guest.
+Same core engine as the CLI (`internal/vmsync`). Requires a healthy guest agent; directory roots only. Hidden directories (including `.git`) are transferred so a git working tree stays a repository in the guest. `grain_sync` is two-way (host-ahead → guest, guest-ahead → host).
 
 | Argument | Notes |
 |----------|--------|
@@ -53,4 +54,4 @@ Result JSON includes plan counts (`created`, `updated`, `deleted`, `skipped`, `k
 
 Exact names and schemas come from `tools/list` on a live server (`go run ./scripts/mcp-handshake.go ./bin/grain`).
 
-See the [MCP overview](../) for configuration and host setup. CLI: [sync push\|pull](../../reference/cli/#grain-sync-push--pull).
+See the [MCP overview](../) for configuration and host setup. CLI: [sync](../../reference/cli/#grain-sync-two-way-push-pull).

@@ -783,6 +783,58 @@ func TestRunPushPullIncludesHiddenGitDir(t *testing.T) {
 	}
 }
 
+func TestRunTwoWayExchangesSides(t *testing.T) {
+	host := t.TempDir()
+	if err := os.WriteFile(filepath.Join(host, "from-host.txt"), []byte("h"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fs := newMemGuestFS()
+	ctx := context.Background()
+	_ = fs.Mkdir(ctx, "/work", true, "0755")
+	_ = fs.PutFile(ctx, "/work/from-guest.txt", stringReader("g"), 1, agentCP())
+
+	data := t.TempDir()
+	res, err := Run(ctx, Options{
+		Verb: Both, VM: "vm1", HostRoot: host, GuestRoot: "/work",
+		APIIdentity: "test-both", DataDir: data, FS: fs,
+		Out: ioDiscard{}, ErrOut: ioDiscard{},
+	})
+	if err != nil {
+		t.Fatalf("both: %v", err)
+	}
+	if res.ExitCode != ExitOK {
+		t.Fatalf("exit %d", res.ExitCode)
+	}
+	var buf bytes.Buffer
+	if err := fs.GetFile(ctx, "/work/from-host.txt", &buf); err != nil {
+		t.Fatalf("guest missing host file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(host, "from-guest.txt")); err != nil {
+		t.Fatalf("host missing guest file: %v", err)
+	}
+
+	// Guest-only edit: next both-run copies to host.
+	_ = fs.PutFile(ctx, "/work/from-host.txt", stringReader("h2"), 2, agentCP())
+	res2, err := Run(ctx, Options{
+		Verb: Both, VM: "vm1", HostRoot: host, GuestRoot: "/work",
+		APIIdentity: "test-both", DataDir: data, FS: fs,
+		Out: ioDiscard{}, ErrOut: ioDiscard{},
+	})
+	if err != nil {
+		t.Fatalf("both 2: %v", err)
+	}
+	if res2.ExitCode != ExitOK {
+		t.Fatalf("exit2 %d", res2.ExitCode)
+	}
+	got, err := os.ReadFile(filepath.Join(host, "from-host.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "h2" {
+		t.Fatalf("host not updated from guest: %q", got)
+	}
+}
+
 func TestValidateGuestRootPushMissingOK(t *testing.T) {
 	fs := newMemGuestFS()
 	if err := validateGuestRoot(context.Background(), fs, "/missing", Push); err != nil {

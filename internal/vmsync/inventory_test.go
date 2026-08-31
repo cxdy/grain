@@ -232,11 +232,16 @@ func TestParseArgsPushPull(t *testing.T) {
 	if err != nil || host != "/tmp/h" || vm != "lab" || guest != "/work/p" {
 		t.Fatalf("pull: host=%q vm=%q guest=%q err=%v", host, vm, guest, err)
 	}
+	host, vm, guest, err = ParseArgs(Pull, "/tmp/h", "lab:/work/p", parse)
+	if err != nil || host != "/tmp/h" || vm != "lab" || guest != "/work/p" {
+		t.Fatalf("pull same order: host=%q vm=%q guest=%q err=%v", host, vm, guest, err)
+	}
+	host, vm, guest, err = ParseArgs(Both, "/tmp/h", "lab:/work/p", parse)
+	if err != nil || host != "/tmp/h" || vm != "lab" || guest != "/work/p" {
+		t.Fatalf("both: host=%q vm=%q guest=%q err=%v", host, vm, guest, err)
+	}
 	if _, _, _, err := ParseArgs(Push, "lab:/x", "/tmp/h", parse); err == nil {
 		t.Fatal("expected push swapped args error")
-	}
-	if _, _, _, err := ParseArgs(Pull, "/tmp/h", "lab:/x", parse); err == nil {
-		t.Fatal("expected pull swapped args error")
 	}
 }
 

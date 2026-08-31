@@ -76,7 +76,7 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `grain sh [name]` | Shell (agent PTY preferred) |
 | `grain x [name] -- cmd…` | Exec (streaming agent preferred) |
 | `grain cp src dst` | Copy (`NAME:path` or host path); both directions |
-| `grain sync push\|pull` | Incremental host↔guest directory sync (agent required) |
+| `grain sync` / `push` / `pull` | Incremental host↔guest directory sync (agent required) |
 | `grain fs ls\|stat\|mkdir\|rm` | Guest filesystem helpers |
 | `grain logs [name] [-f] [--qemu]` | Serial or QEMU logs |
 | `grain stats [name]` | Guest resource stats |
@@ -181,22 +181,26 @@ grain cp lab:/var/log/cloud-init.log ./cloud-init.log
 
 Remote CLI (`GRAIN_API`) uses the daemon’s agent proxy for `cp` — no scp from the laptop. Guest↔guest in one step is not supported (pull then push). Directory copies include hidden entries such as `.git`.
 
-### `grain sync push | pull`
+### `grain sync` (two-way, push, pull)
 
 Incremental **directory** sync with a host-side baseline under `~/.grain/sync/` (or `data_dir/sync/`). Requires the guest agent (no scp fallback). Directory roots only — use `cp` for single files. Regular **symlinks** are transferred as links (target string; not followed); directory symlinks are not descended. Hidden directories (including `.git`) are transferred so a git working tree stays a repository in the guest.
 
+Argument order is **host dir, then `NAME:GUEST_DIR`**. Two-way is the default command: host-ahead paths go to the guest, guest-ahead paths come to the host. `push` and `pull` stay one-way. `pull` also accepts the older `NAME:GUEST_DIR` host-dir order.
+
 ```bash
+grain sync       ~/proj  lab:/work/proj
+grain sync       ~/proj  lab:/work/proj --watch
 grain sync push  ~/proj  lab:/work/proj
-grain sync pull  lab:/work/proj  ~/proj
+grain sync pull  ~/proj  lab:/work/proj
 grain sync push  ~/proj  lab:/work/proj --dry-run
-grain sync pull  lab:/work/proj  ~/proj --delete --force
+grain sync pull  ~/proj  lab:/work/proj --delete --force
 ```
 
 | Flag | Meaning |
 |------|---------|
 | `--delete` | Remove dest paths missing on source (ignored paths never deleted) |
 | `--dry-run` | Plan only; no writes or state update |
-| `--force` | Source-wins for conflicts and dest-ahead paths |
+| `--force` | One-way: source-wins for conflicts and dest-ahead. Two-way: newer mtime wins |
 | `--exclude` | Extra gitignore-style patterns (repeatable); `--exclude '.git/'` omits git metadata |
 | `--no-defaults` | Skip built-in ignore patterns (none currently; `.git` is included) |
 | `--no-gitignore` / `--no-grainignore` | Skip host ignore files |
@@ -205,7 +209,7 @@ grain sync pull  lab:/work/proj  ~/proj --delete --force
 
 Exit codes: `0` ok, `1` usage, `2` conflicts (zero applies), `3` apply error. Dest-ahead paths are **kept** unless `--force` — successful sync is not always a full mirror.
 
-MCP: `grain_sync_push` / `grain_sync_pull` with the same semantics.
+MCP: `grain_sync` (two-way) / `grain_sync_push` / `grain_sync_pull`.
 
 ## GitHub Actions (`grain act`)
 

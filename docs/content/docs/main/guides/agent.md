@@ -190,10 +190,11 @@ grain cp --ssh   ./a sbox-1:/tmp/a
 For iterative edit loops (seed → work in guest → bring results home), prefer `grain sync` over full-tree `cp`:
 
 ```bash
-grain sync push ~/proj sbox-1:/work/proj
-grain sh sbox-1
-grain sync pull sbox-1:/work/proj ~/proj
+grain sync ~/proj sbox-1:/work/proj
+grain sync ~/proj sbox-1:/work/proj --watch
 ```
+
+One-way: `grain sync push` (host → guest) and `grain sync pull` (guest → host). Same argument order: host dir, then `NAME:GUEST_DIR`.
 
 `sync` and directory `cp` include hidden directories such as `.git`, so a git working tree stays a repository in the guest. Skip git metadata with `--exclude '.git/'`. Host `.gitignore` / `.grainignore` still apply.
 

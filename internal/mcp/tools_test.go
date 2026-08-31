@@ -386,7 +386,7 @@ func TestToolNamesExpanded(t *testing.T) {
 		grainmcp.ToolAgentHealth, grainmcp.ToolLogs, grainmcp.ToolStats,
 		grainmcp.ToolWorkspace, grainmcp.ToolForwardAdd, grainmcp.ToolImageList,
 		grainmcp.ToolAct, grainmcp.ToolK3s, grainmcp.ToolFSReadDir,
-		grainmcp.ToolSyncPush, grainmcp.ToolSyncPull,
+		grainmcp.ToolSyncPush, grainmcp.ToolSyncPull, grainmcp.ToolSync,
 		grainmcp.ToolStatus, grainmcp.ToolPauseVM, grainmcp.ToolResumeVM,
 		grainmcp.ToolSuspendVM, grainmcp.ToolRestoreVM, grainmcp.ToolSecretLS,
 	}
@@ -921,6 +921,21 @@ func TestSyncPushPullDryRun(t *testing.T) {
 	txt = textOf(t, res)
 	if !strings.Contains(txt, "pull") {
 		t.Fatalf("pull dry-run: %s", txt)
+	}
+
+	res, err = sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: grainmcp.ToolSync,
+		Arguments: map[string]any{
+			"name": "sync1", "host_dir": hostDir, "guest_dir": "/work/proj",
+			"dry_run": true, "no_defaults": true, "no_gitignore": true, "no_grainignore": true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txt = textOf(t, res)
+	if !strings.Contains(txt, `"verb": "both"`) && !strings.Contains(txt, `"verb":"both"`) {
+		t.Fatalf("both dry-run: %s", txt)
 	}
 }
 
