@@ -179,11 +179,11 @@ grain cp lab:/work/proj/out.json ./out.json
 grain cp lab:/var/log/cloud-init.log ./cloud-init.log
 ```
 
-Remote CLI (`GRAIN_API`) uses the daemon’s agent proxy for `cp` — no scp from the laptop. Guest↔guest in one step is not supported (pull then push).
+Remote CLI (`GRAIN_API`) uses the daemon’s agent proxy for `cp` — no scp from the laptop. Guest↔guest in one step is not supported (pull then push). Directory copies include hidden entries such as `.git`.
 
 ### `grain sync push | pull`
 
-Incremental **directory** sync with a host-side baseline under `~/.grain/sync/` (or `data_dir/sync/`). Requires the guest agent (no scp fallback). Directory roots only — use `cp` for single files. Regular **symlinks** are transferred as links (target string; not followed); directory symlinks are not descended.
+Incremental **directory** sync with a host-side baseline under `~/.grain/sync/` (or `data_dir/sync/`). Requires the guest agent (no scp fallback). Directory roots only — use `cp` for single files. Regular **symlinks** are transferred as links (target string; not followed); directory symlinks are not descended. Hidden directories (including `.git`) are transferred so a git working tree stays a repository in the guest.
 
 ```bash
 grain sync push  ~/proj  lab:/work/proj
@@ -197,8 +197,8 @@ grain sync pull  lab:/work/proj  ~/proj --delete --force
 | `--delete` | Remove dest paths missing on source (ignored paths never deleted) |
 | `--dry-run` | Plan only; no writes or state update |
 | `--force` | Source-wins for conflicts and dest-ahead paths |
-| `--exclude` | Extra gitignore-style patterns (repeatable) |
-| `--no-defaults` | Skip built-in ignores (`.git/`) |
+| `--exclude` | Extra gitignore-style patterns (repeatable); `--exclude '.git/'` omits git metadata |
+| `--no-defaults` | Skip built-in ignore patterns (none currently; `.git` is included) |
 | `--no-gitignore` / `--no-grainignore` | Skip host ignore files |
 | `--verbose` / `-v` | List skipped / kept_dest paths |
 | `--max-file-size` | Skip source files larger than N bytes |

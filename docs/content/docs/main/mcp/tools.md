@@ -37,7 +37,7 @@ The MCP server registers these tools:
 
 ### Directory sync (`grain_sync_push` / `grain_sync_pull`)
 
-Same core engine as the CLI (`internal/vmsync`). Requires a healthy guest agent; directory roots only.
+Same core engine as the CLI (`internal/vmsync`). Requires a healthy guest agent; directory roots only. Hidden directories (including `.git`) are transferred so a git working tree stays a repository in the guest.
 
 | Argument | Notes |
 |----------|--------|
@@ -45,8 +45,8 @@ Same core engine as the CLI (`internal/vmsync`). Requires a healthy guest agent;
 | `host_dir` | Absolute host directory root |
 | `guest_dir` | Absolute guest directory (e.g. `/work/proj`) |
 | `delete` / `dry_run` / `force` | Same semantics as CLI flags |
-| `exclude` | Extra gitignore-style patterns |
-| `no_defaults` / `no_gitignore` / `no_grainignore` | Ignore control |
+| `exclude` | Extra gitignore-style patterns (`'.git/'` omits git metadata) |
+| `no_defaults` / `no_gitignore` / `no_grainignore` | Ignore control (`no_defaults` skips built-in patterns; none currently) |
 | `max_file_size` | Skip oversized source files (bytes) |
 
 Result JSON includes plan counts (`created`, `updated`, `deleted`, `skipped`, `kept_dest`, `conflicts`), `exit_code`, and `applied`. Conflicts set `ok=false` with `exit_code=2` and do not apply.

@@ -675,6 +675,114 @@ func TestValidateHostRootPullMissingOK(t *testing.T) {
 	}
 }
 
+func TestRunPushPullIncludesHiddenGitDir(t *testing.T) {
+	host := t.TempDir()
+	mustWrite := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(host, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite("README.md", "hello")
+	mustWrite(".git/HEAD", "ref: refs/heads/main\n")
+	mustWrite(".git/config", "[core]\n")
+	mustWrite(".github/workflows/ci.yml", "name: ci\n")
+	mustWrite(".vscode/settings.json", "{}\n")
+
+	data := t.TempDir()
+	fs := newMemGuestFS()
+	ctx := context.Background()
+	_ = fs.Mkdir(ctx, "/work", true, "0755")
+
+	res, err := Run(ctx, Options{
+		Verb: Push, VM: "vm1", HostRoot: host, GuestRoot: "/work",
+		APIIdentity: "test-git", DataDir: data, FS: fs,
+		Out: ioDiscard{}, ErrOut: ioDiscard{},
+	})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if res.ExitCode != ExitOK {
+		t.Fatalf("push exit %d", res.ExitCode)
+	}
+	for _, p := range []string{
+		"/work/README.md",
+		"/work/.git/HEAD",
+		"/work/.git/config",
+		"/work/.github/workflows/ci.yml",
+		"/work/.vscode/settings.json",
+	} {
+		var buf bytes.Buffer
+		if err := fs.GetFile(ctx, p, &buf); err != nil {
+			t.Fatalf("guest missing %s: %v", p, err)
+		}
+	}
+
+	// --exclude '.git/' still omits git metadata.
+	host2 := t.TempDir()
+	mustWrite2 := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(host2, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite2("keep.txt", "k")
+	mustWrite2(".git/HEAD", "ref\n")
+	fsEx := newMemGuestFS()
+	_ = fsEx.Mkdir(ctx, "/work", true, "0755")
+	resEx, err := Run(ctx, Options{
+		Verb: Push, VM: "vm1", HostRoot: host2, GuestRoot: "/work",
+		APIIdentity: "test-git-ex", DataDir: t.TempDir(), FS: fsEx,
+		Out: ioDiscard{}, ErrOut: ioDiscard{},
+		Exclude: []string{".git/"},
+	})
+	if err != nil {
+		t.Fatalf("exclude push: %v", err)
+	}
+	if resEx.ExitCode != ExitOK {
+		t.Fatalf("exclude exit %d", resEx.ExitCode)
+	}
+	if err := fsEx.GetFile(ctx, "/work/keep.txt", ioDiscard{}); err != nil {
+		t.Fatalf("keep.txt missing: %v", err)
+	}
+	if err := fsEx.GetFile(ctx, "/work/.git/HEAD", ioDiscard{}); err == nil {
+		t.Fatal("expected .git/HEAD excluded")
+	}
+
+	// Pull the included tree back onto a fresh host dir.
+	dest := t.TempDir()
+	resPull, err := Run(ctx, Options{
+		Verb: Pull, VM: "vm1", HostRoot: dest, GuestRoot: "/work",
+		APIIdentity: "test-git-pull", DataDir: t.TempDir(), FS: fs,
+		Out: ioDiscard{}, ErrOut: ioDiscard{},
+	})
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if resPull.ExitCode != ExitOK {
+		t.Fatalf("pull exit %d", resPull.ExitCode)
+	}
+	for _, rel := range []string{
+		"README.md",
+		".git/HEAD",
+		".git/config",
+		".github/workflows/ci.yml",
+		".vscode/settings.json",
+	} {
+		if _, err := os.Stat(filepath.Join(dest, filepath.FromSlash(rel))); err != nil {
+			t.Fatalf("pull missing %s: %v", rel, err)
+		}
+	}
+}
+
 func TestValidateGuestRootPushMissingOK(t *testing.T) {
 	fs := newMemGuestFS()
 	if err := validateGuestRoot(context.Background(), fs, "/missing", Push); err != nil {

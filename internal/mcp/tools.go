@@ -499,7 +499,7 @@ type syncIn struct {
 	Force         bool     `json:"force,omitempty" jsonschema:"source-wins for conflicts and dest-ahead"`
 	Checksum      bool     `json:"checksum,omitempty" jsonschema:"SHA-256 content refine for paths size/mtime would skip"`
 	Exclude       []string `json:"exclude,omitempty" jsonschema:"extra gitignore-style patterns"`
-	NoDefaults    bool     `json:"no_defaults,omitempty"`
+	NoDefaults    bool     `json:"no_defaults,omitempty" jsonschema:"skip built-in ignore patterns (none currently; .git is included)"`
 	NoGitignore   bool     `json:"no_gitignore,omitempty"`
 	NoGrainignore bool     `json:"no_grainignore,omitempty"`
 	MaxFileSize   int64    `json:"max_file_size,omitempty" jsonschema:"skip source files larger than N bytes"`

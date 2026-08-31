@@ -59,6 +59,9 @@ func TestSyncHelpMentionsPushPull(t *testing.T) {
 	if !strings.Contains(s, "push") || !strings.Contains(s, "pull") {
 		t.Fatalf("help missing push/pull: %s", s)
 	}
+	if !strings.Contains(s, ".git") {
+		t.Fatalf("help should mention .git is included: %s", s)
+	}
 }
 
 func TestSyncPushUseLine(t *testing.T) {

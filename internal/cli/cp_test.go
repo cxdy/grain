@@ -127,6 +127,15 @@ func TestWriteExtractTarRoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(src, "sub", "b.txt"), []byte("world"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(src, ".git", "objects"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, ".hidden"), []byte("dot"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	// symlink if supported
 	_ = os.Symlink("a.txt", filepath.Join(src, "link"))
 
@@ -148,6 +157,14 @@ func TestWriteExtractTarRoundTrip(t *testing.T) {
 	b, err = os.ReadFile(filepath.Join(dest, "sub", "b.txt"))
 	if err != nil || string(b) != "world" {
 		t.Fatalf("%q %v", b, err)
+	}
+	b, err = os.ReadFile(filepath.Join(dest, ".git", "HEAD"))
+	if err != nil || !strings.Contains(string(b), "refs/heads/main") {
+		t.Fatalf(".git/HEAD %q %v", b, err)
+	}
+	b, err = os.ReadFile(filepath.Join(dest, ".hidden"))
+	if err != nil || string(b) != "dot" {
+		t.Fatalf(".hidden %q %v", b, err)
 	}
 }
 

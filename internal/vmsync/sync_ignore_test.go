@@ -12,10 +12,9 @@ func TestSyncIgnoreDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ign.Match(".git/config") && !ign.MatchDir(".git") {
-		// go-gitignore: ".git/" should match paths under .git
-		if !ign.Match(".git/config") {
-			t.Fatal("expected .git/config ignored by defaults")
+	for _, p := range []string{".git/config", ".git/HEAD", ".github/workflows/ci.yml", ".vscode/settings.json"} {
+		if ign.Match(p) || ign.MatchDir(filepath.Dir(p)) {
+			t.Fatalf("hidden path %q should not be ignored by defaults", p)
 		}
 	}
 	if ign.Match("src/main.go") {
@@ -31,6 +30,22 @@ func TestSyncIgnoreNoDefaults(t *testing.T) {
 	}
 	if ign.Match(".git/config") {
 		t.Fatal("no-defaults should not ignore .git")
+	}
+}
+
+func TestSyncIgnoreExcludeGit(t *testing.T) {
+	t.Parallel()
+	ign, err := buildSyncIgnore(syncIgnoreOpts{Exclude: []string{".git/", "**/.git/"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ign.Match(".git/config") && !ign.MatchDir(".git") {
+		if !ign.Match(".git/config") {
+			t.Fatal("expected .git/config ignored by --exclude")
+		}
+	}
+	if ign.Match(".github/workflows/ci.yml") {
+		t.Fatal(".github should not be ignored by a .git/ exclude")
 	}
 }
 

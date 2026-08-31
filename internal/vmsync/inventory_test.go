@@ -50,8 +50,14 @@ func TestInventoryHostBasic(t *testing.T) {
 	if inv["sub/b.txt"] == nil {
 		t.Fatalf("missing sub/b.txt: %v", inv)
 	}
-	if inv[".git/config"] != nil {
-		t.Fatalf(".git should be ignored, got %v", inv[".git/config"])
+	if inv[".git"] == nil || inv[".git"].Type != "directory" {
+		t.Fatalf(".git dir: %+v", inv[".git"])
+	}
+	if inv[".git/config"] == nil || inv[".git/config"].Type != "file" {
+		t.Fatalf(".git/config should be inventoried, got %v", inv[".git/config"])
+	}
+	if inv[".git/objects"] == nil || inv[".git/objects"].Type != "directory" {
+		t.Fatalf(".git/objects: %+v", inv[".git/objects"])
 	}
 }
 
@@ -60,8 +66,10 @@ func TestInventoryGuestBFS(t *testing.T) {
 	ctx := context.Background()
 	_ = m.Mkdir(ctx, "/work", true, "0755")
 	_ = m.Mkdir(ctx, "/work/sub", true, "0755")
+	_ = m.Mkdir(ctx, "/work/.git", true, "0755")
 	_ = m.PutFile(ctx, "/work/a.txt", stringReader("hello"), 5, agentCP())
 	_ = m.PutFile(ctx, "/work/sub/b.txt", stringReader("x"), 1, agentCP())
+	_ = m.PutFile(ctx, "/work/.git/HEAD", stringReader("ref"), 3, agentCP())
 
 	inv, err := InventoryGuest(ctx, m, "/work", nil)
 	if err != nil {
@@ -75,6 +83,12 @@ func TestInventoryGuestBFS(t *testing.T) {
 	}
 	if inv["sub/b.txt"] == nil {
 		t.Fatalf("sub/b.txt missing: %v", inv)
+	}
+	if inv[".git"] == nil || inv[".git"].Type != "directory" {
+		t.Fatalf(".git: %+v", inv[".git"])
+	}
+	if inv[".git/HEAD"] == nil || inv[".git/HEAD"].Size != 3 {
+		t.Fatalf(".git/HEAD: %+v", inv[".git/HEAD"])
 	}
 }
 

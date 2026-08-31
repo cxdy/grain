@@ -195,6 +195,8 @@ grain sh sbox-1
 grain sync pull sbox-1:/work/proj ~/proj
 ```
 
+`sync` and directory `cp` include hidden directories such as `.git`, so a git working tree stays a repository in the guest. Skip git metadata with `--exclude '.git/'`. Host `.gitignore` / `.grainignore` still apply.
+
 Requires a healthy agent. See [CLI reference](../../reference/cli/#grain-sync-push--pull).
 
 ### Refresh / redeploy the guest agent

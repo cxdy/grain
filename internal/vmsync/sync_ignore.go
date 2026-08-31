@@ -14,7 +14,7 @@ import (
 type syncIgnoreOpts struct {
 	// HostRoot is the absolute host sync root (for loading .grainignore / .gitignore).
 	HostRoot string
-	// NoDefaults skips built-in patterns (.git/).
+	// NoDefaults skips built-in ignore patterns (none currently; .git is included).
 	NoDefaults bool
 	// NoGrainignore skips host .grainignore.
 	NoGrainignore bool
@@ -34,10 +34,9 @@ type syncIgnore struct {
 }
 
 // defaultSyncIgnoreLines are built-in excludes (unless --no-defaults).
-var defaultSyncIgnoreLines = []string{
-	".git/",
-	"**/.git/",
-}
+// Empty: hidden directories such as .git are transferred so a synced working
+// tree remains a git repository. Use --exclude '.git/' to omit git metadata.
+var defaultSyncIgnoreLines []string
 
 // buildSyncIgnore loads defaults + host ignore files + --exclude.
 func buildSyncIgnore(opts syncIgnoreOpts) (*syncIgnore, error) {
