@@ -619,12 +619,12 @@ func TestShellViaDaemonURLConstruction(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &api.Client{Base: srv.URL, HTTP: srv.Client(), Token: "t"}
-	err := shellViaDaemon(c, "my-vm")
+	err := shellViaDaemon(c, "my-vm", false)
 	if err == nil {
 		t.Fatal("expected shell error")
 	}
 	// Ensure name is path-escaped in BaseURL construction (no panic)
-	err = shellViaDaemon(c, "vm/with spaces")
+	err = shellViaDaemon(c, "vm/with spaces", false)
 	if err == nil {
 		t.Fatal("expected error")
 	}

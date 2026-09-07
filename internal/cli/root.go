@@ -69,6 +69,7 @@ func Root(version string) *cobra.Command {
   grain pause / resume  QMP freeze/unfreeze guest vCPUs
   grain suspend / restore  stop process (free RAM); restore from disk/snapshot
   grain ls / rm / sh / x / cp / sync
+  grain sh -A           this PTY: client SSH agent + HTTP/SOCKS5h (not hostfwd)
   grain sync HOST NAME:GUEST   two-way host↔guest dir sync (or push|pull)
   grain agent health|deploy  guest agent health; redeploy over SSH (local or remote API)
   grain fs              guest readdir/stat/mkdir/rm via agent
@@ -1333,7 +1334,7 @@ func resolveVMName(c *api.Client, args []string, createIfEmpty bool) (string, er
 }
 
 func cmdSh(cfgPath *string) *cobra.Command {
-	var forceSSH, forceAgent bool
+	var forceSSH, forceAgent, fwdClient bool
 	cmd := &cobra.Command{
 		Use:   "sh [name]",
 		Short: "Shell into a VM (prefers guest agent PTY; SSH fallback; auto-creates if none)",
@@ -1341,6 +1342,14 @@ func cmdSh(cfgPath *string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if forceSSH && forceAgent {
 				return fmt.Errorf("cannot use --ssh and --agent together")
+			}
+			if fwdClient && forceSSH {
+				return fmt.Errorf("cannot use -A and --ssh together (session client forwarding is guest-agent PTY only)")
+			}
+			if fwdClient {
+				if err := agent.ValidateClientSSHAuthSock(os.Getenv("SSH_AUTH_SOCK")); err != nil {
+					return err
+				}
 			}
 			cfg, err := loadCfg(cfgPath)
 			if err != nil {
@@ -1361,9 +1370,12 @@ func cmdSh(cfgPath *string) *cobra.Command {
 			// Remote CLI must use the daemon shell proxy (hostfwd is on the server).
 			viaDaemon := remoteMode(cfg)
 			if !forceSSH {
-				err := shellViaAgent(c, name, forceAgent, viaDaemon)
+				err := shellViaAgent(c, name, forceAgent, viaDaemon, fwdClient)
 				if err == nil {
 					return nil
+				}
+				if fwdClient {
+					return fmt.Errorf("session client forwarding requires the guest agent (not SSH hostfwd): %w", err)
 				}
 				if forceAgent || viaDaemon {
 					// Remote: no useful SSH fallback to hostfwd ports on the server.
@@ -1392,13 +1404,14 @@ func cmdSh(cfgPath *string) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&forceSSH, "ssh", false, "force SSH shell (skip guest agent)")
 	cmd.Flags().BoolVar(&forceAgent, "agent", false, "force guest agent PTY only (error if unavailable)")
+	cmd.Flags().BoolVarP(&fwdClient, "forward-client", "A", false, "session client forwarding: SSH agent + HTTP proxy + SOCKS5h into this guest-agent PTY only (not OpenSSH hostfwd -A)")
 	return cmd
 }
 
 // shellViaAgent opens an interactive PTY. Local: dial agent hostfwd; remote: daemon /shell proxy.
-func shellViaAgent(c *api.Client, name string, force bool, viaDaemon bool) error {
+func shellViaAgent(c *api.Client, name string, force bool, viaDaemon bool, fwdClient bool) error {
 	if viaDaemon {
-		return shellViaDaemon(c, name)
+		return shellViaDaemon(c, name, fwdClient)
 	}
 	ac, err := dialGuestAgent(c, name, force)
 	if err != nil {
@@ -1407,7 +1420,8 @@ func shellViaAgent(c *api.Client, name string, force bool, viaDaemon bool) error
 	_, _ = fmt.Fprintf(os.Stderr, "connecting via agent to %s …\n", name)
 	// No overall timeout — interactive session lasts until the user exits.
 	return ac.Shell(context.Background(), agent.ShellOpts{
-		ExtraEnv: agent.HostShellExtraEnv(),
+		ExtraEnv:      agent.HostShellExtraEnv(),
+		ForwardClient: fwdClient,
 	})
 }
 

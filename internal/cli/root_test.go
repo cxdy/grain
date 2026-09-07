@@ -1014,10 +1014,10 @@ func TestShellViaAgentNoEndpoint(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &api.Client{Base: srv.URL, HTTP: srv.Client()}
-	if err := shellViaAgent(c, "n", false, false); err == nil {
+	if err := shellViaAgent(c, "n", false, false, false); err == nil {
 		t.Fatal("expected agent skip/unavailable")
 	}
-	if err := shellViaAgent(c, "n", true, false); err == nil {
+	if err := shellViaAgent(c, "n", true, false, false); err == nil {
 		t.Fatal("expected force error")
 	}
 }
@@ -1028,7 +1028,7 @@ func TestShellViaAgentViaDaemon(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &api.Client{Base: srv.URL, HTTP: srv.Client(), Token: "tok"}
-	if err := shellViaAgent(c, "vm1", false, true); err == nil {
+	if err := shellViaAgent(c, "vm1", false, true, false); err == nil {
 		t.Fatal("expected daemon shell error")
 	}
 }
@@ -1082,7 +1082,7 @@ func TestShellViaAgentLiveDial(t *testing.T) {
 	defer apiSrv.Close()
 	c := &api.Client{Base: apiSrv.URL, HTTP: apiSrv.Client()}
 	// Shell tries websocket upgrade and fails; dial + health succeed.
-	_ = shellViaAgent(c, "live", true, false)
+	_ = shellViaAgent(c, "live", true, false, false)
 }
 
 func TestCmdShForceAgentUnavailable(t *testing.T) {

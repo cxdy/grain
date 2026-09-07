@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -48,7 +49,36 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 			qmap[e.Query] = v
 		}
 	}
-	extra := shellEnvFromQuery(qmap)
+	var fwdEnv []string
+	var fwd *GuestFwd
+	var fwdHub *wsFwdHub
+	if q.Get("fwd") == "1" {
+		fwdHub = newWsFwdHub(conn)
+		var ferr error
+		fwd, ferr = StartGuestFwdListeners(ctx, func(kind string, c net.Conn) {
+			fwdHub.ServeGuestConn(ctx, kind, c)
+		})
+		if ferr != nil {
+			s.Log.Error("shell client-fwd listen", "err", ferr)
+			_ = conn.Close(websocket.StatusInternalError, ferr.Error())
+			return
+		}
+		defer fwd.Close()
+		bin, _ := os.Executable()
+		if err := fwd.InstallSSHWrapper(bin); err != nil {
+			s.Log.Error("shell client-fwd ssh wrapper", "err", err)
+			_ = conn.Close(websocket.StatusInternalError, err.Error())
+			return
+		}
+		uid, gid, _, _ := resolveShellUser()
+		if err := fwd.ChownSession(uid, gid); err != nil {
+			s.Log.Error("shell client-fwd chown", "err", err)
+			_ = conn.Close(websocket.StatusInternalError, err.Error())
+			return
+		}
+		fwdEnv = SessionFwdEnv(fwd.AgentSock, fwd.ProxyAddr, bin, fwd.Dir)
+	}
+	extra := extraEnvForShell(qmap, fwdEnv)
 	cmd, ptmx, err := startLoginShell(shellPath, cols, rows, extra)
 	if err != nil {
 		s.Log.Error("shell pty start", "err", err)
@@ -132,6 +162,9 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 				if jerr := json.Unmarshal(data, &ctrl); jerr != nil {
 					continue
 				}
+				if fwdHub != nil && fwdHub.Handle(ctrl) {
+					continue
+				}
 				switch ctrl.Type {
 				case "resize":
 					if ctrl.Cols > 0 && ctrl.Rows > 0 {
@@ -180,8 +213,9 @@ func startLoginShell(shellPath string, cols, rows int, extraEnv []string) (*exec
 		shell = "/bin/bash"
 	}
 
-	// Login shell: argv0 with leading "-" is the traditional convention.
-	cmd := exec.Command(shell, "-l")
+	// Login shell. When GRAIN_FWD_WRAP is set, re-prepend it after /etc/profile
+	// so stock ssh is the session SOCKS wrapper (OpenSSH ignores ALL_PROXY).
+	cmd := exec.Command(shell, loginShellArgv(shell, extraEnv)...)
 	cmd.Dir = home
 	env := mergeShellEnv(shellEnv(home, shell, uid), extraEnv)
 	// OSC 52 clipboard shims (pbcopy/xclip/wl-copy) so guest TUIs can copy to

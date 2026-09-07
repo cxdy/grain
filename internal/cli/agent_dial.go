@@ -63,7 +63,7 @@ func dialGuestAgent(c *api.Client, name string, force bool) (*agent.Client, erro
 
 // shellViaDaemon opens an interactive PTY through the daemon WebSocket proxy
 // (GET /vms/{name}/shell). Used for remote CLI mode.
-func shellViaDaemon(c *api.Client, name string) error {
+func shellViaDaemon(c *api.Client, name string, fwdClient bool) error {
 	// agent.Client.Shell dials BaseURL+"/shell"; point BaseURL at the daemon VM route.
 	ac := &agent.Client{
 		BaseURL: strings.TrimRight(c.Base, "/") + "/vms/" + url.PathEscape(name),
@@ -73,7 +73,8 @@ func shellViaDaemon(c *api.Client, name string) error {
 	// Explicit ExtraEnv so remote sessions forward the *client* terminal identity
 	// (TERM_PROGRAM / LC_TERMINAL / TERM_FEATURES / …) for Shift+Enter and friends.
 	return ac.Shell(context.Background(), agent.ShellOpts{
-		ExtraEnv: agent.HostShellExtraEnv(),
+		ExtraEnv:      agent.HostShellExtraEnv(),
+		ForwardClient: fwdClient,
 	})
 }
 

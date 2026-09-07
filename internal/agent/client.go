@@ -467,6 +467,9 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 		env = HostShellExtraEnv()
 	}
 	shellEnvToQuery(q, env)
+	if opts.ForwardClient {
+		q.Set("fwd", "1")
+	}
 	u.RawQuery = q.Encode()
 
 	// Pass HTTP client so vsock (custom Transport) and timeouts apply to WS upgrade.
@@ -530,6 +533,10 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 	}
 
 	errCh := make(chan error, 2)
+	var fwdHub *wsFwdHub
+	if opts.ForwardClient {
+		fwdHub = newWsFwdHub(conn)
+	}
 
 	// Local stdin → WS binary
 	go func() {
@@ -570,7 +577,33 @@ func (c *Client) Shell(ctx context.Context, opts ShellOpts) error {
 				}
 			case websocket.MessageText:
 				var ctrl ShellControl
-				if jerr := json.Unmarshal(data, &ctrl); jerr == nil && ctrl.Type == "clipboard_get" {
+				if jerr := json.Unmarshal(data, &ctrl); jerr != nil {
+					if _, werr := stdout.Write(data); werr != nil {
+						errCh <- werr
+						return
+					}
+					continue
+				}
+				if fwdHub != nil && fwdHub.Handle(ctrl) {
+					continue
+				}
+				if fwdHub != nil && ctrl.Type == fwdOpen {
+					fc := fwdHub.AcceptOpen(ctrl.Id, ctrl.Chan)
+					switch ctrl.Chan {
+					case fwdAgent:
+						go func() {
+							_ = ProxyAgentConn(ctx, os.Getenv("SSH_AUTH_SOCK"), fc)
+							_ = fc.Close()
+						}()
+					default:
+						go func() {
+							_ = ServeMixedProxy(ctx, fc, nil)
+							_ = fc.Close()
+						}()
+					}
+					continue
+				}
+				if ctrl.Type == "clipboard_get" {
 					reply := ShellControl{Type: "clipboard", Id: ctrl.Id}
 					if clip, cerr := osc52.ReadClipboard(); cerr != nil {
 						reply.Error = cerr.Error()
