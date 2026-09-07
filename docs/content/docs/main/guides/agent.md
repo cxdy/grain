@@ -120,7 +120,23 @@ grain sh                         # auto-create if no VMs; agent PTY if up, else 
 grain sh sbox-1
 grain sh --agent sbox-1          # require agent PTY (error if unavailable)
 grain sh --ssh sbox-1            # force classic SSH
+grain sh -A sbox-1               # this PTY only: client SSH agent + HTTP proxy + SOCKS5h
 ```
+
+### Session client forwarding (`grain sh -A`)
+
+`-A` / `--forward-client` is **not** OpenSSH hostfwd `-A`. It works on the **guest-agent PTY** (local and `GRAIN_API`). It cannot be combined with `--ssh`. If the client has no usable `SSH_AUTH_SOCK`, the command errors and does not open a shell.
+
+While **that** PTY is attached, the shell and its children get:
+
+| Env | Meaning |
+|-----|---------|
+| `SSH_AUTH_SOCK` | Guest unix socket; agent protocol is proxied to the **client** agent (no keys on the guest) |
+| `HTTP_PROXY` / `HTTPS_PROXY` | Loopback HTTP CONNECT reverse-tunneled to the CLI (client DNS and TCP) |
+| `ALL_PROXY` | `socks5h://127.0.0.1:…` (SOCKS5 domain names resolved on the **client**) |
+| `PATH` / `GIT_SSH_COMMAND` | Session-only `ssh` wrapper first on `PATH` (and `GIT_SSH_COMMAND`) so stock `ssh` / `git` use `grain-agent socks-connect`; no guest `~/.ssh/config` |
+
+Closing the session (exit, disconnect, agent/daemon drop) removes the sockets and env. Other `grain sh` sessions, `grain x`, and MCP exec are unchanged. This is not VM-wide routing and not `grain proxy` / `10.0.2.2`.
 
 ### Clipboard (OSC 52)
 

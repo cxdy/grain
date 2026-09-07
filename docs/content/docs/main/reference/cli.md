@@ -73,7 +73,7 @@ Most other commands may print a one-line stderr note when a newer release is kno
 | `grain pause` / `resume` | Freeze / unfreeze vCPUs |
 | `grain suspend` / `restore` | Free RAM / bring back persistent VM |
 | `grain clone <src> [dst]` | Offline clone of a stopped/suspended persistent disk |
-| `grain sh [name]` | Shell (agent PTY preferred) |
+| `grain sh [name]` | Shell (agent PTY preferred); `-A` session client forwarding |
 | `grain x [name] -- cmd…` | Exec (streaming agent preferred) |
 | `grain cp src dst` | Copy (`NAME:path` or host path); both directions |
 | `grain sync` / `push` / `pull` | Incremental host↔guest directory sync (agent required) |
@@ -166,6 +166,14 @@ Name is optional for `sh` / `rm` / `x` / `fs` / etc. when exactly one VM exists.
 | (default) | Prefer guest agent when healthy |
 | `--agent` | Agent only; error if unavailable |
 | `--ssh` | Force SSH/scp |
+| `-A` / `--forward-client` | `grain sh` only: session client forwarding (SSH agent + HTTP proxy + SOCKS5h + git/ssh env) into **this** guest-agent PTY. Not OpenSSH hostfwd `-A`. Incompatible with `--ssh`. Requires a usable client `SSH_AUTH_SOCK`. |
+
+```bash
+grain sh -A
+grain sh -A lab
+```
+
+That shell gets `SSH_AUTH_SOCK`, `HTTP_PROXY`/`HTTPS_PROXY`, `ALL_PROXY=socks5h://…`, a session `PATH` `ssh` wrapper, and `GIT_SSH_COMMAND` so stock `ssh` and `git` use the client agent and client DNS/TCP. No guest `~/.ssh/config`. Other sessions, `grain x`, and MCP exec are unchanged. Exit or disconnect tears the sockets down. Not VM-wide routing and not `grain proxy`.
 
 ### `grain cp` (both directions)
 

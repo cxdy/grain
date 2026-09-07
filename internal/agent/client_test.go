@@ -543,6 +543,40 @@ func TestShellClientForwardsTermProgram(t *testing.T) {
 	}
 }
 
+func TestShellClientForwardClientQuery(t *testing.T) {
+	var gotFwd string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/shell" {
+			http.NotFound(w, r)
+			return
+		}
+		gotFwd = r.URL.Query().Get("fwd")
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+		if err != nil {
+			return
+		}
+		_ = conn.Close(websocket.StatusNormalClosure, "ok")
+	}))
+	t.Cleanup(srv.Close)
+	c := &Client{BaseURL: srv.URL, HTTP: &http.Client{Timeout: 0}}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_ = c.Shell(ctx, ShellOpts{
+		Stdin: strings.NewReader(""), Stdout: io.Discard, Raw: boolPtrFalse(),
+		ForwardClient: true,
+	})
+	if gotFwd != "1" {
+		t.Fatalf("fwd query=%q want 1", gotFwd)
+	}
+	gotFwd = ""
+	_ = c.Shell(ctx, ShellOpts{
+		Stdin: strings.NewReader(""), Stdout: io.Discard, Raw: boolPtrFalse(),
+	})
+	if gotFwd != "" {
+		t.Fatalf("default shell must not set fwd, got %q", gotFwd)
+	}
+}
+
 func TestShellClientRoundTrip(t *testing.T) {
 	srv := fakeShellServer(t)
 	t.Cleanup(srv.Close)

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`grain sh -A`** — session client forwarding on the guest-agent PTY: client SSH agent (`SSH_AUTH_SOCK`), HTTP CONNECT proxy, SOCKS5h (`ALL_PROXY`, client DNS), and session-only `GIT_SSH_COMMAND`. That shell only; gone on exit. Fails closed without `SSH_AUTH_SOCK`. Incompatible with `--ssh`. Not OpenSSH hostfwd `-A` and not VM-wide routing.
+
 - **Two-way `grain sync`** — `grain sync <HOST_DIR> <NAME:GUEST_DIR>` copies host-ahead paths to the guest and guest-ahead paths to the host in one run (same argument order as `push`). `grain sync pull` accepts that host-first order too. `--watch` works on two-way. `--force` on two-way uses newer mtime (push/pull remain source-wins). MCP: `grain_sync`.
 
 ### Fixed

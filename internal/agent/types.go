@@ -177,6 +177,9 @@ type ShellOpts struct {
 	// (host TERM_PROGRAM / COLORTERM / etc. for TUI keyboard negotiation).
 	// Unknown or empty values are ignored by the agent.
 	ExtraEnv []string
+	// ForwardClient enables grain sh -A session client forwarding (SSH agent
+	// + HTTP/SOCKS5h reverse tunnel) for this PTY only.
+	ForwardClient bool
 }
 
 // ShellEnvQueryKeys are query parameters on GET /shell that override guest env.
@@ -219,8 +222,9 @@ const ShellWebSocketReadLimit = 16 << 20 // 16 MiB
 //   - resize: client → agent (Cols/Rows)
 //   - clipboard_get: agent → client (request host clipboard; Id correlates reply)
 //   - clipboard: client → agent (Data is base64 clipboard payload; Id matches get)
+//   - fwd_open / fwd_data / fwd_close: session client forwarding pipes
 type ShellControl struct {
-	Type string `json:"type"` // "resize" | "clipboard_get" | "clipboard"
+	Type string `json:"type"` // "resize" | "clipboard_get" | "clipboard" | "fwd_*"
 	Cols int    `json:"cols,omitempty"`
 	Rows int    `json:"rows,omitempty"`
 	Id   string `json:"id,omitempty"`
@@ -228,4 +232,6 @@ type ShellControl struct {
 	Data string `json:"data,omitempty"`
 	// Error is set on type "clipboard" when the client could not read the clipboard.
 	Error string `json:"error,omitempty"`
+	// Chan is "agent" or "proxy" on fwd_open.
+	Chan string `json:"chan,omitempty"`
 }

@@ -14,6 +14,16 @@ import (
 )
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == "socks-connect" {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		if err := agent.RunSocksConnect(ctx, os.Args[2:], os.Getenv, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	listen := flag.String("listen", envOr("GRAIN_AGENT_LISTEN", agent.DefaultListen), "listen address (e.g. :7475 or 0.0.0.0:7475)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
