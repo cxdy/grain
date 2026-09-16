@@ -105,7 +105,7 @@ func runGrainAct(cfgPath *string, o actOpts) error {
 	hctx, hcancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer hcancel()
 	if err := c.Health(hctx); err != nil {
-		return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+		return errDaemonUnreachable(err)
 	}
 
 	workDir := o.Dir

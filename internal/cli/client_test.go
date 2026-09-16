@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -76,6 +78,32 @@ func TestRequireLocalDaemon(t *testing.T) {
 	t.Setenv("GRAIN_TOKEN", "x")
 	if err := requireLocalDaemon(config.Config{}, "grain up"); err == nil {
 		t.Fatal("expected local-only error")
+	}
+}
+
+func TestErrDaemonUnreachable(t *testing.T) {
+	t.Parallel()
+	if errDaemonUnreachable(nil) != nil {
+		t.Fatal("nil")
+	}
+	unreach := errDaemonUnreachable(errors.New(`Get "http://192.168.4.108:7474/vms": dial tcp 192.168.4.108:7474: connect: no route to host`))
+	if unreach == nil {
+		t.Fatal("expected error")
+	}
+	s := unreach.Error()
+	if strings.Contains(s, "run: grain up") {
+		t.Fatalf("routing failure must not tell the user to grain up: %s", s)
+	}
+	if !strings.Contains(s, "Local Network") || !strings.Contains(s, "grain up on this machine will not help") {
+		t.Fatalf("want Local Network hint, got %s", s)
+	}
+	refused := errDaemonUnreachable(errors.New("dial tcp 127.0.0.1:1: connect: connection refused"))
+	if refused == nil || !strings.Contains(refused.Error(), "daemon not up") {
+		t.Fatalf("refused: %v", refused)
+	}
+	timeout := errDaemonUnreachable(context.DeadlineExceeded)
+	if timeout == nil || !strings.Contains(timeout.Error(), "timed out") {
+		t.Fatalf("timeout: %v", timeout)
 	}
 }
 

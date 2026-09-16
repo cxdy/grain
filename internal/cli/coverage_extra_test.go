@@ -577,6 +577,7 @@ func TestRunDoctorQemuDefaultAndX86Binary(t *testing.T) {
 		FirecrackerBinary: "",
 		Image:             "grain-ubuntu",
 		KernelPath:        "", // uses default under data_dir
+		API:               "0.0.0.0:7474",
 	}
 	_ = runDoctor(cfg2)
 }

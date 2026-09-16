@@ -13,6 +13,7 @@ import (
 
 	"github.com/cxdy/grain/internal/api"
 	"github.com/cxdy/grain/internal/config"
+	"github.com/cxdy/grain/internal/netutil"
 )
 
 // apiURLFlag is set from the root persistent flag --api (overrides config/env).
@@ -69,6 +70,7 @@ func clientFrom(cfg config.Config) (*api.Client, error) {
 				Token: token,
 				HTTP: &http.Client{
 					Transport: &http.Transport{
+						DialContext:           netutil.RetryDialContext,
 						ResponseHeaderTimeout: 5 * time.Minute,
 					},
 				},
@@ -84,10 +86,29 @@ func clientFrom(cfg config.Config) (*api.Client, error) {
 			// No global Timeout — create waits; use request context instead.
 			// Default TLS settings apply for https:// bases (no custom certs).
 			Transport: &http.Transport{
+				DialContext:           netutil.RetryDialContext,
 				ResponseHeaderTimeout: 5 * time.Minute,
 			},
 		},
 	}, nil
+}
+
+// errDaemonUnreachable classifies a failed daemon HTTP/unix call.
+// Routing failures (no route to host) are not "daemon not up" — the process
+// may be healthy while the LAN path, firewall, or macOS Local Network
+// permission blocks this client.
+func errDaemonUnreachable(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case netutil.IsHostUnreachable(err):
+		return fmt.Errorf("grain API unreachable (%w) — check LAN/VPN/firewall and that the host is awake; on macOS 15+ allow Local Network for this terminal (System Settings → Privacy & Security → Local Network); grain up on this machine will not help", err)
+	case netutil.IsDialTimeout(err):
+		return fmt.Errorf("grain API timed out (%w) — host not answering on the API port (firewall or asleep)?", err)
+	default:
+		return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+	}
 }
 
 // shouldWarnInsecureHTTP reports whether the CLI should warn about cleartext

@@ -286,7 +286,7 @@ With no --host and no GRAIN_SSH_HOST, lines use a USER@HOST placeholder.
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 
 			var list []*vm.Instance
@@ -358,7 +358,7 @@ func cmdFwdLs(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 
 			var list []*vm.Instance
@@ -484,7 +484,7 @@ func cmdFwdAdd(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 
 			var name, spec string
@@ -530,7 +530,7 @@ func cmdFwdRm(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 
 			var name string

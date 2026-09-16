@@ -111,6 +111,8 @@ export GRAIN_TOKEN=replace-with-long-random-secret
 grain ls
 ```
 
+On macOS 15+, `connect: no route to host` with a working `ping` is usually Local Network permission for the terminal app, not a down daemon. See [Troubleshooting](../troubleshooting/#remote-cli-no-route-to-host).
+
 **Transport caveat:** that path is **cleartext HTTP**. The Bearer token authenticates you, but anyone on the network path can sniff `Authorization` and request bodies. Prefer the SSH tunnel above, or put a **TLS reverse proxy** in front of `127.0.0.1:7474` and set `GRAIN_API=https://sandbox.example.com` (CLI uses the system TLS stack; no extra flags). The CLI prints a one-time stderr warning for non-loopback `http://` URLs; set `GRAIN_INSECURE_HTTP=1` only if you accept cleartext on that path.
 
 Priority: `--api` flag > `GRAIN_API` > config `api_url`.

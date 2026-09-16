@@ -50,7 +50,7 @@ func cmdSecretLs(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			list, err := c.ListSecrets(ctx)
 			if err != nil {
@@ -110,7 +110,7 @@ func cmdSecretSet(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			m, err := c.SetSecret(ctx, secrets.PutRequest{
 				Name:       name,
@@ -147,7 +147,7 @@ func cmdSecretRm(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			if err := c.DeleteSecret(ctx, args[0]); err != nil {
 				return err
@@ -176,7 +176,7 @@ func cmdSecretInject(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			var vmName, secretName string
 			if len(args) == 1 {

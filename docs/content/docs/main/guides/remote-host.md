@@ -275,6 +275,8 @@ grain --api http://127.0.0.1:7474 ls
 
 **Priority:** `--api` flag > env `GRAIN_API` > config `api_url`.
 
+**macOS 15+ (Sequoia):** a remote `grain ls` that fails with `connect: no route to host` while `ping` works is usually Local Network privacy on the **client**, not a down daemon. System Settings → Privacy & Security → Local Network: allow the terminal app. See [Troubleshooting](../troubleshooting/#remote-cli-no-route-to-host).
+
 | Works remotely | Local-only (run on host / SSH) |
 |----------------|--------------------------------|
 | `ls`, `new`, `rm`, `stop`, `start`, … | `up`, `down` |

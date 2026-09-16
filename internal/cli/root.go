@@ -495,7 +495,7 @@ source; SSH/agent ports are allocated on the next start (clone is left stopped).
 			ctx, cancel := context.WithTimeout(context.Background(), createTimeout)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 
 			var userdata string
@@ -717,7 +717,7 @@ func runPoolClaim(c *api.Client, dst string, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := c.Health(ctx); err != nil {
-		return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+		return errDaemonUnreachable(err)
 	}
 	start := time.Now()
 	stop := createProgress("claiming from warm pool")
@@ -746,7 +746,7 @@ func runSpawn(c *api.Client, template, dst string, timeout time.Duration) error 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := c.Health(ctx); err != nil {
-		return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+		return errDaemonUnreachable(err)
 	}
 	// Prefer public client package CreateRequest path via api client - check api.Client Create
 	start := time.Now()
@@ -816,7 +816,7 @@ func runClone(c *api.Client, src, dst string, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := c.Health(ctx); err != nil {
-		return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+		return errDaemonUnreachable(err)
 	}
 	start := time.Now()
 	inst, err := c.Clone(ctx, src, api.CloneRequest{Name: dst})
@@ -871,7 +871,7 @@ func cmdLs(cfgPath *string) *cobra.Command {
 			defer cancel()
 			list, err := c.List(ctx)
 			if err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			if len(list) == 0 {
 				fmt.Println("no vms — create one:  grain new")
@@ -970,7 +970,7 @@ func cmdStart(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			stop := createProgress("starting")
 			start := time.Now()
@@ -1010,7 +1010,7 @@ func cmdPause(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			if err := c.Pause(ctx, name); err != nil {
 				return err
@@ -1042,7 +1042,7 @@ func cmdResume(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			if err := c.Resume(ctx, name); err != nil {
 				return err
@@ -1092,7 +1092,7 @@ starts it with -loadvm when a suspend snapshot exists.`,
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 				defer cancel()
 				if err := c.Health(ctx); err != nil {
-					return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+					return errDaemonUnreachable(err)
 				}
 				st, err := c.PoolStatus(ctx)
 				if err != nil {
@@ -1124,7 +1124,7 @@ starts it with -loadvm when a suspend snapshot exists.`,
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 				defer cancel()
 				if err := c.Health(ctx); err != nil {
-					return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+					return errDaemonUnreachable(err)
 				}
 				st, err := c.PoolFill(ctx)
 				if err != nil {
@@ -1165,7 +1165,7 @@ starts it with -loadvm when a suspend snapshot exists.`,
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				defer cancel()
 				if err := c.Health(ctx); err != nil {
-					return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+					return errDaemonUnreachable(err)
 				}
 				n, err := c.PoolDrain(ctx)
 				if err != nil {
@@ -1211,7 +1211,7 @@ persistent VM. When the disk is qcow2, grain best-effort savevm's a snapshot
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			if err := c.Suspend(ctx, name); err != nil {
 				return err
@@ -1243,7 +1243,7 @@ func cmdRestore(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			stop := createProgress("restoring")
 			start := time.Now()
@@ -1305,7 +1305,7 @@ func resolveVMName(c *api.Client, args []string, createIfEmpty bool) (string, er
 	defer cancel()
 	list, err := c.List(ctx)
 	if err != nil {
-		return "", fmt.Errorf("daemon not up — run: grain up (%w)", err)
+		return "", errDaemonUnreachable(err)
 	}
 	if len(list) == 0 {
 		if !createIfEmpty {
@@ -1455,7 +1455,7 @@ func cmdX(cfgPath *string) *cobra.Command {
 			defer cancelList()
 			list, err := c.List(ctxList)
 			if err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			known := map[string]struct{}{}
 			for _, i := range list {

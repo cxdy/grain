@@ -76,8 +76,73 @@ func DialHTTP(baseURL, token string) (*Client, error) {
 		base:      baseURL,
 		token:     token,
 		userAgent: DefaultUserAgent,
-		http:      &http.Client{},
+		http: &http.Client{
+			Transport: retryingHTTPTransport(),
+		},
 	}, nil
+}
+
+// retryingHTTPTransport clones the default transport and retries LAN routing
+// failures (EHOSTUNREACH / "no route to host") a few times. macOS 15 often
+// fails the first connect after sleep/unlock even when Local Network is allowed.
+func retryingHTTPTransport() http.RoundTripper {
+	var tr *http.Transport
+	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		tr = dt.Clone()
+	} else {
+		tr = &http.Transport{}
+	}
+	base := tr.DialContext
+	if base == nil {
+		d := net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+		base = d.DialContext
+	}
+	tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		var last error
+		backoff := 50 * time.Millisecond
+		for attempt := 0; attempt < 4; attempt++ {
+			if err := ctx.Err(); err != nil {
+				if last != nil {
+					return nil, last
+				}
+				return nil, err
+			}
+			conn, err := base(ctx, network, addr)
+			if err == nil {
+				return conn, nil
+			}
+			last = err
+			if !transientDial(err) {
+				return nil, err
+			}
+			if attempt == 3 {
+				break
+			}
+			t := time.NewTimer(backoff)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return nil, last
+			case <-t.C:
+			}
+			if backoff < 400*time.Millisecond {
+				backoff *= 2
+			}
+		}
+		return nil, last
+	}
+	if tr.ResponseHeaderTimeout == 0 {
+		tr.ResponseHeaderTimeout = 5 * time.Minute
+	}
+	return tr
+}
+
+func transientDial(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "no route to host") || strings.Contains(s, "network is unreachable")
 }
 
 // SetToken sets or clears the Bearer token used on subsequent requests.
