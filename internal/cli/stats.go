@@ -30,7 +30,7 @@ func cmdStats(cfgPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := c.Health(ctx); err != nil {
-				return fmt.Errorf("daemon not up — run: grain up (%w)", err)
+				return errDaemonUnreachable(err)
 			}
 			st, err := c.Stats(ctx, name)
 			if err != nil {

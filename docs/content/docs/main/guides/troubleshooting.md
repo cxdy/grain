@@ -8,6 +8,8 @@ keywords:
   - hang
   - qemu
   - agent
+  - no route to host
+  - GRAIN_API
 ---
 
 {{< only-need href="get-started/install/" >}}
@@ -163,10 +165,41 @@ Stop or remove VMs, lower `-c`/`-m`, or raise caps in config and restart the dae
 daemon not up — run: grain up
 ```
 
+On the **machine that should run the daemon**:
+
 ```bash
 grain up
 grain doctor   # should show socket OK
 ```
+
+`grain up` / `down` / `doctor` are local-host commands. Running them on a laptop pointed at `GRAIN_API` does not start the remote daemon.
+
+### Remote CLI: `no route to host`
+
+```text
+grain API unreachable (… no route to host)
+```
+
+The daemon may already be running. This error means the TCP path to `host:7474` failed before HTTP (ICMP unreachable, ARP, or the OS dropped the packet). **Do not run `grain up` on the client.**
+
+From the client:
+
+```bash
+curl -m 3 http://HOST:7474/healthz
+# or: ping HOST ; nc -vz HOST 7474
+```
+
+| If curl works | If curl fails the same way |
+|---------------|----------------------------|
+| Token / `GRAIN_API` mismatch | Network path, not grain itself |
+
+Common causes when the host daemon is up (`api: 0.0.0.0:7474` + token):
+
+1. **macOS 15+ Local Network privacy** on the client (and sometimes the host). System Settings → Privacy & Security → Local Network: enable the app that launched `grain` (iTerm, Ghostty, VS Code, Tabby, …). Apple Terminal is usually allowed. After replacing the `grain` binary the prompt may not return — toggle that app off and on. Symptom is exactly `connect: no route to host` while `ping` still works.
+2. First connect after the Mac sleeps or unlocks (macOS often fails once; grain retries a few times).
+3. Host asleep, DHCP changed the LAN IP, Wi-Fi client isolation, or the host binds `127.0.0.1:7474` so LAN clients cannot connect.
+
+Reliable alternative: SSH tunnel to loopback (`ssh -L 7474:127.0.0.1:7474 host` and `GRAIN_API=http://127.0.0.1:7474`). See [Remote sandbox host](../remote-host/).
 
 ## Port publish rejected
 

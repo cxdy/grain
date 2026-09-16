@@ -282,6 +282,9 @@ func runDoctor(cfg config.Config) error {
 	} else {
 		fmt.Printf("  · daemon not running (grain up)\n")
 	}
+	if cfg.API != "" && !config.ListenAddrIsLoopback(cfg.API) {
+		fmt.Printf("  · api listen %s (LAN) — remote CLI needs GRAIN_API + GRAIN_TOKEN; macOS 15+ clients need Local Network permission for the terminal app\n", cfg.API)
+	}
 
 	if !ok {
 		return fmt.Errorf("doctor found issues")

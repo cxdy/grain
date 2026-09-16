@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Remote CLI `no route to host`** — `grain ls` and other remote commands no longer report `daemon not up — run: grain up` for TCP routing failures (`EHOSTUNREACH` / `network is unreachable`). The HTTP client retries those dials a few times (macOS 15 often fails the first LAN connect after sleep/unlock) and then prints a LAN / Local Network hint. Connection refused still means start the daemon. Docs: troubleshooting + remote-host.
+
 - **Sync/cp include hidden directories** — built-in ignore of `.git/` meant a pushed git working tree was not a repository in the guest, and pull could conflict with the host repo. Hidden directories (including `.git`) are now transferred by default for `grain sync`, directory `grain cp` (tar put/get), and the guest-agent tar path. Omit git metadata with `--exclude '.git/'`. `--no-defaults` remains (currently a no-op for ignores).
 
 ## [0.8.1] - 2026-08-07
