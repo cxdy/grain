@@ -328,9 +328,10 @@ func TestQEMUPauseResumeSaveVMErrors(t *testing.T) {
 	if err := q.Resume(ctx, alive); err == nil || !strings.Contains(err.Error(), "no QMP") {
 		t.Fatalf("resume no qmp: %v", err)
 	}
-	// Wrong disk format
+	// Wrong disk format. Leave QMPPath empty so the test process still counts
+	// as the stand-in guest; a recorded socket that is not listening is a
+	// reused PID, not QEMU.
 	alive.DiskPath = filepath.Join(t.TempDir(), "disk.img")
-	alive.QMPPath = filepath.Join(t.TempDir(), "qmp.sock")
 	if err := q.SaveVM(ctx, alive, "tag"); err == nil || !strings.Contains(err.Error(), "qcow2") {
 		t.Fatalf("savevm raw: %v", err)
 	}

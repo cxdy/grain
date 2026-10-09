@@ -475,7 +475,7 @@ func (f *FirecrackerRuntime) Stop(ctx context.Context, inst *vm.Instance) error 
 		_ = fcAPIAction(ctx, apiSock)
 		deadline := time.Now().Add(powerdownWait)
 		for time.Now().Before(deadline) {
-			if !anyPIDAlive(pids) {
+			if !hypervisorStillAlive(pids, "firecracker") {
 				cleanupFCFiles(inst)
 				inst.PID = 0
 				inst.QMPPath = ""
@@ -491,13 +491,7 @@ func (f *FirecrackerRuntime) Stop(ctx context.Context, inst *vm.Instance) error 
 	}
 
 hardKill:
-	for _, pid := range pids {
-		if p, err := os.FindProcess(pid); err == nil {
-			_ = p.Signal(syscall.SIGTERM)
-			time.Sleep(200 * time.Millisecond)
-			_ = p.Signal(syscall.SIGKILL)
-		}
-	}
+	signalHypervisorPIDs(pids, "firecracker")
 	cleanupFCFiles(inst)
 	inst.PID = 0
 	inst.QMPPath = ""
@@ -535,14 +529,10 @@ func (f *FirecrackerRuntime) SaveVM(_ context.Context, inst *vm.Instance, tag st
 }
 
 func (f *FirecrackerRuntime) Running(inst *vm.Instance) bool {
-	if inst.PID <= 0 {
+	if inst == nil {
 		return false
 	}
-	proc, err := os.FindProcess(inst.PID)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	return runtimeProcessRunning(inst.PID, inst.QMPPath, "firecracker")
 }
 
 func (f *FirecrackerRuntime) resolveKernel() (string, error) {

@@ -1082,29 +1082,44 @@ func (m *Manager) List() ([]*vm.Instance, error) {
 		return nil, err
 	}
 	for _, inst := range list {
-		running := m.rt.Running(inst)
-		if (inst.Status == vm.StatusRunning || inst.Status == vm.StatusPaused) && !running {
-			m.killLiveForwards(inst)
-			m.killSocketForwards(inst)
-			inst.Status = vm.StatusStopped
-			inst.PID = 0
-			inst.QMPPath = ""
-			inst.LiveForwards = nil
-			_ = m.st.Put(inst)
-			continue
-		}
-		// Reconcile: wait aborted (Ctrl+C) used to leave StatusError while QEMU lives.
-		if running && (inst.Status == vm.StatusError || inst.Status == vm.StatusCreating) {
-			inst.Status = vm.StatusRunning
-			inst.Error = ""
-			_ = m.st.Put(inst)
-		}
+		m.reconcileInstance(inst)
 	}
 	return m.st.List()
 }
 
 func (m *Manager) Get(name string) (*vm.Instance, error) {
-	return m.st.Get(name)
+	inst, err := m.st.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	m.reconcileInstance(inst)
+	return inst, nil
+}
+
+// reconcileInstance marks a persisted running or paused VM stopped when its
+// hypervisor process is gone, and promotes error/creating back to running
+// when that process is still alive.
+func (m *Manager) reconcileInstance(inst *vm.Instance) {
+	if inst == nil {
+		return
+	}
+	running := m.rt.Running(inst)
+	if (inst.Status == vm.StatusRunning || inst.Status == vm.StatusPaused) && !running {
+		m.killLiveForwards(inst)
+		m.killSocketForwards(inst)
+		inst.Status = vm.StatusStopped
+		inst.PID = 0
+		inst.QMPPath = ""
+		inst.LiveForwards = nil
+		_ = m.st.Put(inst)
+		return
+	}
+	// Reconcile: wait aborted (Ctrl+C) used to leave StatusError while QEMU lives.
+	if running && (inst.Status == vm.StatusError || inst.Status == vm.StatusCreating) {
+		inst.Status = vm.StatusRunning
+		inst.Error = ""
+		_ = m.st.Put(inst)
+	}
 }
 
 // Clone creates a stopped persistent VM by copying the source root disk and
