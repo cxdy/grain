@@ -276,7 +276,7 @@ func (q *QEMURuntime) Stop(ctx context.Context, inst *vm.Instance) error {
 		if err == nil {
 			deadline := time.Now().Add(powerdownWait)
 			for time.Now().Before(deadline) {
-				if !anyPIDAlive(pids) {
+				if !hypervisorStillAlive(pids, "qemu-system") {
 					cleanupQEMUFiles(inst)
 					inst.PID = 0
 					inst.QMPPath = ""
@@ -292,13 +292,7 @@ func (q *QEMURuntime) Stop(ctx context.Context, inst *vm.Instance) error {
 		}
 	}
 hardKill:
-	for _, pid := range pids {
-		if p, err := os.FindProcess(pid); err == nil {
-			_ = p.Signal(syscall.SIGTERM)
-			time.Sleep(200 * time.Millisecond)
-			_ = p.Signal(syscall.SIGKILL)
-		}
-	}
+	signalHypervisorPIDs(pids, "qemu-system")
 	cleanupQEMUFiles(inst)
 	inst.PID = 0
 	inst.QMPPath = ""
@@ -356,14 +350,10 @@ func (q *QEMURuntime) SaveVM(ctx context.Context, inst *vm.Instance, tag string)
 }
 
 func (q *QEMURuntime) Running(inst *vm.Instance) bool {
-	if inst.PID <= 0 {
+	if inst == nil {
 		return false
 	}
-	proc, err := os.FindProcess(inst.PID)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	return runtimeProcessRunning(inst.PID, inst.QMPPath, "qemu-system")
 }
 
 func collectQEMUPIDs(inst *vm.Instance) []int {

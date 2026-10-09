@@ -1959,6 +1959,32 @@ func TestFailPauseResumeStop(t *testing.T) {
 	_ = m.Delete(ctx, inst.Name)
 }
 
+func TestGetRefreshesForceDead(t *testing.T) {
+	t.Parallel()
+	m, rt, _ := testManager(t)
+	inst, err := m.Create(context.Background(), vm.CreateOpts{Name: "deadget", Persistent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.AddForward(context.Background(), inst.Name, 0, 8080); err != nil {
+		t.Fatal(err)
+	}
+	rt.ForceDead(inst.Name)
+	got, err := m.Get(inst.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != vm.StatusStopped {
+		t.Fatalf("want stopped, got %s", got.Status)
+	}
+	if got.PID != 0 {
+		t.Fatalf("pid %d", got.PID)
+	}
+	if len(got.LiveForwards) != 0 {
+		t.Fatalf("forwards %+v", got.LiveForwards)
+	}
+}
+
 func TestListRefreshesForceDead(t *testing.T) {
 	t.Parallel()
 	m, rt, _ := testManager(t)
