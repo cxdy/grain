@@ -5,12 +5,31 @@
 #
 # Installs the grain CLI to /usr/local/bin (if writable) or ~/.local/bin.
 # Prefers a GitHub release binary; falls back to `go install` when Go is present.
+#
+# Integrity: every downloaded release archive is verified against the release's
+# checksums.txt (SHA-256) before it is extracted or installed. Missing checksums
+# or a mismatch abort the install (fail closed).
+#
+# Environment:
+#   GRAIN_VERSION=v0.11.2        install this release instead of the latest
+#   GRAIN_SHA256=<hex>           expected SHA-256 of the main CLI archive; pins the
+#                                hash from your own reviewed source instead of
+#                                trusting the release's checksums.txt (agent and
+#                                desktop archives still use checksums.txt)
+#   GRAIN_INSECURE_SKIP_VERIFY=1 skip verification (not recommended)
 
 set -euo pipefail
 
 REPO="cxdy/grain"
 BIN_NAME="grain"
 GITHUB_API="https://api.github.com/repos/${REPO}/releases/latest"
+if [[ -n "${GRAIN_VERSION:-}" ]]; then
+  if [[ ! "$GRAIN_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+    printf 'error: invalid GRAIN_VERSION: %s (expected e.g. v0.11.2)\n' "$GRAIN_VERSION" >&2
+    exit 1
+  fi
+  GITHUB_API="https://api.github.com/repos/${REPO}/releases/tags/v${GRAIN_VERSION#v}"
+fi
 GITHUB_RELEASES="https://github.com/${REPO}/releases"
 
 # --- colors (optional) --------------------------------------------------------
@@ -117,6 +136,58 @@ download() {
   else
     die "need curl or wget to download release binaries"
   fi
+}
+
+# --- integrity verification --------------------------------------------------
+CHECKSUMS_TEXT=""
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    die "need sha256sum or shasum to verify downloads (or set GRAIN_INSECURE_SKIP_VERIFY=1)"
+  fi
+}
+
+# Fetch checksums.txt from the same release as the assets (once).
+load_checksums() {
+  [[ -n "$CHECKSUMS_TEXT" ]] && return 0
+  local url tmp
+  url="$(latest_asset_url_named "checksums.txt")" \
+    || die "release has no checksums.txt; refusing to install unverified (GRAIN_INSECURE_SKIP_VERIFY=1 to override)"
+  tmp="$(mktemp -t grain-sums.XXXXXX 2>/dev/null || mktemp)"
+  if ! download "$url" "$tmp"; then
+    rm -f "$tmp"
+    die "could not download checksums.txt"
+  fi
+  CHECKSUMS_TEXT="$(cat "$tmp")"
+  rm -f "$tmp"
+  [[ -n "$CHECKSUMS_TEXT" ]] || die "checksums.txt is empty"
+}
+
+# verify_download <file> <asset-name> [pinned-sha256]
+verify_download() {
+  local file="$1" name="$2" pinned="${3:-}" want got
+  if [[ "${GRAIN_INSECURE_SKIP_VERIFY:-}" == "1" ]]; then
+    warn "GRAIN_INSECURE_SKIP_VERIFY=1: not verifying ${name}"
+    return 0
+  fi
+  if [[ -n "$pinned" ]]; then
+    want="$pinned"
+  else
+    load_checksums
+    want="$(printf '%s\n' "$CHECKSUMS_TEXT" | awk -v n="$name" '$2 == n || $2 == "*" n { print $1; exit }')"
+    [[ -n "$want" ]] || die "no checksum listed for ${name} in checksums.txt; refusing to install unverified (GRAIN_INSECURE_SKIP_VERIFY=1 to override)"
+  fi
+  want="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')"
+  [[ "$want" =~ ^[0-9a-f]{64}$ ]] || die "malformed expected checksum for ${name}"
+  got="$(sha256_of "$file")"
+  if [[ "$got" != "$want" ]]; then
+    die "SHA-256 mismatch for ${name}: expected ${want}, got ${got}"
+  fi
+  ok "verified ${name} (sha256 ${got:0:12}…)"
 }
 
 # Fetch latest release asset URL by exact asset name.
@@ -266,6 +337,7 @@ install_from_release() {
     warn "download looks empty or like HTML, not a release asset"
     return 1
   fi
+  verify_download "$tmp" "$name" "${GRAIN_SHA256:-}"
   ensure_dir "$dest_dir"
   local dest="${dest_dir}/${BIN_NAME}"
   case "$name" in
@@ -313,6 +385,7 @@ install_agent_from_release() {
     warn "agent download empty or invalid"
     return 1
   fi
+  verify_download "$tmp" "$name"
   ensure_dir "$agent_dir"
   local dest="${agent_dir}/${asset_bin}"
   case "$name" in
@@ -613,7 +686,7 @@ install_desktop() {
       tmp="$(mktemp -t grain-desktop.XXXXXX 2>/dev/null || mktemp)"
       local dest_dir="${HOME}/Applications"
       ensure_dir "$dest_dir"
-      if download "$url" "$tmp" && extract_app_from_tarball "$tmp" "Grain.app" "${dest_dir}/Grain.app"; then
+      if download "$url" "$tmp" && verify_download "$tmp" "$(basename "$url")" && extract_app_from_tarball "$tmp" "Grain.app" "${dest_dir}/Grain.app"; then
         ok "installed Desktop to ${dest_dir}/Grain.app"
         info "open with: open ${dest_dir}/Grain.app"
         local bindir dest launcher
@@ -638,7 +711,7 @@ LAUNCH
       tmp="$(mktemp -t grain-desktop.XXXXXX 2>/dev/null || mktemp)"
       local dest
       dest="$(pick_install_dir)/grain-desktop"
-      if download "$url" "$tmp" && extract_binary_from_tarball "$tmp" "grain-desktop" "$dest"; then
+      if download "$url" "$tmp" && verify_download "$tmp" "$(basename "$url")" && extract_binary_from_tarball "$tmp" "grain-desktop" "$dest"; then
         ok "installed Desktop to ${dest}"
         info "run:  grain-desktop   (requires grain up)"
         rm -f "$tmp"
@@ -655,7 +728,7 @@ LAUNCH
       tmp="$(mktemp -t grain-desktop.XXXXXX 2>/dev/null || mktemp)"
       local dest
       dest="$(pick_install_dir)/grain-desktop"
-      if download "$url" "$tmp" && extract_binary_from_tarball "$tmp" "grain-desktop" "$dest"; then
+      if download "$url" "$tmp" && verify_download "$tmp" "$(basename "$url")" && extract_binary_from_tarball "$tmp" "grain-desktop" "$dest"; then
         ok "installed Desktop to ${dest}"
         info "run:  grain-desktop   (WebKitGTK 4.1; grain up for daemon)"
         info "docs: https://grainvm.com/docs/main/guides/desktop/"
