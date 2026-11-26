@@ -5,6 +5,9 @@
 #   Grain_darwin_<arch>.app.tar.gz     — macOS .app bundle
 #   grain-desktop_linux_<arch>.tar.gz  — Linux binary (+ short README)
 #
+# After the Desktop builds, the "checksums" job appends their SHA-256 sums to the
+# release's checksums.txt so scripts/install.sh can verify them.
+#
 # Runs on the same v* tag push as .github/workflows/release.yml.
 name: Release Desktop
 
@@ -161,3 +164,64 @@ jobs:
           fi
           gh release upload "$TAG" "${assets[@]}" --clobber
           gh release view "$TAG" --json assets --jq '.assets[].name'
+
+  checksums:
+    name: Add Desktop assets to checksums.txt
+    needs: desktop
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Resolve tag
+        id: ver
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >>"$GITHUB_OUTPUT"
+
+      # scripts/install.sh verifies every archive against checksums.txt, so the
+      # Desktop archives (uploaded by this workflow, not GoReleaser) must be listed.
+      - name: Append Desktop SHA-256 sums to checksums.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # GoReleaser uploads checksums.txt last-ish; wait until it is attached.
+          for i in $(seq 1 60); do
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx checksums.txt; then
+              break
+            fi
+            if [[ "$i" -eq 60 ]]; then
+              echo "timed out waiting for checksums.txt on ${TAG}" >&2
+              exit 1
+            fi
+            echo "waiting for checksums.txt on ${TAG}… (${i}/60)"
+            sleep 10
+          done
+
+          mkdir -p work && cd work
+          gh release download "$TAG" --pattern checksums.txt
+          # Hash what is actually published on the release, not the build outputs.
+          gh release download "$TAG" \
+            --pattern 'Grain_darwin_*.app.tar.gz' \
+            --pattern 'grain-desktop_linux_*.tar.gz'
+
+          shopt -s nullglob
+          desktop=(Grain_darwin_*.app.tar.gz grain-desktop_linux_*.tar.gz)
+          if [[ ${#desktop[@]} -ne 4 ]]; then
+            echo "expected 4 Desktop assets, found ${#desktop[@]}: ${desktop[*]}" >&2
+            exit 1
+          fi
+
+          # Idempotent: drop any previous Desktop lines, then append fresh ones.
+          grep -vE '[[:space:]]\*?(Grain_darwin_|grain-desktop_linux_)' checksums.txt >checksums.new || true
+          sha256sum "${desktop[@]}" >>checksums.new
+          sort -k2 checksums.new >checksums.txt
+          rm -f checksums.new
+          cat checksums.txt
+
+          gh release upload "$TAG" checksums.txt --clobber

@@ -70,6 +70,9 @@ svu next
 
 5. Watch **Release Desktop** — matrix builds Wails Desktop and **uploads** to the
    same tag: `Grain_darwin_<arch>.app.tar.gz`, `grain-desktop_linux_<arch>.tar.gz`.
+   A final `checksums` job then appends their SHA-256 sums to the release's
+   `checksums.txt`; `scripts/install.sh` verifies every archive against that file
+   and refuses to install anything not listed.
    Waits for the GoReleaser release to exist, then attaches assets. Re-run via
    workflow_dispatch if a leg fails.
    On macOS, if these Actions secrets are set, the app is **Developer ID signed +
@@ -116,7 +119,7 @@ Workflow: [`.github/workflows/release.yml`](https://github.com/cxdy/grain/blob/m
 |----------|-------------|
 | CLI archives `grain_<os>_<arch>.tar.gz` | GitHub Release |
 | Guest agent `grain-agent-linux-<arch>.tar.gz` | GitHub Release |
-| `checksums.txt` | GitHub Release |
+| `checksums.txt` (CLI + agent from GoReleaser; Desktop lines appended by Release Desktop) | GitHub Release |
 
 **Golden images** (`grain-ubuntu` on tag `golden-latest`) are **not** part of
 GoReleaser — use the bake workflow / local bake scripts.

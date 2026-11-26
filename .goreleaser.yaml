@@ -100,7 +100,7 @@ release:
     | `grain-agent-linux-<arch>.tar.gz` | Guest agent |
     | `Grain_darwin_<arch>.app.tar.gz` | **Desktop** macOS app (Release Desktop workflow) |
     | `grain-desktop_linux_<arch>.tar.gz` | **Desktop** Linux binary (Release Desktop workflow) |
-    | `checksums.txt` | SHA-256 sums (CLI + agent; Desktop assets listed on the release) |
+    | `checksums.txt` | SHA-256 sums (CLI, agent and Desktop; Desktop lines are appended by the Release Desktop workflow) |
 
     **Desktop**
     ```bash
