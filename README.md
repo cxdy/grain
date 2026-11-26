@@ -35,6 +35,22 @@ curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh 
 curl -fsSL https://raw.githubusercontent.com/cxdy/grain/main/scripts/install.sh | bash -s -- --desktop
 ```
 
+The installer verifies every archive against the release's `checksums.txt`
+(SHA-256) and aborts on a missing entry or a mismatch. To pin a release or
+verify against a hash you obtained elsewhere:
+
+| Variable | Effect |
+|----------|--------|
+| `GRAIN_VERSION=v0.11.2` | Install that release instead of the latest |
+| `GRAIN_SHA256=<hex>` | Expected SHA-256 of the CLI archive (`grain_<os>_<arch>.tar.gz`); skips trusting `checksums.txt` for that file. Use with `GRAIN_VERSION` |
+| `GRAIN_INSECURE_SKIP_VERIFY=1` | Skip verification (not recommended) |
+| `GRAIN_INSTALL_DIR` | Install directory (default `/usr/local/bin`, else `~/.local/bin`) |
+
+`checksums.txt` is published on the same release as the archives, so it detects
+corrupt or partially replaced downloads but not a fully compromised release.
+For stronger assurance, review the script and pin `GRAIN_VERSION` plus
+`GRAIN_SHA256` from your own source.
+
 Install QEMU, then check dependencies:
 
 ```bash
