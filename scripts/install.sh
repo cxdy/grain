@@ -112,12 +112,14 @@ install_file() {
   if need_sudo_for "$dest"; then
     if command -v sudo >/dev/null 2>&1; then
       info "installing to ${dest} (sudo)"
-      sudo install -m 0755 "$src" "$dest"
+      sudo install -m 0755 "$src" "$dest" || die "failed to install ${dest}"
     else
       die "cannot write ${dest}; re-run with write access or set GRAIN_INSTALL_DIR=~/.local/bin"
     fi
   else
-    install -m 0755 "$src" "$dest" 2>/dev/null || cp "$src" "$dest" && chmod 0755 "$dest"
+    if ! install -m 0755 "$src" "$dest" 2>/dev/null; then
+      cp "$src" "$dest" && chmod 0755 "$dest" || die "failed to install ${dest}"
+    fi
   fi
 }
 
